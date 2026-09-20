@@ -324,3 +324,19 @@ AQW's own keyboard lookup and AvatarMC name clip without logging into a server.
 The name test changes the filter after its first render, then verifies that the
 cache bounds refresh. This addresses a reproduced filter invalidation defect;
 the user's intermittent room-transition symptom still needs in-game confirmation.
+
+### House-shop price disappears on refresh
+
+`LPFFrameCostDisplay.fDraw()` clears `mcGold.ti.text` and `mcCoins.ti.text`, then
+sets `htmlText` to the formatted price. Scene's HTML setter returned early if
+that HTML source matched its previous assignment, even when a subsequent plain
+text assignment had cleared the field. Refreshing the same price therefore
+left zero glyphs and zero text width while the currency icon stayed visible.
+
+The HTML setter now reapplies its content and formatting on assignment. Comparing
+only the previous source cannot establish a no-op after text edits or formatting
+changes. This intentionally reparses repeated identical HTML assignments.
+`check-text-layout.cjs` covers repeated clear/restore cycles, a rendered empty
+frame between assignments, nonempty text replacement, formatting restoration,
+and empty HTML. The new case fails on the previous implementation. The browser
+reproduction uses the actual game's `LPFFrameCostDisplay` and its embedded font.
