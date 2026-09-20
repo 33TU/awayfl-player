@@ -168,3 +168,47 @@ the first conversion. Browser validation with AQW's actual `AvatarMC.scale`
 reproduces y=-488 before the fix and consistently gets y=-138 afterward, both
 before and after attaching the avatar. Authenticated room transitions remain
 the user's integration check.
+
+## Chat input errors and blank speech bubbles
+
+Three separate fixes are used together:
+
+- Playerglobal `fix/text-metrics-keyboard-focus` implements
+  `TextField.getCharBoundaries` by returning a Flash Rectangle from the scene's
+  layout. Previously it always returned null, and AQW's `Chat.buildTextLinks`
+  crashed at `m_buildTextLinks.js:822` when building clickable usernames.
+- Scene `fix/text-character-bounds` reconstructs layout before metric queries,
+  uses font height instead of a fixed 10 pixels, and maintains original text
+  indices across explicit line breaks and wrapping. It also clears old character
+  positions during width-only layout changes. `getLineIndexOfChar` previously
+  had an uninitialized loop counter and effectively always selected the last line.
+- Renderer `fix/alpha-premultiplication` saturates the final fragment alpha
+  before multiplying RGB by alpha. AQW's `Chat.popBubble` sets `bubble.alpha`
+  to 100. The old shader washed out the cached text at that value. The ActionScript
+  property remains unchanged; clamping happens after the shader's color transform.
+
+Keyboard events are adapted once per DOM event and Flash stage, dispatched from
+its focused object, then bubbled normally. Unrelated and detached login/search
+fields no longer receive chat keystrokes. Stale detached focus is cleared, and
+`keypress` no longer duplicates `keyDown`/`keyUp`.
+
+```sh
+node scripts/check-text-metrics.cjs
+node scripts/check-keyboard-focus.cjs
+node scripts/check-text-layout.cjs
+node scripts/check-password-masking.cjs
+npm run build:prod
+```
+
+Chrome validation called the real AQW `Chat.buildTextLinks` with a synthetic
+message: the original bundle reproduced the exact exception, while the fixed
+bundle rendered the text and clickable username. A long username also rendered
+across wrapped lines. A real `AvatarMC` bubble, configured using the game's
+`popBubble` assignments, was blank at alpha 100 before the shader fix and readable
+at the same alpha afterward. Browser key events reached the focused input and
+its ancestors once each; another field and a detached field received none.
+No messages were sent to the game server during these checks.
+
+The separate map `frame8` and equipment `frame1` initialization errors in the
+same log are not addressed by these chat fixes. Authenticated chat and room
+transitions remain integration checks for the running game.
