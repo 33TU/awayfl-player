@@ -10,11 +10,22 @@ npm run server:dev -- --port 8080 --host 127.0.0.1
 Open http://127.0.0.1:8080/as3pb-bench.html. The benchmark starts automatically;
 use **Run Benchmark** to repeat it. Completion is indicated by **Done.**
 
-Keep the sibling `../avm2`, `../playerglobal`, and `../swf-loader` checkouts.
-Rspack uses the first two directly from source.
+Keep the sibling `../avm2`, `../playerglobal`, `../swf-loader`, and `../scene` checkouts.
+Rspack uses AVM2, playerglobal and scene directly from source.
 The startup/build scripts compile the local SWF loader with TypeScript so its imported const enums are inlined.
 Dependencies are resolved from this player's `node_modules`. Restart the server
 after editing the SWF loader to recompile it.
+
+The local `scene` checkout is based on AwayJS `v0.13.324`, matching the installed
+package, with password masking on branch `fix/password-masking`. Its interface
+reexports use `export type` for SWC. The matching SWF decoder change is on
+`swf-loader` branch `fix/password-text-flag`. Both are needed: the decoder reads
+the SWF password flag, and scene preserves it through cloning and renders `*`
+glyphs without changing the text value. These branches are currently local.
+
+Run `node scripts/check-password-masking.cjs` to check glyphs and widths, original
+values, toggling, selection replacement, UTF-16/whitespace, HTML and cloning.
+The AQWorlds login form was also checked with simulated keyboard input.
 
 `src/assets/as3pb-bench.swf` is now an exact copy of the original compressed
 `../as3pb-bench.swf`. The loader fix preserves the full SWF header for the LZMA
