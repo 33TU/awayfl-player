@@ -65,3 +65,33 @@ and drew its background into a transparent 960 by 500 BitmapData using the
 map's transform. The black terrain was reproduced before the fix and disappears
 afterward with blur/glow enabled. This does not substitute for a full authenticated
 room-join test.
+
+## Overlapping dynamic menu labels
+
+The scene's `fix/text-layout-glyphs` branch fixes duplicate glyph geometry after
+a TextField layout change. Glyph generation emits every text run, but previously
+only discarded the old shapes when character data changed. Resizing centered
+text left both its old and new positions visible, as in the game menu's small
+"New Release!" and "Upgrade Now!" labels. Each glyph rebuild now starts with
+empty shapes, including when only the field width changes.
+
+```sh
+node scripts/check-text-layout.cjs
+node scripts/check-password-masking.cjs
+```
+
+The regression check uses the source TextField and actual triangle glyphs. It
+checks centered positions and stable geometry counts across repeated resizes,
+then shrinking and clearing the text. The previous implementation fails by
+doubling the glyph count on the first resize.
+
+Browser validation uses the actual `GameMenu.createLabel` from the cached menu
+SWF, with its embedded Arial font and drop shadow. Repeated width changes now
+render a single label without accumulating geometry. The production build and
+password masking regression also pass.
+
+The remaining frame-script errors are separate. Five `Default_fla` scripts in
+`hair/M/Default.swf` call `stage.getChildAt(0)` without a null check, matching the
+five repeated failures in the room-join log. The exact avatar lifecycle that
+leaves these clips detached has not yet been verified in an authenticated join.
+Do not suppress all detached MovieClip scripts: Flash also runs orphan clips.
