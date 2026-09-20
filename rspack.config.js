@@ -49,6 +49,7 @@ module.exports = (env = {}) => {
 		},
 		resolve: {
 			alias: {
+				'@awayjs/renderer$': path.resolve(__dirname, '../renderer/index.ts'),
 				'@awayjs/scene$': path.resolve(__dirname, '../scene/index.ts'),
 				'@awayfl/avm2$': path.resolve(__dirname, '../avm2/index.ts'),
 				'@awayfl/playerglobal$': path.resolve(__dirname, '../playerglobal/index.ts'),

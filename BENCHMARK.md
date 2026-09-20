@@ -10,8 +10,9 @@ npm run server:dev -- --port 8080 --host 127.0.0.1
 Open http://127.0.0.1:8080/as3pb-bench.html. The benchmark starts automatically;
 use **Run Benchmark** to repeat it. Completion is indicated by **Done.**
 
-Keep the sibling `../avm2`, `../playerglobal`, `../swf-loader`, and `../scene` checkouts.
-Rspack uses AVM2, playerglobal and scene directly from source.
+Keep the sibling `../avm2`, `../playerglobal`, `../swf-loader`, `../scene`, and
+`../renderer` checkouts. Rspack uses AVM2, playerglobal, scene and renderer directly
+from source.
 The startup/build scripts compile the local SWF loader with TypeScript so its imported const enums are inlined.
 Dependencies are resolved from this player's `node_modules`. Restart the server
 after editing the SWF loader to recompile it.
