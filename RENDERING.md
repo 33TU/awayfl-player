@@ -387,3 +387,26 @@ source. In headless Chrome with the actual AQW loader, a queued click on a Sprit
 whose listener throws stopped the frame counter at 70 before the change. After
 the change, the counter advanced from 360 to 371 over 500 ms, and a subsequent
 healthy click was delivered. The production build passes.
+
+### House previews request `maps/_preview.swf`
+
+`LPFFrameItemPreview.loadHouse()` removes the `.swf` suffix with
+`sFile.substr(0, -4)`, then requests `maps/<base>_preview.swf`. Its completion
+handler uses the same operation to find the preview's exported class. Flash
+supports negative substring lengths here, unlike JavaScript's `substr`.
+AwayFL delegated to JavaScript (with only a partial native `-1` special case),
+so houses requested the empty filename `maps/_preview.swf` and received a 404.
+
+AVM2 now shares Flash substring semantics between its native and public
+prototype methods. Negative lengths wrap relative to the string length; spans
+reaching the end return empty. The implementation also handles numeric
+coercion, fractional values, infinities, omitted lengths, and UTF-16 indexing.
+
+Run `node scripts/check-string-substr.cjs`. Its negative-length regression fails
+on the previous implementation. Both entry points were additionally checked
+against all 182 cases in the local Ruffle `string_substr_weird/output.txt`
+fixture. In Chrome, the game's actual preview loader for `houses/house-ice.swf`
+changed from a 404 with no children to a successful request for
+`maps/houses/house-ice_preview.swf`, creating a positioned preview with a glow.
+The production build passes. Candy Corn Cottage itself still needs in-game
+confirmation; no server login or purchase was used for this reproduction.
