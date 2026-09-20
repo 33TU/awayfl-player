@@ -80,7 +80,7 @@ the Webpack output; root-index formatting and JavaScript minification differ.
 These build-time improvements do not establish faster SWF execution.
 
 A separate three-pair alternating runtime comparison used one warmup and one
-unprofiled measured invocation per fresh production page in Chrome 153.0.8010.47:
+unprofiled measured invocation per fresh production page in Chrome 153.0.8010.52:
 
 | Codec | Webpack totals, ms | Rspack totals, ms | Median Webpack → Rspack |
 | --- | --- | --- | --- |
