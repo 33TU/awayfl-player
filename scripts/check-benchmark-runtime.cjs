@@ -181,4 +181,16 @@ for (const [load, store, setter, a, b] of [
 	}
 }
 
-console.log('Passed: ZWS payload; native ByteArray zero fill and storage lifecycle; all 10 memory opcodes across growth/rebinding.');
+// The transpile-only build must not need a runtime MouseButtons enum. Exercise
+// the actual event adapter with individual and combined DOM button masks.
+const { MouseEvent } = loadTS(path.join(root, '../playerglobal/lib/events/MouseEvent.ts'), {
+	'./Event': { Event: class {} },
+	'@awayfl/swf-loader': { notImplemented: fail },
+});
+for (const [buttons, down] of [[0, false], [1, true], [2, false], [4, false], [3, true], [5, true], [6, false]]) {
+	const event = new MouseEvent('mouseMove');
+	event.fillFromAway({ target: { adapter: {} }, currentTarget: { adapter: {} }, buttons });
+	assert.equal(event.buttonDown, down);
+}
+
+console.log('Passed: ZWS payload; ByteArray storage; all 10 memory opcodes; mouse-button adaptation without a runtime enum.');

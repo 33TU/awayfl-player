@@ -73,4 +73,6 @@ Checks the compressed fixture against an independently decoded payload hash, nat
 ByteArray zero-fill behavior, storage/view identity, buffer growth/replacement, and
 shared storage across domains. It also executes all ten generated memory opcodes
 across growth/rebinding, checking unsigned loads and preservation of address aliases.
+Mouse-event checks cover individual and combined button masks without importing a
+runtime object for AwayJS's erased `MouseButtons` const enum.
 For the full integration check, open the benchmark and wait for **Done.**
