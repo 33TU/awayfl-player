@@ -340,3 +340,25 @@ changes. This intentionally reparses repeated identical HTML assignments.
 frame between assignments, nonempty text replacement, formatting restoration,
 and empty HTML. The new case fails on the previous implementation. The browser
 reproduction uses the actual game's `LPFFrameCostDisplay` and its embedded font.
+
+### Shop previews skip centering after an optional asset lookup
+
+`LPFFrameItemPreview.onLoadHelmComplete()` adds the helm, then looks for an
+optional `_backhair` class inside a nested try/catch. ScarlettaHair has no such
+class. The game catches that lookup failure and should continue into `addGlow()`
+and `repositionPreview()`.
+
+At branch boundaries, AVM2's JIT closed nested try blocks in their opening order.
+That paired the outer handler with the inner try, so the missing optional asset
+exited the entire completion handler. The helm remained at `(0, 0)` without a
+glow. Close these blocks from innermost to outermost, retaining the original
+stack order when reopening them.
+
+Run `node scripts/check-nested-catches.cjs` to compile and execute a small AVM2
+fixture covering normal continuation, inner-handler priority, unmatched errors,
+and rethrows. The priority assertion fails against the previous compiler.
+The browser reproduction uses the real game's preview class and
+`items/helms/ScarlettaHair.swf`, without logging in: the normal load callback now
+applies the glow and positions the helm at `(3, -93)` with its upper bound near
+the top of the preview. Other missing items still need individual reproduction
+if they fail after this fix.
