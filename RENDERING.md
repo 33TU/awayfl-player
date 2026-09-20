@@ -362,3 +362,28 @@ The browser reproduction uses the real game's preview class and
 applies the glow and positions the helm at `(3, -93)` with its upper bound near
 the top of the preview. Other missing items still need individual reproduction
 if they fail after this fix.
+
+### Player-menu error stops the frame loop
+
+The Yulgar report ends in `Game.areaListNameClick()` calling
+`cMenuMC.fOpenWith()`. The failing generated instruction reads `mcChar` from a
+null avatar `pMC`. The game can still find an avatar by name when its display
+object is unavailable; the exact transition producing that state has not been
+reproduced in an authenticated session.
+
+The fatal consequence is reproducible without a server: `AVMStage.showNextFrame`
+delivers queued mouse events before advancing timelines and rendering. An
+uncaught AS listener error escaped `InteractiveObject.mouseCallback`, preventing
+the RAF helper from scheduling another frame. Native input callbacks now report
+uncaught errors at their entry boundary and return control to the host. This
+covers mouse, touch, focus, and keyboard input. Explicit AS `dispatchEvent()`
+still throws, including nested dispatches that script code catches itself.
+This isolates the failed invocation; it does not repair the game's missing
+avatar reference or resume the failed menu method.
+
+Run `node scripts/check-input-errors.cjs` and
+`node scripts/check-keyboard-focus.cjs`. The input regression fails on the prior
+source. In headless Chrome with the actual AQW loader, a queued click on a Sprite
+whose listener throws stopped the frame counter at 70 before the change. After
+the change, the counter advanced from 360 to 371 over 500 ms, and a subsequent
+healthy click was delivered. The production build passes.

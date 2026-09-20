@@ -64,6 +64,22 @@ assert.deepEqual(received.map(e => [e.object, e.target, e.type]), [
 ]);
 assert.ok(received.every(e => e.code === 13));
 received.length = 0;
+const normalDispatch = chat.dispatchEvent;
+const error = new Error('chat listener failed'), reports = [];
+const reportError = console.error;
+chat.dispatchEvent = () => { throw error; };
+console.error = (...args) => reports.push(args);
+try {
+    assert.doesNotThrow(() => key('keydown'));
+    assert.equal(reports.length, 1, 'one native key event is reported once');
+    assert.equal(reports[0][2], error);
+} finally {
+    chat.dispatchEvent = normalDispatch;
+    console.error = reportError;
+}
+key('keyup');
+assert.deepEqual(received.map(e => e.object), ['chat', 'game', 'stage']);
+received.length = 0;
 chat.parent = null;
 key('keydown');
 assert.equal(focus, null, 'removed fields lose stale scene focus before text editing');
