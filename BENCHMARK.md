@@ -63,6 +63,125 @@ These small samples show no demonstrated speedup from the storage refactor. It
 improves ownership and correctness; the additional zero-fill work can add cost.
 Further performance changes need profiling of the generated codec and VM calls.
 
+## Warmed profile and AIR comparison (2026-09-20)
+
+Profiling the second complete invocation in headless Chrome 153.0.8010.47, at a
+250 microsecond sampling interval, identifies property dispatch as a major source
+of the remaining memory-path overhead. The development bundle yielded:
+
+| Codec phase | Sampled total, ms | Property writes / trait lookup | Scope lookup / cache access | Native Vector methods |
+| --- | ---: | ---: | ---: | ---: |
+| ByteArray serialize | 285 | 7 | 131 | 18 |
+| Memory serialize | 595 | 190 | 151 | 12 |
+| ByteArray deserialize | 393 | 134 | 51 | 38 |
+| Memory deserialize | 506 | 181 | 65 | 39 |
+
+These are sums of **self samples**, classified by codec ancestors, not individual
+operation timings. Property/trait totals include `Context.setproperty`,
+`ASObject.axSetProperty`, and `RuntimeTraits.getTrait`. Scope totals include
+`Scope` methods and `Multiname.scope/value` accessors. Native Vector totals exclude
+AS3 codec functions that iterate Vectors. GC samples without a codec ancestor and
+harness setup/binding/copy work are outside these four rows. Sampled phase totals
+therefore differ from the benchmark's displayed elapsed times.
+
+An earlier warmed capture also showed the same serialization pattern: 205 ms in
+property/trait helpers for memory versus 11 ms for ByteArray. The generated memory
+code performs a generic `context.setproperty(...)` when updating a context's
+`position`, alongside the direct `domainMemory.storage.view.setInt8(...)` store.
+That setter resolves traits and coerces the value each time. Native ByteArray
+methods advance their internal cursor directly. The current JIT fast setter is
+limited to a recognized `this` receiver; it does not optimize these context
+parameters. See `../avm2/lib/jit.ts` and `../avm2/lib/nat/ASObject.ts`.
+
+Only about 0.9 ms of serialization self samples hit the domain-memory binding
+getter in the second capture. This does not measure all binding cost or prove
+memory loads/stores are free: DataView operations can be inlined into generated
+functions. It does show that another binding/view redesign is not the first
+optimization supported by these profiles. A useful next experiment is a guarded
+fast path for statically known writable typed slots, preserving coercion, namespace,
+accessor, and error behavior. Scope-cache work also merits investigation.
+
+Production bundling helps but does not reverse the ordering. Three fresh page
+loads per build, without profiling, produced these totals:
+
+| Build | ByteArray totals, ms | Memory totals, ms | Median ByteArray / memory |
+| --- | --- | --- | --- |
+| Development | 713, 740, 735 | 1187, 1201, 1196 | 735 / 1196 |
+| Production | 651, 588, 633 | 1040, 993, 1022 | 633 / 1022 |
+
+These small sequential batches are diagnostic, not a statistical speedup claim.
+The user's AIR totals were 452 ms and 192 ms respectively. No AIR execution was
+performed in this investigation. Production builds use a different page path:
+
+```sh
+npm run build:prod
+python3 -m http.server 8082 --bind 127.0.0.1 --directory bin
+```
+
+Open http://127.0.0.1:8082/as3pb-bench/index.html.
+
+### Payload discrepancies
+
+Both differences are reproducible on the SWF's own freshly generated 100-message
+fixture. These are **diagnostic projections/estimates**, not runtime fixes:
+
+| Format | Actual AwayFL bytes | Diagnostic result | User's AIR bytes |
+| --- | ---: | ---: | ---: |
+| AMF3 | 67908 | 63598, estimated with binary ByteArrays | 63598 |
+| JSON | 250528 | 75048, public-value projection | 75048 |
+
+`../avm2/lib/amf.ts` has no ByteArray read/write case despite declaring its marker.
+The writer falls through to generic object serialization. After a real
+`writeObject`/`readObject` round trip, the benchmark's payload is an ordinary object
+with `length`, `position`, `objectEncoding`, and `endian`, and **its bytes are lost**.
+The null-payload version totals 62508 bytes. Replacing each one-byte null with the
+binary ByteArray marker, its short U29 length, and its 9 or 10 data bytes predicts
+63598 bytes. This is consistent with Adobe's
+[AMF3 specification, section 3.14](https://veovera.org/docs/legacy/amf3-file-format-spec.pdf).
+It is not a byte-for-byte comparison against an AIR payload dump.
+
+`../avm2/lib/nat/transformASValueToJS.ts` walks raw `Object.keys`, then removes the
+first three characters of nonnumeric keys without restricting them to public
+ActionScript names. This exports `constructorHasRun` as `structorHasRun`, includes
+ByteArray capacity and numeric-Vector backing buffers, and bypasses the existing
+ByteArray `toJSON()` method. It also misses public accessors such as `ticks.length`.
+Projecting the fixture's public slots/accessors, numeric Vectors as arrays, and
+ByteArray through its existing `toJSON()` produces exactly 75048 UTF-8 bytes.
+Public-property traversal and `toJSON()` behavior are documented in the
+[AIR JSON guide](https://airsdk.dev/docs/development/core-actionscript-classes/using-native-json-functionality).
+The projection in the profiling script is specific to this fixture, not a general
+JSON replacement. The harness already decodes only a subset of JSON fields.
+
+Thus the current AMF3/JSON runs completing with `Done.` do not establish payload
+correctness, and their timings should not yet be treated as equivalent AIR work.
+The runtime corrections remain follow-up work; this investigation changes only
+diagnostic tooling and documentation.
+
+### Reproduce the investigation
+
+Start the development server as above. In a separate terminal, start a dedicated
+Chrome instance (the script navigates its first page):
+
+```sh
+google-chrome --headless=new --disable-dev-shm-usage --enable-unsafe-swiftshader \
+  --remote-debugging-port=9222 --user-data-dir=/tmp/awayfl-profile-chrome about:blank
+```
+
+Then, using Node 22 or newer:
+
+```sh
+node scripts/profile-benchmark.mjs
+```
+
+The script warms up the SWF, profiles a second full run, and only then inspects
+payloads. It restores the intercepted ByteArray method. It writes `warmup.txt`,
+`profiled.txt`, `report.json`, and `benchmark.cpuprofile` under
+`/tmp/awayfl-benchmark-profile`; import the latter into Chrome DevTools Performance.
+The report includes browser version, per-phase self samples, representative JSON,
+AMF bytes, and the decoded payload's type. It fails on captured browser exceptions.
+Override `CDP_URL`, `BENCHMARK_URL`, or `OUTPUT_DIR` through environment variables.
+Readable runtime method names in its summary require the development bundle.
+
 ## Focused checks
 
 ```sh
