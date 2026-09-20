@@ -50,6 +50,7 @@ module.exports = (env = {}) => {
 			alias: {
 				'@awayfl/avm2$': path.resolve(__dirname, '../avm2/index.ts'),
 				'@awayfl/playerglobal$': path.resolve(__dirname, '../playerglobal/index.ts'),
+				'@awayfl/swf-loader$': path.resolve(__dirname, '../swf-loader/dist/index.js'),
 			},
 			modules: [path.resolve(__dirname, 'node_modules'), 'node_modules'],
 			// Add `.ts` and `.tsx` as a resolvable extension.
