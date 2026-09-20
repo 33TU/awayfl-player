@@ -29,17 +29,55 @@ by all player instances in the page. The Hono AQW preview opts into:
 ```js
 engineSettings: {
   scene: { USE_UNSAFE_FILTERS: true, USE_UNSAFE_BLENDS: true },
+  stage: { USE_NON_NATIVE_BLEND: true },
 }
 ```
 
 Filters are otherwise disabled by the scene defaults. Enabling them restores
 AQW's logo glow and shadow. Native blend modes are also enabled for this preview.
 
-The remaining pale highlights on the login/register buttons use `overlay`.
-That requires the stage's `USE_NON_NATIVE_BLEND` compositor, which currently
-loses much of the rendered scene when enabled for this SWF. It remains disabled;
-this change does not claim full Flash filter/blend parity. Fixing that compositor
-is a separate renderer issue, rather than changing the SWF's colors or alpha.
+## Login button overlay blending
+
+The pale login/register highlights are authored with Flash's `overlay` blend
+mode. The local `fix/overlay-compositing` branches in stage, renderer and player
+repair this path; the Hono loader now enables `USE_NON_NATIVE_BLEND`.
+
+The renderer captures preceding siblings into a separate backdrop instead of
+aliasing the parent's image (which is null for the screen). It renders the
+blended object separately, applies its filters, then composites it. Backdrops
+refresh during traversal so later-loaded backgrounds and changing text remain
+visible. Normal/layer caches retain their usual invalidation behavior. Captures
+preserve MSAA and restore projection, target and stencil state; temporary images
+are released even when a render throws. The non-MSAA path also composites.
+
+The stage shader now supplies both source and backdrop UVs, includes the
+destination offset, and calculates overlay in straight RGB with premultiplied
+source-over output. ColorMatrixFilter resets its composition shader before its
+internal copy: copyPixels reuses that same filter, so leaving it active caused
+a framebuffer feedback loop and rejected WebGL draws.
+
+From `awayfl-player`, run:
+
+```sh
+node scripts/check-overlay-compositing.cjs
+node scripts/check-bitmap-filter-bounds.cjs
+node scripts/check-render-target-lifetime.cjs
+npm run build:prod
+# With the local AQW login loaded in Chrome on this debugging port:
+node scripts/check-overlay-pixels.cjs 9234
+```
+
+The pixel check compiles the actual shaders in WebGL 1 and 2 and exercises the
+live filter manager on separate images. It covers both alpha inputs, transparent
+pixels, destination offsets, repeated composition and unaffected destination
+pixels. The production AQW login was visually checked and resized between
+640x480 and 1600x1000 without context loss or WebGL errors. No authenticated
+room test was performed for this change. Stage typechecking passes; renderer
+still reports its two pre-existing `AssetEvent.INVALIDATE` typing errors.
+
+This remains an opt-in compositor, with parent-sized backdrop textures and
+additional rendering per blended object. It does not claim full Flash blend
+mode parity or change the default settings of other players.
 
 ## Battleon black rectangles after joining a room
 
