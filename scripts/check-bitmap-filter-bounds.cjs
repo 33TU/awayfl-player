@@ -69,6 +69,7 @@ const allocations = [];
 class TestImage {
     constructor(width, height) { this._setSize(width, height); }
     _setSize(width, height) {
+        width = Math.round(width); height = Math.round(height); // Image2D's actual allocation rule
         assert.ok(width > 0 && height > 0);
         this.width = width; this.height = height;
         allocations.push([width, height]);
@@ -139,5 +140,20 @@ try {
     assert.equal(targetDepth, 0); // an empty cache never pushes a target
 } finally {
     RendererBase.prototype.render = originalRender;
+}
+// Fractional parent positions during resizing can clip a cache to less than
+// half a pixel. It must cover that strip, never allocate a 0xN/Nx0 texture.
+for (const axis of ['x', 'y']) {
+    cache.parentRenderer.getParentPosition = () => axis === 'x'
+        ? new core.Vector3D(-0.8, 0) : new core.Vector3D(0, -0.8);
+    cache._boundsPicker.getBoxBounds = () => axis === 'x'
+        ? new core.Box(-12, 10, 0, 11, 30, 0)
+        : new core.Box(10, -12, 0, 30, 11, 0);
+    cache._boundsDirty = true;
+    const pad = cache.getPaddedBounds();
+    assert.deepEqual([pad.x, pad.y, pad.width, pad.height], axis === 'x'
+        ? [0, 8, 1, 34] : [8, 0, 34, 1]);
+    assert.equal(cache._style.image.width, pad.width);
+    assert.equal(cache._style.image.height, pad.height);
 }
 console.log('Passed: offscreen bitmap bounds, viewport clipping, empty cache skipping, and empty-to-visible texture recovery.');

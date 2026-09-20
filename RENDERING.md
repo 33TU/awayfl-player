@@ -260,3 +260,40 @@ WebGL attributes. The second test checks event-loop yields, decoding order,
 completion timing, and failure cleanup. Chrome validation injected a throwing
 listener into a real hair-SWF load: another SWF still completed and 11 additional
 Flash frames ran in the next 400 ms. The rebuilt AQW login screen renders.
+
+### Resizing and subpixel cache bounds
+
+Battleon's resize crash reproduced at a 2560x1440 window: cache
+`instance_mc_3169` had clipped bounds of 0.209228515625 x 200.43017578125.
+`Image2D` rounded that to 0 x 200, and texture creation threw. The uncaught
+render exception stopped the RAF loop; resizing the canvas afterward cleared
+its last frame, leaving black output without requiring a lost WebGL context.
+
+`RendererBase` now rounds valid clipped bounds outward to integer pixels before
+cache allocation. Empty intersections still skip rendering. Projection, cache
+quad and texture dimensions use the same rounded rectangle, including when a
+scaled parent's fractional position leaves less than half a pixel visible.
+
+Stage also releases the MSAA target's owned resolve framebuffer/depth-stencil
+storage, clears deleted framebuffer bindings and texture references, and makes
+render-target disposal idempotent. Idle filter targets from previous viewport
+sizes are disposed on resize and stage disposal; checked-out nested targets
+remain valid until returned.
+
+Checks:
+
+```sh
+node scripts/check-bitmap-filter-bounds.cjs
+node scripts/check-render-target-lifetime.cjs
+```
+
+Both regressions fail against the previous source. In headless Chrome with real
+Battleon assets and a mock World, the rebuilt player completed 1200x800,
+1600x1000, 1920x1080, 2560x1440, DPR 2, and back to 1200x800 without a render
+exception or a leftover render-target stack entry. Estimated GPU allocations
+returned from about 649 MB at 2560x1440 to 469 MB at 1200x800, close to the
+468 MB starting value. A 3840x2160 pass and return also completed with no WebGL
+error or context loss (about 1084 MB peak, 469 MB after shrinking). These are
+engine estimates, not measured driver memory. Software rendering was slow at
+4K; this does not establish that the separate reported whole-browser freeze
+while typing in chat is fixed. No authenticated server session was exercised.
