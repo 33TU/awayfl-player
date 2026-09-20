@@ -95,3 +95,29 @@ The remaining frame-script errors are separate. Five `Default_fla` scripts in
 five repeated failures in the room-join log. The exact avatar lifecycle that
 leaves these clips detached has not yet been verified in an authenticated join.
 Do not suppress all detached MovieClip scripts: Flash also runs orphan clips.
+
+## Missing player names
+
+The scene contains two `Mini 7_10pt_st` font definitions: symbol 617 contains
+218 characters, while symbol 3296 contains only `9`. The player name field
+references the latter and starts with the authoring placeholder `9999`.
+AwayFL kept that exact font table after ActionScript replaced the placeholder
+with a username, so letters had no glyphs or advance widths.
+
+The SWF loader's `fix/dynamic-text-font-lookup` branch resolves embedded
+DefineEditText fonts by family and style within the movie's namespace. This
+uses the first registered family/style, consistent with Ruffle's dynamic text
+lookup (`html/text_format.rs`, `html/layout.rs`, and `library.rs::FontMap`).
+Static DefineText records retain their original font IDs because their glyph
+indices refer to that specific definition. Non-embedded text is unchanged.
+
+```sh
+node scripts/check-dynamic-text-font.cjs
+```
+
+The test covers duplicate subsets, runtime text replacement, movie isolation,
+styles, cloning, and preservation of static glyph IDs. It fails before the fix.
+Browser validation constructs the actual `AvatarMC` from the game SWF and sets
+its `pname.ti` field to a username. Before the fix it produces no glyph geometry
+and zero text width; afterward it renders with the 218-character pixel font.
+This isolates the label without requiring an authenticated room join.
