@@ -87,3 +87,36 @@ Reference: [AIR SDK Socket API](https://airsdk.dev/reference/actionscript/3.0/fl
 Production bundling and the focused checks pass. A full playerglobal TypeScript
 check still reports existing graphics/file-picker and installed AVM2 declaration
 mismatches; the Socket changes introduce no diagnostics in that check.
+
+## AQW map-entry frame errors
+
+The `fix/frame-script-errors` playerglobal branch isolates exceptions at the
+MovieClip frame-callback boundary. Previously, a callback throwing during
+`gotoAndPlay` also aborted its caller and any remaining callbacks in the copied
+frame queue, and left `current_script_scope` pointing to the failing clip.
+The adapter now reports the error, restores the previous scope, and processes
+pending navigation. This follows Ruffle's `run_local_frame_scripts` error boundary;
+it does not yet implement Flash's `uncaughtError` event dispatch.
+
+The reported Battleon failure begins in `MainTimeline.frame8`, reading
+`world.myAvatar.objData` before the avatar exists. That exception escaped through
+`World.moveToCell` / `World.enterMap`; a later socket update then failed in
+`userTreeWrite` with `world.myAvatar` still null. The change addresses the frame
+error propagation rather than adding a null guard to the game or Socket.
+
+```sh
+node scripts/check-frame-script-errors.cjs
+```
+
+This check runs the actual MovieClip adapter and scene frame queue with minimal
+dependencies. It covers queued initialization after an error, nested callback
+scope, deferred navigation, diagnostics, and normal callbacks. It fails against
+the previous adapter and passes with the fix.
+
+Browser validation used the actual cached `town-battleon-18sep26.swf`, attached
+under a mock World providing the map's startup hooks. Before the fix,
+`gotoAndPlay('Blank')` threw the same frame-8 exception into its caller. With the
+fix it returned normally, and the map's `cellSetup` callback ran on advancement.
+This is an isolated reproduction; a full authenticated server join still needs
+verification. Rebuild with `npm run build:prod` and hard-reload the loader page
+before retrying. The existing Hono process can keep running.
