@@ -156,9 +156,16 @@ try {
         ba.position = 0;
         const decoded = ba.readObject().$Bgpayload;
         let actualAmfBytes = 0, amfWithNullPayloadBytes = 0, estimatedBinaryAmfBytes = 0;
+        let preservedAmfPayloads = 0;
         for (let i = 0; i < fixture.length; i++) {
             const message = fixture.axGetPublicProperty(i), payload = message.$Bgpayload;
             ba.clear(); ba.writeObject(message); actualAmfBytes += ba.length;
+            ba.position = 0;
+            const restored = ba.readObject().$Bgpayload;
+            if (cls.axIsType(restored) && restored.position === 0 && restored.length === payload.length &&
+                restored.getBytes().every((byte, index) => byte === payload.getBytes()[index])) {
+                preservedAmfPayloads++;
+            }
             message.$Bgpayload = null;
             try {
                 ba.clear(); ba.writeObject(message); amfWithNullPayloadBytes += ba.length;
@@ -170,7 +177,7 @@ try {
         return {
             actualJsonBytes: byteLength(json), projectedJsonBytes: byteLength(projection),
             jsonFirst: JSON.parse(json[0]), projectedJsonFirst: JSON.parse(projection[0]),
-            actualAmfBytes, amfWithNullPayloadBytes, estimatedBinaryAmfBytes, amfFirst,
+            actualAmfBytes, amfWithNullPayloadBytes, estimatedBinaryAmfBytes, amfFirst, preservedAmfPayloads,
             decodedPayload: { isByteArray: cls.axIsType(decoded), keys: Object.keys(decoded || {}) }
         };
     })()`);

@@ -122,8 +122,9 @@ Open http://127.0.0.1:8082/as3pb-bench/index.html.
 
 ### Payload discrepancies
 
-Both differences are reproducible on the SWF's own freshly generated 100-message
-fixture. These are **diagnostic projections/estimates**, not runtime fixes:
+Both differences were reproduced on the SWF's own freshly generated 100-message
+fixture before the ByteArray correction below. These were **diagnostic
+projections/estimates**, not runtime fixes:
 
 | Format | Actual AwayFL bytes | Diagnostic result | User's AIR bytes |
 | --- | ---: | ---: | ---: |
@@ -154,8 +155,47 @@ JSON replacement. The harness already decodes only a subset of JSON fields.
 
 Thus the current AMF3/JSON runs completing with `Done.` do not establish payload
 correctness, and their timings should not yet be treated as equivalent AIR work.
-The runtime corrections remain follow-up work; this investigation changes only
-diagnostic tooling and documentation.
+At that point, the investigation had changed only diagnostic tooling and
+documentation. The AMF3 ByteArray issue is now corrected as described below;
+the JSON issue remains open.
+
+### Ruffle reference and AMF3 ByteArray correction
+
+Reviewed Ruffle at `1bc8bbf7829c0ce9f127a422045bf96a0814469c`:
+
+- [AVM2 object conversion](https://github.com/ruffle-rs/ruffle/blob/1bc8bbf7829c0ce9f127a422045bf96a0814469c/core/src/avm2/amf.rs)
+  maps ByteArrays to raw bytes and reconstructs native ByteArray objects.
+- The binary encoder/decoder lives in its pinned `rust-flash-lso` dependency:
+  [writer](https://github.com/ruffle-rs/rust-flash-lso/blob/61b717248aae853a4f5d8a103eba704268d286c8/flash-lso/src/amf3/write.rs),
+  [reader](https://github.com/ruffle-rs/rust-flash-lso/blob/61b717248aae853a4f5d8a103eba704268d286c8/flash-lso/src/amf3/read.rs).
+- Its [ByteArray regression output](https://github.com/ruffle-rs/ruffle/blob/1bc8bbf7829c0ce9f127a422045bf96a0814469c/tests/tests/swfs/avm2/bytearray_serialization/output.txt)
+  provides an independent wire fixture used by the focused checks.
+
+AwayFL now reads and writes the AMF3 ByteArray marker, unsigned length header, and
+logical data bytes. Repeated occurrences share the existing AMF object-reference
+table. Serialization preserves the source cursor, excludes spare capacity, and is
+independent of endian settings. Decoding constructs a native ByteArray with cursor
+zero. Empty values do not consume following AMF data; truncated data raises EOF.
+U29 parsing now sign-extends only INTEGER values, keeping length/reference headers
+unsigned, and writing accepts their full 29-bit range.
+
+The actual browser benchmark now writes **63598 AMF3 bytes**. All **100 payloads**
+survived a real `writeObject`/`readObject` round trip with their ByteArray type,
+contents, and initial cursor intact. This matches the AIR size, although no AIR
+binary dump was available for a full byte-for-byte comparison. JSON still writes
+250528 bytes and its diagnostic projection remains 75048 bytes.
+
+Validation: focused runtime checks including the Ruffle wire fixture in both
+directions, shared/distinct buffer identity, empty values followed by more AMF data,
+self-serialization, EOF, signed integers, and U29 length boundaries; AVM2 TypeScript
+compilation; development webpack build; complete browser benchmark and payload
+inspection without uncaught exceptions. The build retains its six existing warnings.
+
+This fixes the benchmark's ByteArray defect, not all AMF3 gaps. AwayFL still needs
+work on Dictionary, externalizable objects, and Date/XML reference handling.
+Ruffle is a useful reference but its reviewed AVM2 conversion also has explicit
+gaps for custom/externalizable values and weak Dictionary keys. No Rust runtime or
+new dependency was added to the player.
 
 ### Reproduce the investigation
 
@@ -178,7 +218,8 @@ payloads. It restores the intercepted ByteArray method. It writes `warmup.txt`,
 `profiled.txt`, `report.json`, and `benchmark.cpuprofile` under
 `/tmp/awayfl-benchmark-profile`; import the latter into Chrome DevTools Performance.
 The report includes browser version, per-phase self samples, representative JSON,
-AMF bytes, and the decoded payload's type. It fails on captured browser exceptions.
+AMF bytes, the decoded payload's type, and the number of all 100 payloads preserved
+by an AMF3 round trip. It fails on captured browser exceptions.
 Override `CDP_URL`, `BENCHMARK_URL`, or `OUTPUT_DIR` through environment variables.
 Readable runtime method names in its summary require the development bundle.
 
