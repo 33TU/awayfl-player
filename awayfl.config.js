@@ -60,6 +60,11 @@ module.exports = {
 	// it can overwrite other config props aswell
 	fileconfigs: [
 		{
+			rt_title: "AS3PB Benchmark",
+			rt_filename: "as3pb-bench",
+			rt_stageScaleMode: "showAll",
+		},
+		{
 			rt_title: "Bacon_Ipsem",
 			rt_filename: "Bacon_Ipsem",
 			rt_stageScaleMode: "showAll",
