@@ -5,18 +5,22 @@ const ts = require('typescript');
 global.self = globalThis;
 global.window = globalThis;
 const core = require('@awayjs/core');
+const viewMocks = { PickGroup: { getInstance: () => ({
+    getBoundsPicker: () => ({ _isInFrustumInternal: () => true }),
+}) } };
 const exports_ = {};
 const source = path.resolve(__dirname, '../../renderer/lib/RendererBase.ts');
 new Function('require', 'exports', ts.transpileModule(fs.readFileSync(source, 'utf8'), {
     compilerOptions: { target: ts.ScriptTarget.ES2020, module: ts.ModuleKind.CommonJS },
 }).outputText)(name => {
     if (name === '@awayjs/core') return core;
+    if (name === '@awayjs/view') return viewMocks;
     // No GPU, material construction or traversal is needed to compute bounds.
     if (name.startsWith('./') || name.startsWith('@awayjs/')) return {};
     throw new Error(`Unexpected import: ${name}`);
 }, exports_);
 const { RendererBase } = exports_;
-function bounds(target, box) {
+function makeRenderer(target, box) {
     const view = { target, width: 960, height: 500, projection: { scale: 2 } };
     const renderer = Object.create(RendererBase.prototype);
     Object.defineProperty(renderer, 'useNonNativeBlend', { value: false });
@@ -32,6 +36,12 @@ function bounds(target, box) {
     };
     renderer.stage = { pixelRatio: 1 };
     renderer.view = view;
+    renderer._style = {};
+    renderer._boundsDirty = true;
+    return renderer;
+}
+function bounds(target, box) {
+    const renderer = makeRenderer(target, box);
     renderer._updateBounds();
     const p = renderer._paddedBounds;
     return [p.x, p.y, p.width, p.height].map(value => value === 0 ? 0 : value);
@@ -45,4 +55,89 @@ assert.deepEqual(bounds({}, new core.Box(900, 450, 0, 100, 100, 0)), [898, 448, 
 // Preserve the existing screen optimization where coordinates do match.
 assert.deepEqual(bounds(null, new core.Box(-10, -20, 0, 100, 100, 0)), [0, 0, 92, 82]);
 assert.deepEqual(bounds(null, new core.Box(900, 450, 0, 100, 100, 0)), [898, 448, 62, 52]);
-console.log('Passed: bitmap filter bounds retain negative local origins with positive dimensions; on-screen clipping is preserved.');
+// Empty bounds, exact viewport edges, and fully offscreen caches are valid
+// states during a timeline transition, not errors or negative texture sizes.
+assert.deepEqual(bounds(null, null), [0, 0, 0, 0]);
+assert.deepEqual(bounds(null, new core.Box(962, 10, 0, 30, 30, 0)), [0, 0, 0, 0]);
+assert.deepEqual(bounds(null, new core.Box(-100, -100, 0, 10, 10, 0)), [0, 0, 0, 0]);
+assert.deepEqual(bounds(null, new core.Box(1000, 600, 0, 10, 10, 0)), [0, 0, 0, 0]);
+assert.deepEqual(bounds(null, new core.Box(0, 0, 0, Infinity, 10, 0)), [0, 0, 0, 0]);
+
+// Exercise the actual cache's image allocation and render entry point without
+// requiring a GPU. Reject invalid sizes just as a real render target would.
+const allocations = [];
+class TestImage {
+    constructor(width, height) { this._setSize(width, height); }
+    _setSize(width, height) {
+        assert.ok(width > 0 && height > 0);
+        this.width = width; this.height = height;
+        allocations.push([width, height]);
+    }
+}
+const cacheExports = {};
+new Function('require', 'exports', ts.transpileModule(fs.readFileSync(
+    path.resolve(__dirname, '../../renderer/lib/CacheRenderer.ts'), 'utf8'), {
+    compilerOptions: { target: ts.ScriptTarget.ES2020, module: ts.ModuleKind.CommonJS },
+}).outputText)(name => {
+    if (name === '@awayjs/core') return core;
+    if (name === '@awayjs/stage') return { Image2D: TestImage, ImageSampler: class {}, Settings: {} };
+    if (name === './RendererBase') return { RendererBase };
+    if (name === './base/_Render_RenderableBase') return { _Render_RenderableBase: class {} };
+    if (name === './DefaultRenderer') return { DefaultRenderer: { registerMaterial() {} } };
+    if (name === './RenderGroup') return { RenderGroup: { getInstance: () => ({ registerMaterial() {} }) } };
+    if (name === './base/RenderEntity') return { RenderEntity: { registerRenderable() {} } };
+    return {};
+}, cacheExports);
+const cache = makeRenderer(null, null);
+Object.setPrototypeOf(cache, cacheExports.CacheRenderer.prototype);
+cache._updateBounds();
+assert.equal(cache._style.image, undefined);
+cache.render(); // must return before touching any render-target state
+assert.equal(allocations.length, 0);
+
+cache._boundsPicker.getBoxBounds = () => new core.Box(10, 10, 0, 30, 30, 0);
+cache._boundsDirty = true;
+assert.equal(cache.getPaddedBounds().width, 34);
+const image = cache._style.image;
+assert.deepEqual(allocations, [[34, 34]]);
+
+cache._boundsPicker.getBoxBounds = () => null;
+cache._boundsDirty = true;
+cache.render();
+assert.equal(cache.getPaddedBounds().width, 0);
+assert.equal(cache._bounds.width, 0); // no stale bounds from the previous frame
+assert.equal(cache._style.image, image);
+assert.equal(allocations.length, 1); // never resize an existing image to zero
+
+// A previously visible cache must not submit its stale texture for rendering.
+const parent = makeRenderer(null, new core.Box(0, 0, 0, 960, 500, 0));
+parent._traverserGroup = { getRenderer: () => cache };
+assert.equal(parent.getTraverser({ renderToImage: true, getLocalNode: () => cache.node }), undefined);
+
+cache._boundsPicker.getBoxBounds = () => new core.Box(10, 10, 0, 50, 50, 0);
+cache._boundsDirty = true;
+assert.equal(cache.getPaddedBounds().width, 54);
+assert.equal(cache._style.image, image);
+assert.deepEqual(allocations, [[34, 34], [54, 54]]);
+
+let renders = 0;
+let targetDepth = 0;
+cache.stage.context = { glVersion: 1 };
+cache.stage.pushRenderTargetConfig = () => { targetDepth++; };
+cache.stage.popRenderTarget = () => { targetDepth--; };
+cache._initRender = target => { assert.ok(target.width > 0 && target.height > 0); };
+const originalRender = RendererBase.prototype.render;
+try {
+    RendererBase.prototype.render = () => { renders++; };
+    cache.render();
+    assert.equal(renders, 1); // visible again: caching resumes normally
+    assert.equal(targetDepth, 0);
+    cache._boundsPicker.getBoxBounds = () => null;
+    cache._boundsDirty = true;
+    cache.render();
+    assert.equal(renders, 1);
+    assert.equal(targetDepth, 0); // an empty cache never pushes a target
+} finally {
+    RendererBase.prototype.render = originalRender;
+}
+console.log('Passed: offscreen bitmap bounds, viewport clipping, empty cache skipping, and empty-to-visible texture recovery.');

@@ -66,6 +66,24 @@ map's transform. The black terrain was reproduced before the fix and disappears
 afterward with blur/glow enabled. This does not substitute for a full authenticated
 room-join test.
 
+## Empty filter targets during room changes
+
+The renderer's local `fix/empty-filter-bounds` branch handles empty cached
+clips without throwing `Cannot have image with size 0 * 0`. Missing bounds now
+reset the previous cache rectangle, and disjoint viewport intersections become
+empty rectangles instead of negative texture dimensions. Traversal skips empty
+caches before material rendering; cache rendering also checks bounds before
+pushing a render target. No zero-sized image is allocated or resized, and normal
+invalidation resumes rendering when content returns.
+
+`node scripts/check-bitmap-filter-bounds.cjs` covers empty bounds, viewport-edge
+and fully offscreen clips, stale-cache suppression, and empty-to-visible image
+reuse. The previous renderer fails the expanded check with the reported error.
+The production build and a Chrome smoke check also pass: a glow-filtered Sprite
+on the AQW login screen was drawn, cleared, and redrawn five times, then visibly
+rendered again. This checks recovery, but does not reproduce the user's exact
+authenticated room transition.
+
 ## Overlapping dynamic menu labels
 
 The scene's `fix/text-layout-glyphs` branch fixes duplicate glyph geometry after
