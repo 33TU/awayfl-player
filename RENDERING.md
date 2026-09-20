@@ -212,3 +212,51 @@ No messages were sent to the game server during these checks.
 The separate map `frame8` and equipment `frame1` initialization errors in the
 same log are not addressed by these chat fixes. Authenticated chat and room
 transitions remain integration checks for the running game.
+
+## Loading callback freeze, invalid vertex attributes, and symbol batches
+
+The hair-completion exception in the captured log escaped
+`LoaderInfoCompleteQueue.executeQueue`, then `Stage.enterFrame`. AwayJS's RAF
+helper only schedules its next callback after the current callback returns, so
+this stopped the animation loop permanently. Playerglobal's local
+`fix/loader-completion-errors` branch catches and reports errors at the
+asynchronous COMPLETE boundary. Other completions and later frames continue.
+Callbacks added during dispatch are retained for a later frame rather than
+being discarded when the old queue is cleared. This does not repair the game's
+stale avatar reference; it prevents that script failure from killing the player.
+
+The local Stage checkout starts at upstream `v0.11.172`, matching the installed
+package. Its `fix/inactive-vertex-attributes` branch skips optimized-out shader
+inputs (location -1) and uses the mapped WebGL location when disabling inputs.
+The player aliases this checkout and enables legacy TypeScript decorators for
+its filter classes. To recreate the base checkout in a fresh workspace:
+
+```sh
+git clone --branch v0.11.172 https://github.com/awayjs/stage.git ../stage
+```
+
+The local fix must also be applied; it has not been pushed upstream.
+
+SWF-loader's `perf/yield-symbol-decoding` branch keeps symbol creation ordered
+but yields to the browser after approximately 8 ms of work. Finalization and
+COMPLETE wait for all symbols and the root timeline. Parser state prevents the
+RAF parser tick from restarting a suspended decode, and decoding flags are
+restored on failure. These are cooperative batches, not parallel workers:
+fonts, symbol references, timelines, and factory registration share mutable
+state. Individual expensive symbols and root-timeline creation can still exceed
+the budget. Worker parallelism would require a separate, transferable geometry
+phase before ordered asset creation; no throughput speedup is claimed here.
+
+```sh
+node scripts/check-loading-stability.cjs
+node scripts/check-symbol-batches.cjs
+npm run build:prod
+```
+
+The first test uses the actual RAF implementation and a throwing completion
+callback; the old queue fails, while the fixed version schedules subsequent
+frames and retains newly queued work. It also verifies inactive and remapped
+WebGL attributes. The second test checks event-loop yields, decoding order,
+completion timing, and failure cleanup. Chrome validation injected a throwing
+listener into a real hair-SWF load: another SWF still completed and 11 additional
+Flash frames ran in the next 400 ms. The rebuilt AQW login screen renders.

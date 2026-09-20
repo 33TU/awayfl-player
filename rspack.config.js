@@ -49,6 +49,7 @@ module.exports = (env = {}) => {
 		},
 		resolve: {
 			alias: {
+				'@awayjs/stage$': path.resolve(__dirname, '../stage/index.ts'),
 				'@awayjs/renderer$': path.resolve(__dirname, '../renderer/index.ts'),
 				'@awayjs/scene$': path.resolve(__dirname, '../scene/index.ts'),
 				'@awayfl/avm2$': path.resolve(__dirname, '../avm2/index.ts'),
@@ -66,11 +67,11 @@ module.exports = (env = {}) => {
 				loader: 'builtin:swc-loader',
 				options: {
 					jsc: {
-						parser: { syntax: 'typescript' },
+						parser: { syntax: 'typescript', decorators: true },
 						target: 'es5',
 						// Match callable ES5 constructors and assignment-style fields.
 						loose: true,
-						transform: { useDefineForClassFields: false },
+						transform: { useDefineForClassFields: false, legacyDecorator: true },
 					},
 				},
 			}],
