@@ -38,8 +38,30 @@ the initial profile. Removing getter/setter logging reduced AS3PB memory totals
 from 8052 ms to 1342 ms in two runs under the same headless Chrome profiling
 setup (4056/3996 ms encode/decode before; 684/658 ms after). ByteArray totals were
 756 ms and 792 ms respectively. This is an initial comparison, not a statistical
-performance guarantee. Domain-memory operations still refresh their view to handle
-buffer replacement/growth correctly; further optimization remains possible.
+performance guarantee.
+
+The subsequent storage refactor gives native `flash.utils.ByteArray` ownership of
+its cached memory view. Buffer replacement updates a stable storage object, while
+each application domain keeps a stable binding that follows reassignment. Generated
+memory instructions resolve the binding once per invocation and access its current
+view, so growth and rebinding remain visible between instructions without repeated
+buffer comparisons. `ApplicationDomain` now uses the actual AVM2 ByteArray type.
+
+The native ByteArray also zeroes truncated/newly exposed storage on explicit length
+changes and clear. It retains capacity; normal scalar writes continue using the
+existing direct write routines. This fixes stale bytes after shrink/regrow and in
+write gaps, without adding a zero-fill step before each scalar write.
+
+Three unprofiled Chrome runs before/after this refactor gave these totals in ms:
+
+| Path | Before | After | Median before → after |
+| --- | --- | --- | --- |
+| AS3PB ByteArray | 710, 699, 711 | 740, 748, 715 | 710 → 740 |
+| AS3PB memory | 1238, 1231, 1288 | 1191, 1260, 1299 | 1238 → 1260 |
+
+These small samples show no demonstrated speedup from the storage refactor. It
+improves ownership and correctness; the additional zero-fill work can add cost.
+Further performance changes need profiling of the generated codec and VM calls.
 
 ## Focused checks
 
@@ -47,6 +69,8 @@ buffer replacement/growth correctly; further optimization remains possible.
 node scripts/check-benchmark-runtime.cjs
 ```
 
-Checks the compressed fixture against an independently decoded payload hash and
-exercises initial memory binding, view reuse, buffer growth, and rebinding.
+Checks the compressed fixture against an independently decoded payload hash, native
+ByteArray zero-fill behavior, storage/view identity, buffer growth/replacement, and
+shared storage across domains. It also executes all ten generated memory opcodes
+across growth/rebinding, checking unsigned loads and preservation of address aliases.
 For the full integration check, open the benchmark and wait for **Done.**
