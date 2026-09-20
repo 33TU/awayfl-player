@@ -47,7 +47,12 @@ module.exports = (env = {}) => {
 			filename: 'js/[name].js'
 		},
 		resolve: {
-			alias: {},
+			alias: {
+				'@awayfl/avm2$': path.resolve(__dirname, '../avm2/index.ts'),
+				'@awayfl/playerglobal$': path.resolve(__dirname, '../playerglobal/index.ts'),
+				'@awayfl/swf-loader$': path.resolve(__dirname, '../swf-loader/dist/index.js'),
+			},
+			modules: [path.resolve(__dirname, 'node_modules'), 'node_modules'],
 			// Add `.ts` and `.tsx` as a resolvable extension.
 			extensions: ['.webpack.js', '.web.js', '.js', '.ts', '.tsx']
 		},
@@ -77,6 +82,7 @@ module.exports = (env = {}) => {
 		devServer: {
 			client: {
 				progress: true, // wp5
+				overlay: { errors: true, warnings: false },
 			}
 		},
 	}
