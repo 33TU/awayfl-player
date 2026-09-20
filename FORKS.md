@@ -1,6 +1,6 @@
 # Forks and pull requests
 
-The working changes are preserved on `fix/as3pb-benchmark` in these forks:
+The `dev` branches contain the merged runtime and benchmark PRs in these forks:
 
 - https://github.com/33TU/avm2
 - https://github.com/33TU/playerglobal
@@ -9,14 +9,15 @@ The working changes are preserved on `fix/as3pb-benchmark` in these forks:
 
 In the existing workspace, `origin` points to your fork using the `github-33tu`
 SSH alias; `upstream` points to the original AwayFL repository. GitHub CLI's
-repository default is your fork. Local `dev` branches still track `upstream/dev`.
-The working checkouts remain on `fix/as3pb-benchmark`, tracking the matching fork
-branches. No PRs have been merged into either your fork's `dev` or AwayFL.
+repository default is your fork, and default Git pushes go to `origin`. Local
+checkouts use `dev`, tracking `origin/dev`. The topic branches and original
+`fix/as3pb-benchmark` integration branches remain available. These PRs are merged
+only into your forks; the original AwayFL repositories are unchanged.
 
-## Review and merge
+## Merged PRs
 
-All PRs start as drafts. Except for the stacked optimization, they target `dev`
-in your own fork.
+All eight PRs were merged into the corresponding fork's `dev` using merge commits,
+preserving their individual commits and branches.
 
 | Repository | PR | Branch | Dependency |
 | --- | --- | --- | --- |
@@ -26,19 +27,18 @@ in your own fork.
 | avm2 | [Enable domain-memory instructions and track ByteArray storage changes](https://github.com/33TU/avm2/pull/2) | `fix/domain-memory-storage` | Use together with playerglobal memory binding |
 | playerglobal | [Bind domain memory to native ByteArray storage without hot-path logging](https://github.com/33TU/playerglobal/pull/2) | `fix/domain-memory-binding` | Requires AVM2 domain memory |
 | avm2 | [Correct AMF3 vector encoding and preserve ByteArray payloads](https://github.com/33TU/avm2/pull/3) | `fix/amf3-vectors-bytearrays` | Independent |
-| avm2 | [Cache resolved slot writes in domain-memory methods](https://github.com/33TU/avm2/pull/4) | `perf/domain-memory-slot-writes` | Stacked on AVM2 domain memory |
+| avm2 | [Cache resolved slot writes in domain-memory methods](https://github.com/33TU/avm2/pull/4) | `perf/domain-memory-slot-writes` | Follows AVM2 domain memory |
 | awayfl-player | [Add the AS3PB benchmark with local runtime builds and regression checks](https://github.com/33TU/awayfl-player/pull/1) | `chore/as3pb-benchmark` | Uses the runtime PRs above |
 
-LZMA, FINDDEF, mouse buttons, and AMF3 can be reviewed and merged independently.
-Use the AVM2 domain-memory and playerglobal binding changes together: generated
+LZMA, FINDDEF, mouse buttons, and AMF3 were independent changes. The AVM2
+domain-memory and playerglobal binding changes are used together: generated
 memory instructions depend on the binding supplied by playerglobal.
 
-The slot-write optimization targets `fix/domain-memory-storage`, keeping its
-review diff limited to the optimization. Merge the storage PR first, then retarget
-the optimization PR to `dev`. A merge commit preserves the shared ancestry. If
-you squash or rebase-merge the storage PR, rebase only the optimization commits
-onto the new `dev` before retargeting, so the already merged changes are not
-reintroduced. Keep the base branch until the stacked PR is retargeted.
+The slot-write optimization originally targeted `fix/domain-memory-storage`.
+After merging the storage PR, the optimization was retargeted to `dev` and merged
+there. Future dependent PRs can use the same sequence. Preserve the base commits
+with a merge commit; if a base PR is squash-merged instead, rebase the dependent
+commits onto the updated `dev` before retargeting.
 
 The benchmark PR includes the build setup and regression checks shared by these
 repos. The combined topic branches reproduce the original runtime integration
@@ -48,12 +48,13 @@ and performance limitations are documented in [BENCHMARK.md](BENCHMARK.md).
 
 ## Run the complete working version
 
-The `fix/as3pb-benchmark` branches contain all fixes and can be used while the
-individual PRs are under review. In a fresh parent directory:
+Use the `dev` branches together for the complete working version. The original
+`fix/as3pb-benchmark` branches remain as integration snapshots. In a fresh parent
+directory:
 
 ```sh
 for repo in avm2 playerglobal swf-loader awayfl-player; do
-    git clone --branch fix/as3pb-benchmark "https://github.com/33TU/$repo.git"
+    git clone --branch dev "https://github.com/33TU/$repo.git"
 done
 cd awayfl-player
 npm install
