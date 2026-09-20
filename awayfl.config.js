@@ -15,8 +15,8 @@ module.exports = {
 	allowURLSearchParams: true, //	allow changing config via url-params - always false in prod
 	split: true, 				//	create own folder for each file - only available in prod
 
-	entryName: "Main", 		//	name of webpack-entry - must be set for each config (use package.main ?)
-	entryPath: "./src/Main.ts", 		//	path to webpack-entry - must be set for each config (use package.main ?)
+	entryName: "Main", 		//	name of bundler entry - must be set for each config (use package.main ?)
+	entryPath: "./src/Main.ts", 		//	path to bundler entry - must be set for each config (use package.main ?)
 
 	buildinsPath: path.join(__dirname, "builtins"), 	//	path to buildins - must be set when amv2 will be used
 	indexTemplate: path.join(__dirname, "template", "index_template.html"), 	//	path to game-html template - must be set

@@ -12,7 +12,6 @@
 		"rollup": "rollup -c",
 		"tsc": "tsc",
 		"tsc:build": "npm run tsc || exit 0",
-		"webpack": "webpack",
 		"clean": "npm run rimraf -- dist bundle",
 		"clean:bin": "npm run rimraf -- bin",
 		"preclean:install": "npm run clean",
@@ -37,13 +36,7 @@
 		"copyVersionToIndex": "node ./scripts/copyVersionToIndex.js ./index.ts && git add ./index.ts && git commit -m \"update version number in index.ts\"",
 		"preversion": "npm run clean",
 		"version": "npm run yarnImport && npm run copyVersionToIndex && npm run tsc:build && npm run rollup",
-		"postversion": "git push && git push --tags && npm publish",
-		"build:dev:webpack": "webpack --config webpack.config.js --progress",
-		"build:prod:webpack": "webpack --config webpack.config.js  --progress --env prod",
-		"server:dev:webpack": "webpack-dev-server --config webpack.config.js --progress",
-		"prebuild:dev:webpack": "npm run clean:bin && npm run build:swf-loader",
-		"prebuild:prod:webpack": "npm run clean:bin && npm run build:swf-loader",
-		"preserver:dev:webpack": "npm run build:swf-loader"
+		"postversion": "git push && git push --tags && npm publish"
 	},
 	"keywords": [
 		"AwayFL",
@@ -90,22 +83,14 @@
 		"@rspack/cli": "2.2.6",
 		"@rspack/core": "2.2.6",
 		"@rspack/dev-server": "2.2.1",
-		"copy-webpack-plugin": "^11.0.0",
 		"html-rspack-plugin": "6.1.11",
-		"html-webpack-plugin": "^5.5.0",
 		"rimraf": "^4.4.0",
 		"rollup": "^2.79.1",
 		"rollup-plugin-gzip": "^3.1.0",
 		"rollup-plugin-terser": "^7.0.2",
 		"rollup-plugin-typescript2": "^0.36.0",
-		"terser-webpack-plugin": "^5.3.7",
-		"ts-loader": "^9.4.2",
 		"tslib": "^2.3.0",
-		"typescript": "^4.9.5",
-		"webpack": "^5.76.2",
-		"webpack-cli": "^5.0.1",
-		"webpack-dev-server": "^4.12.0",
-		"webpack-merge": "^5.8.0"
+		"typescript": "^4.9.5"
 	},
 	"engines": {
 		"node": "^20.19.0 || >=22.12.0"
