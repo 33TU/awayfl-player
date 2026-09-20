@@ -223,6 +223,64 @@ by an AMF3 round trip. It fails on captured browser exceptions.
 Override `CDP_URL`, `BENCHMARK_URL`, or `OUTPUT_DIR` through environment variables.
 Readable runtime method names in its summary require the development bundle.
 
+## Property-access optimization
+
+The JIT now creates a cached slot writer for static property names in methods that
+contain domain-memory instructions. It remembers the receiver's resolved trait
+table, mangled slot name, and coercion type. Repeated writes such as
+`PackContext.position` avoid resolving that same trait on every byte while still
+coercing every assigned value. A different trait table refreshes the cache;
+accessors, constants, dynamic names, native overrides, Proxy/XML/Vector handling,
+and external objects retain the original setter path. Type resolution and coercion
+can re-enter AS3 without corrupting the outer assignment.
+
+`Settings.CACHE_DOMAIN_MEMORY_WRITES` controls this optimization at compilation
+time. It is deliberately limited to methods with memory instructions: the initial
+experiment applying it to all methods slightly regressed the ByteArray path.
+The cache is created once with the compiled function, not on each call.
+
+Native ByteArray storage, scope lookup, and memory load/store semantics are
+unchanged. A broader scope-cache experiment was left out because its benefit to
+ByteArray timings was not consistent.
+
+Validate the new paths with:
+
+```sh
+node scripts/check-slot-writer.cjs
+node scripts/check-benchmark-runtime.cjs
+```
+
+The first check exercises the real slot writer, generic ASObject setter, and trait
+lookup with small VM adapters. It covers coercion,
+receiver changes, private namespaces, native overrides, accessors, readonly/method
+errors, and reentrancy during coercion/type resolution.
+The browser benchmark additionally checks encoded
+bytes, decoded cursors, and round trips against its ByteArray codec.
+
+Three alternating before/after production comparisons used the same SWF in Chrome
+153.0.8010.47, with one warmup and one measured full invocation per fresh page.
+The baseline was AVM2 `0b46bb8`. No profiler was active for these timings:
+
+| Path | Before totals, ms | After totals, ms | Median before → after |
+| --- | --- | --- | --- |
+| AS3PB memory | 990, 994, 1030 | 929, 929, 928 | 994 → 929 |
+| AS3PB ByteArray | 593, 657, 644 | 592, 592, 576 | 644 → 592 |
+| AMF3 | 3116, 3235, 3123 | 3059, 3047, 3016 | 3123 → 3047 |
+| JSON | 1601, 1594, 1602 | 1590, 1734, 1744 | 1601 → 1734 |
+
+Memory time fell in every pair, with a 6.5% reduction in the median total. This is
+a modest local improvement; it does not close the gap to AIR's 192 ms total.
+ByteArray has no implementation change and its timings varied between experiments,
+so no reliable storage-speed improvement is claimed. JSON was slower in two runs
+and remains semantically incorrect; these results do not establish a universal
+speedup. The complete four-codec elapsed sum fell in all three pairs, but three
+samples are insufficient for a general performance guarantee.
+
+All benchmark byte/cursor/round-trip checks completed without browser exceptions.
+The focused runtime/slot-writer checks and AVM2 TypeScript compilation passed;
+the production build retains the six existing export warnings. Rebuild with
+`just prod` from the workspace root to try the change.
+
 ## Focused checks
 
 ```sh
