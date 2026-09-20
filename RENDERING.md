@@ -121,3 +121,32 @@ Browser validation constructs the actual `AvatarMC` from the game SWF and sets
 its `pname.ti` field to a username. Before the fix it produces no glyph geometry
 and zero text width; afterward it renders with the 218-character pixel font.
 This isolates the label without requiring an authenticated room join.
+
+## Names disappearing after room changes
+
+A second issue affected name positioning, independently of font selection.
+AQW can call `AvatarMC.scale` before attaching an avatar to the scene. It
+converts the head point using `mcChar.localToGlobal`, then the avatar's
+`globalToLocal`. AwayFL created view nodes lazily from the queried child, so
+the first conversion could omit the avatar's transform. The second conversion
+created the missing parent node and subtracted the avatar's position anyway.
+For an avatar at y=350, the name ended up at -488 instead of -138 and remained
+offscreen after attachment. Whether rendering or another query had already
+initialized the nodes made the failure appear intermittent.
+
+The playerglobal branch `fix/offstage-coordinate-conversion` initializes the
+view nodes from the display tree root before returning a node for coordinate
+and bounds queries. It uses the view's node cache, rather than retaining a
+separate adapter cache.
+
+```sh
+node scripts/check-coordinate-conversion.cjs
+```
+
+The regression uses actual scene containers and view nodes without rendering.
+It covers child-first queries, precreated child nodes, movement, new offstage
+parents, reparenting, scaling, reflection, and rotation. The original code fails
+the first conversion. Browser validation with AQW's actual `AvatarMC.scale`
+reproduces y=-488 before the fix and consistently gets y=-138 afterward, both
+before and after attaching the avatar. Authenticated room transitions remain
+the user's integration check.
