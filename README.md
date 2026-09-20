@@ -29,7 +29,7 @@ fileconfigs: [
 
 ## Preview ##
 
-To run a preview of your SWFs, start up the webpack development server:
+To run a preview of your SWFs, start up the Rspack development server:
 
 ```shell
 npm start

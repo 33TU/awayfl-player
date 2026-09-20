@@ -1,15 +1,12 @@
 const path = require('path');
 const fs = require('fs');
-const webpack = require('webpack');
-const CopyWebPackPlugin = require('copy-webpack-plugin');
-const HTMLWebPackPlugin = require('html-webpack-plugin');
-const Terser = require('terser-webpack-plugin')
 const rimraf = require("rimraf");
-const tsloader = require.resolve('ts-loader');
-const merge = require("webpack-merge").merge;
-const config = require('./awayfl.config.js')
+const { CopyRspackPlugin, SwcJsMinimizerRspackPlugin } = require('@rspack/core');
+const HtmlRspackPlugin = require('html-rspack-plugin');
+const playerConfig = require('./awayfl.config.js');
 
 module.exports = (env = {}) => {
+	const config = { ...playerConfig };
 
 	var isProd = !!env.prod;
 
@@ -26,7 +23,7 @@ module.exports = (env = {}) => {
 	config.split = isProd ? config.split : false;
 
 	if (config.debugConfig) {
-		console.log("global config used for webpack:");
+		console.log("global player build config:");
 		for (var key in config) {
 			console.log("	- config." + key, config[key]);
 		}
@@ -35,9 +32,13 @@ module.exports = (env = {}) => {
 	const entry = {};
 	entry[config.entryName] = [config.entryPath];
 
-	let plugins = processConfig(config, __dirname, CopyWebPackPlugin, HTMLWebPackPlugin, webpack.BannerPlugin, fs, rimraf, path);
+	let plugins = processConfig(config, __dirname);
 
-	const common = {
+	return {
+		mode: isProd ? 'production' : 'development',
+		target: 'web',
+		bail: isProd,
+		devtool: isProd ? false : 'cheap-module-source-map',
 
 		entry: entry,
 
@@ -48,6 +49,9 @@ module.exports = (env = {}) => {
 		},
 		resolve: {
 			alias: {
+				'@awayjs/stage$': path.resolve(__dirname, '../stage/index.ts'),
+				'@awayjs/renderer$': path.resolve(__dirname, '../renderer/index.ts'),
+				'@awayjs/scene$': path.resolve(__dirname, '../scene/index.ts'),
 				'@awayfl/avm2$': path.resolve(__dirname, '../avm2/index.ts'),
 				'@awayfl/playerglobal$': path.resolve(__dirname, '../playerglobal/index.ts'),
 				'@awayfl/swf-loader$': path.resolve(__dirname, '../swf-loader/dist/index.js'),
@@ -57,94 +61,62 @@ module.exports = (env = {}) => {
 			extensions: ['.webpack.js', '.web.js', '.js', '.ts', '.tsx']
 		},
 		module: {
-			rules: [
-				{
-					test: /\.ts(x?)/,
-					exclude: /node_modules/,
-					loader: tsloader,
-					options: {
-						experimentalWatchApi: true,
-						transpileOnly: true
-					}
+			rules: [{
+				test: /\.tsx?$/,
+				exclude: /node_modules/,
+				loader: 'builtin:swc-loader',
+				options: {
+					jsc: {
+						parser: { syntax: 'typescript', decorators: true },
+						target: 'es5',
+						// Match callable ES5 constructors and assignment-style fields.
+						loose: true,
+						transform: { useDefineForClassFields: false, legacyDecorator: true },
+					},
 				},
-			]
+			}],
 		},
 		plugins: plugins,
 
 		performance: {
-			hints: false // wp4
+			hints: false
 		},
 		stats: {
-			cached: true, // wp4
-			errorDetails: true, // wp4
-			colors: true // wp4
+			cached: true,
+			errorDetails: true,
+			colors: true
 		},
 		devServer: {
-			client: {
-				progress: true, // wp5
-				overlay: { errors: true, warnings: false },
-			}
-		},
-	}
-
-	const dev = {
-		target: 'web',
-		mode: "development",// wp4
-		//devtool: 'source-map',
-		devtool: 'cheap-module-source-map',//use this option for recompiling libs
-		devServer: {
-			static: {
-				publicPath: "/",
-			},
+			static: { publicPath: '/' },
 			open: false,
 			hot: false,
 			watchFiles: ['src/**/*.*'],
 			client: {
 				progress: true,
+				overlay: { errors: true, warnings: false },
 			},
-			allowedHosts: "all",
+			allowedHosts: 'all',
 			port: 80,
 		},
-		optimization: {
-			//minimize: false // wp4
-		}
-	}
-
-	const prod = {
-		mode: "production",// wp4
-		bail: true
-	};
-
-	if(Terser) {
-		prod.optimization = {
+		optimization: isProd ? {
 			minimize: true,
-			minimizer: [
-				new Terser({
-				  extractComments: {
-					condition: /^\**!|@preserve|@license|@cc_on/i,
-					filename: 'LICENSES.txt'
-				  },
-				}),
-			],
-		}
-	} else {
-		console.warn("TERSER IS REQUIRE FOR REMOVING COMMENTS!");
-	}
-
-	return merge(common, isProd ? prod : dev);
-
-}
+			minimizer: [new SwcJsMinimizerRspackPlugin({
+				extractComments: /^\**!|@preserve|@license|@cc_on/i,
+			})],
+		} : {},
+	};
+};
 
 // process config
-// return a list of webpack-plugins
-const processConfig = (config, rootPath, CopyWebPackPlugin, HTMLWebPackPlugin, BannerPlugin, fs, rimraf, path) => {
+// return the HTML and asset plugins
+const processConfig = (config, rootPath) => {
 
 	var plugins = [];
 
 	// 	if no split, copy as3 buildins to asset folder
 	//	if split, we will copy them for each game-config individually
 	if (config.buildinsPath && config.buildinsPath.length && !config.split) {
-		plugins.push(new CopyWebPackPlugin({
+		plugins.push(new CopyRspackPlugin({
 			patterns: [
 				{ from: config.buildinsPath, to: 'assets/builtins' },
 			],
@@ -152,8 +124,8 @@ const processConfig = (config, rootPath, CopyWebPackPlugin, HTMLWebPackPlugin, B
 	}
 
 	//	copy loader.js to js-folder
-	//	if split, this will be copied to the subfolder together with webpack-bundel
-	plugins.push(new CopyWebPackPlugin({
+	//	if split, this will be copied to the subfolder together with runtime bundle
+	plugins.push(new CopyRspackPlugin({
 		patterns: [
 			{ from: config.loaderTemplate, to: 'js' },
 		],
@@ -174,7 +146,7 @@ const processConfig = (config, rootPath, CopyWebPackPlugin, HTMLWebPackPlugin, B
 		//	if split, copy buildins to each output folder:
 
 		if (config.buildinsPath && config.buildinsPath.length && config.split) {
-			plugins.push(new CopyWebPackPlugin({
+			plugins.push(new CopyRspackPlugin({
 				patterns: [
 					{ from: config.buildinsPath, to: outputPath + 'assets/builtins' },
 				],
@@ -197,13 +169,13 @@ const processConfig = (config, rootPath, CopyWebPackPlugin, HTMLWebPackPlugin, B
 			throw new Error("invalid splashscreen path for fileconfig " + configForHTML.splash);
 		}
 
-		plugins.push(new CopyWebPackPlugin({
+		plugins.push(new CopyRspackPlugin({
 			patterns: [
 				{ from: swfPath, to: outputPath + "assets" },
 			],
 		}));
 
-		plugins.push(new CopyWebPackPlugin({
+		plugins.push(new CopyRspackPlugin({
 			patterns: [
 				{ from: path.join(rootPath, "src", "assets", configForHTML.splash), to: outputPath + "assets" },
 			],
@@ -215,7 +187,7 @@ const processConfig = (config, rootPath, CopyWebPackPlugin, HTMLWebPackPlugin, B
 			if (!fs.existsSync(path.join(rootPath, "src", "assets", configForHTML.loading.image))) {
 				throw ("invalid loading image path for fileconfig " + configForHTML.loading.image);
 			}
-			plugins.push(new CopyWebPackPlugin({
+			plugins.push(new CopyRspackPlugin({
 				patterns: [
 					{ from: path.join(rootPath, "src", "assets", configForHTML.loading.image), to: outputPath + "assets" },
 				],
@@ -229,7 +201,7 @@ const processConfig = (config, rootPath, CopyWebPackPlugin, HTMLWebPackPlugin, B
 			if (!fs.existsSync(path.join(rootPath, "src", "assets", configForHTML.start.image))) {
 				throw ("invalid start image path for fileconfig " + configForHTML.start.image);
 			}
-			plugins.push(new CopyWebPackPlugin({
+			plugins.push(new CopyRspackPlugin({
 				patterns: [
 					{ from: path.join(rootPath, "src", "assets", configForHTML.start.image), to: outputPath + "assets" },
 				],
@@ -239,7 +211,7 @@ const processConfig = (config, rootPath, CopyWebPackPlugin, HTMLWebPackPlugin, B
 		// create/prepare config props needed for runtime
 
 		configForHTML.binary = [];
-		// copy and prepare resources for html 
+		// copy and prepare resources for html
 		let resources = getConfigProp(fileConfig, config, "resources");
 		if (resources && resources.length > 0) {
 			for (let r = 0; r < resources.length; r++) {
@@ -253,7 +225,7 @@ const processConfig = (config, rootPath, CopyWebPackPlugin, HTMLWebPackPlugin, B
 					if (!fs.existsSync(res_path)) {
 						throw new Error("invalid filename path for resource " + res_path);
 					}
-					plugins.push(new CopyWebPackPlugin({
+					plugins.push(new CopyRspackPlugin({
 						patterns: [
 							{ from: res_path, to: outputPath + "assets" },
 						],
@@ -274,7 +246,7 @@ const processConfig = (config, rootPath, CopyWebPackPlugin, HTMLWebPackPlugin, B
 			for (let r = 0; r < assets.length; r++) {
 				let res_path = path.join(rootPath, assets[r]);
 
-				// extension is missing = is folder	
+				// extension is missing = is folder
 				if (!fs.existsSync(res_path)) {
 					throw new Error("invalid filename path for asset " + res_path);
 				}
@@ -282,15 +254,15 @@ const processConfig = (config, rootPath, CopyWebPackPlugin, HTMLWebPackPlugin, B
 				let folder = fs.lstatSync(res_path).isDirectory();
 				let name = path.basename(res_path);
 
-				plugins.push(new CopyWebPackPlugin({
+				plugins.push(new CopyRspackPlugin({
 					patterns: [
 						{ from: res_path, to: outputPath + "assets" + (folder ? "/" + name : "")  },
 					],
 				}));
-				
+
 			}
 		}
-		
+
 		configForHTML.binary.push({
 			name: configForHTML.filename,
 			path: "assets/" + configForHTML.filename + ".swf",
@@ -312,7 +284,7 @@ const processConfig = (config, rootPath, CopyWebPackPlugin, HTMLWebPackPlugin, B
 		configForHTML["runtime"] = runtimePath;
 
 
-		// create string for html inject (incl hack to handle functions): 
+		// create string for html inject (incl hack to handle functions):
 
 		var collectedFunctions = collectAndReplaceFunctions({}, configForHTML);
 		var configStr = "\nconfig = " + JSON.stringify(configForHTML, null, 4) + ";\n";
@@ -342,8 +314,8 @@ const processConfig = (config, rootPath, CopyWebPackPlugin, HTMLWebPackPlugin, B
 		// code to overwrite config by URLSearchParams
 		if (config.allowURLSearchParams) {
 			jsStringForHTML += `const q = new URLSearchParams(location.search);
-			
-			for (let key of q.keys()){ 
+
+			for (let key of q.keys()){
 				let value = q.get(key);
 
 				if (value.includes("<boolean>") || value.includes("<bool>")) {
@@ -359,7 +331,7 @@ const processConfig = (config, rootPath, CopyWebPackPlugin, HTMLWebPackPlugin, B
 					config[key] = q.get(key);
 				}
 
-				// console.log({key, value, result: config[key]}); 
+				// console.log({key, value, result: config[key]});
 			};
 			`;
 		}
@@ -369,7 +341,7 @@ const processConfig = (config, rootPath, CopyWebPackPlugin, HTMLWebPackPlugin, B
 			jsStringForHTML += "for (let key in config.binary){ config.binary[key].path = config.binary[key].path+'?v='+Math.random();};\n";
 		}
 
-		
+
 		//	copy and mod html:
 
 		var htmlOutputPath = (config.split ? folderName + "/" : "") + (config.split ? "index.html" : folderName + ".html");
@@ -387,7 +359,7 @@ const processConfig = (config, rootPath, CopyWebPackPlugin, HTMLWebPackPlugin, B
 			}
 		}
 
-		plugins.push(new CopyWebPackPlugin({
+		plugins.push(new CopyRspackPlugin({
 			patterns: [
 				{
 					from: htmlSourcePath,
@@ -410,7 +382,7 @@ const processConfig = (config, rootPath, CopyWebPackPlugin, HTMLWebPackPlugin, B
 
 
 	// Generate a listing html that links to all game-htmls:
-	plugins.push(new HTMLWebPackPlugin({
+	plugins.push(new HtmlRspackPlugin({
 		title: config.rt_title,
 		template: config.indexTemplate,
 		filename: 'index.html',
@@ -419,7 +391,7 @@ const processConfig = (config, rootPath, CopyWebPackPlugin, HTMLWebPackPlugin, B
 	}));
 
 	if (config.split) {
-		// 	when webpack is finished, copy the js-folder to subfolders 
+		// 	when compilation is finished, copy the js-folder to subfolders
 		//	this errors with dev-server, so we only use "split" in prod
 
 		plugins.push({
@@ -427,9 +399,9 @@ const processConfig = (config, rootPath, CopyWebPackPlugin, HTMLWebPackPlugin, B
 				compiler.hooks.afterEmit.tap('MyPlugin', function (compilation) {
 					console.log("copy build to game-folders");
 					for (var i = 0; i < config.fileconfigs.length; i++) {
-						copyRecursiveSync(fs, path, path.join(rootPath, "bin", "js"), path.join(rootPath, "bin", config.fileconfigs[i].rt_filename, "js"));
+						copyRecursiveSync(fs, path, path.join(compiler.options.output.path, "js"), path.join(compiler.options.output.path, config.fileconfigs[i].rt_filename, "js"));
 					}
-					rimraf.sync(path.join(rootPath, "bin", "js"));
+					rimraf.sync(path.join(compiler.options.output.path, "js"));
 				});
 			}
 		});
@@ -491,7 +463,7 @@ var copyRecursiveSync = function (fs, path, src, dest) {
 	var stats = exists && fs.statSync(src);
 	var isDirectory = exists && stats.isDirectory();
 	if (isDirectory) {
-		fs.mkdirSync(dest);
+		fs.mkdirSync(dest, { recursive: true });
 		fs.readdirSync(src).forEach(function (childItemName) {
 			copyRecursiveSync(fs, path, path.join(src, childItemName), path.join(dest, childItemName));
 		});

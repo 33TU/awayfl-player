@@ -5,6 +5,9 @@ The `dev` branches contain the merged runtime and benchmark PRs in these forks:
 - https://github.com/33TU/avm2
 - https://github.com/33TU/playerglobal
 - https://github.com/33TU/swf-loader
+- https://github.com/33TU/scene
+- https://github.com/33TU/renderer
+- https://github.com/33TU/stage
 - https://github.com/33TU/awayfl-player
 
 In the existing workspace, `origin` points to your fork using the `github-33tu`
@@ -15,6 +18,13 @@ checkouts use `dev`, tracking `origin/dev`. The topic branches and original
 only into your forks; the original AwayFL repositories are unchanged.
 
 ## Merged PRs
+
+The additional AwayJS fork [33TU/scene](https://github.com/33TU/scene) uses the
+same `origin`/`upstream` setup. Its `dev` starts at v0.13.324, matching the
+installed library. [Password masking PR #1](https://github.com/33TU/scene/pull/1)
+was created from `fix/password-masking`. Its commits and the subsequent AQW
+fixes are now included in `dev`. The player builds the sibling scene checkout
+directly; the matching SWF password flag fix is also included in swf-loader `dev`.
 
 All eight PRs were merged into the corresponding fork's `dev` using merge commits,
 preserving their individual commits and branches.
@@ -53,7 +63,7 @@ Use the `dev` branches together for the complete working version. The original
 directory:
 
 ```sh
-for repo in avm2 playerglobal swf-loader awayfl-player; do
+for repo in avm2 playerglobal swf-loader scene renderer stage awayfl-player; do
     git clone --branch dev "https://github.com/33TU/$repo.git"
 done
 cd awayfl-player
@@ -91,3 +101,18 @@ Fetch upstream changes with `git fetch upstream`. Review and bring them into you
 fork's `dev` separately, preserving any fixes you have already merged there.
 Keep new independent work based on `origin/dev`; use a topic branch as the base
 only when deliberately stacking a dependent PR.
+
+## AQW integration update
+
+The seven forks now share the tested local AQW runtime through their `dev`
+branches. Topic branches remain available for individual PRs; the integration
+preserves their commits with merge commits. This update includes Rspack,
+WebSocket Socket support, loading and keyboard fixes, text metrics and fonts,
+filter bounds and GPU cleanup, and keyboard constant reflection.
+
+The renderer and stage forks start from the versions used by this workspace:
+renderer `v0.11.99` and stage `v0.11.172`. Their original AwayJS repositories are
+configured as `upstream`, with `33TU` as `origin`, like the other five checkouts.
+The runtime fixes and regression scripts are documented in [RENDERING.md](RENDERING.md)
+and [SOCKET.md](SOCKET.md). The parent justfile and Hono preview are outside these
+seven repositories and are not part of this push.

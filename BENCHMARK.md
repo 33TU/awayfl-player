@@ -10,11 +10,25 @@ npm run server:dev -- --port 8080 --host 127.0.0.1
 Open http://127.0.0.1:8080/as3pb-bench.html. The benchmark starts automatically;
 use **Run Benchmark** to repeat it. Completion is indicated by **Done.**
 
-Keep the sibling `../avm2`, `../playerglobal`, and `../swf-loader` checkouts.
-Webpack uses the first two directly from source. The startup/build scripts compile
-the local SWF loader with TypeScript so its imported const enums are inlined.
+Keep the sibling `../avm2`, `../playerglobal`, `../swf-loader`, `../scene`, and
+`../renderer` checkouts. Rspack uses AVM2, playerglobal, scene and renderer directly
+from source.
+The startup/build scripts compile the local SWF loader with TypeScript so its imported const enums are inlined.
 Dependencies are resolved from this player's `node_modules`. Restart the server
 after editing the SWF loader to recompile it.
+
+The local `scene` checkout is based on AwayJS `v0.13.324`, matching the installed
+package, with password masking on branch `fix/password-masking`. Its interface
+reexports use `export type` for SWC. The matching SWF decoder change is on
+`swf-loader` branch `fix/password-text-flag`. Both are needed: the decoder reads
+the SWF password flag, and scene preserves it through cloning and renders `*`
+glyphs without changing the text value. The scene fix is published as
+[33TU/scene#1](https://github.com/33TU/scene/pull/1); the matching SWF loader and
+player integration branches are currently local.
+
+Run `node scripts/check-password-masking.cjs` to check glyphs and widths, original
+values, toggling, selection replacement, UTF-16/whitespace, HTML and cloning.
+The AQWorlds login form was also checked with simulated keyboard input.
 
 `src/assets/as3pb-bench.swf` is now an exact copy of the original compressed
 `../as3pb-bench.swf`. The loader fix preserves the full SWF header for the LZMA
@@ -29,7 +43,79 @@ optimization because its bytecode reuses local register 0.
 Validated in headless Chrome: AS3PB bytes, AS3PB memory, AMF3, and JSON completed
 without uncaught exceptions, including the SWF's memory correctness checks.
 Timing results describe this patched runtime and vary by browser and machine.
-Existing dependency/export warnings remain in the development console.
+The six previous build export warnings are fixed as described below.
+
+## Rspack builds
+
+`npm run build:dev`, `npm run build:prod`, and `npm run server:dev` use Rspack.
+The parent workspace's `just prod` recipe therefore uses Rspack too. Run
+`npm install` after updating this branch. Building requires Node.js
+`^20.19.0 || >=22.12.0`; these measurements used Node 24.13.1.
+
+`rspack.config.js` configures the game templates, asset copying, local runtime
+aliases, per-game production folders, and development server. It uses
+SWC for TypeScript and minification, with ES5/loose class transforms matching the
+runtime's callable constructors and assignment-style fields. The SWF loader is
+still compiled by TypeScript first to inline its external const enums. Source
+transpilation does not replace type checking.
+
+Missing runtime exports use Rspack's default error severity. AVM2's five
+interface reexports now use `export type`, and playerglobal recognizes the
+`[graphicsdata EndFill]` tag without importing a constructor missing from the
+installed `@awayjs/graphics` 0.5.101. The tag matches the engine's
+[GraphicsEndFill definition](https://github.com/awayjs/graphics/blob/dev/lib/draw/GraphicsEndFill.ts).
+Development and production builds now complete with zero warnings.
+
+`node scripts/check-graphics-data.cjs` exercises the actual conversion method
+with installed engine strokes/paths, end-fill tags, and unknown records. It also
+reproduced the original undefined-constructor crash before the fix. This removes
+the export mismatch; it does not implement the separate `readGraphicsData` API
+missing from the installed engine version.
+
+Three alternating production builds of each bundler gave the following seconds:
+
+| Bundler | Full command, three runs | Median full command | Median bundling |
+| --- | --- | ---: | ---: |
+| Webpack | 18.41, 17.66, 18.71 | 18.41 | 15.16 |
+| Rspack | 4.15, 4.16, 4.29 | 4.16 | 1.39 |
+
+The full command includes npm startup, output cleanup, and the SWF-loader
+TypeScript build. Bundling is the duration reported by each compiler. Each run
+started a fresh process; these are local measurements with warm OS caches, not
+cold-machine or incremental-build timings. Rspack 2.2.6 reduced the full median
+from 18.41 s to 4.16 s (4.4x faster), and bundling from 15.16 s to 1.39 s (10.9x).
+The shared loader build accounts for much of the remaining startup cost.
+
+The minified Main.js grew from 3,207,104 to 3,246,572 bytes (1.2%). Rspack emits
+`Main.js.LICENSE.txt` beside each game's bundle. Assets and per-game HTML match
+the Webpack output; root-index formatting and JavaScript minification differ.
+These build-time improvements do not establish faster SWF execution.
+
+A separate three-pair alternating runtime comparison used one warmup and one
+unprofiled measured invocation per fresh production page in Chrome 153.0.8010.52:
+
+| Codec | Webpack totals, ms | Rspack totals, ms | Median Webpack → Rspack |
+| --- | --- | --- | --- |
+| AS3PB bytes | 631, 618, 617 | 623, 671, 648 | 618 → 648 |
+| AS3PB memory | 974, 951, 1065 | 969, 1035, 1079 | 974 → 1035 |
+| AMF3 | 3270, 3263, 3493 | 3405, 3439, 3351 | 3270 → 3405 |
+| JSON | 1649, 1674, 1731 | 1700, 1825, 1914 | 1674 → 1825 |
+
+Median codec totals were 4–9% higher with the Rspack bundle in this small sample.
+The faster build has a potential execution-time tradeoff. The sample is too
+small for a general runtime performance claim; no SWF execution speedup is claimed.
+
+Validation includes development-server and production browser runs through
+`Done.`, with zero captured exceptions, 63,598 AMF3 bytes, and all 100 ByteArray
+payloads preserved. The SWF's byte/cursor/round-trip assertions and the focused
+runtime/slot-writer scripts pass. Editing the player entry or a sibling AVM2
+source triggers a development rebuild. The pre-migration Webpack output was also
+validated during comparison. The existing JSON discrepancy remains unchanged.
+
+Webpack measurements above are historical migration results. The old pipeline
+is preserved in Git history (before the Rspack migration); the current checkout
+uses a single Rspack configuration. Run `npm run build:prod` from this directory
+or `just prod` from the workspace root to build the production player.
 
 ## Performance investigation
 

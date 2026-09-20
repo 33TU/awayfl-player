@@ -4,11 +4,15 @@ import { AVMDebug } from "./AVMDebugInterface";
 import { AVM1Handler } from '@awayfl/avm1';
 import { AVM2Handler, extClasses } from '@awayfl/avm2';
 import { PlayerGlobal } from "@awayfl/playerglobal";
+import { ConfigManager } from "@awayjs/core";
 
 
 export class AVMPlayer extends AVMStage {
 	private _debug: AVMDebug;
 	constructor(gameConfig) {
+		if (gameConfig.engineSettings) {
+			ConfigManager.instance.deserialize(gameConfig.engineSettings, false);
+		}
 		super(gameConfig);
 
 		if(gameConfig.externalLib) {
@@ -31,4 +35,3 @@ export class AVMPlayer extends AVMStage {
 		}
 	}
 }
-
