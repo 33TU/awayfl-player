@@ -16,6 +16,13 @@ only into your forks; the original AwayFL repositories are unchanged.
 
 ## Merged PRs
 
+The additional AwayJS fork [33TU/scene](https://github.com/33TU/scene) uses the
+same `origin`/`upstream` setup. Its `dev` starts at v0.13.324, matching the
+installed library. [Password masking PR #1](https://github.com/33TU/scene/pull/1)
+is a draft from `fix/password-masking` and has not been merged. The local player
+password branch builds this sibling checkout directly; its SWF flag integration
+is on local `swf-loader` branch `fix/password-text-flag`.
+
 All eight PRs were merged into the corresponding fork's `dev` using merge commits,
 preserving their individual commits and branches.
 

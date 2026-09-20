@@ -21,7 +21,9 @@ package, with password masking on branch `fix/password-masking`. Its interface
 reexports use `export type` for SWC. The matching SWF decoder change is on
 `swf-loader` branch `fix/password-text-flag`. Both are needed: the decoder reads
 the SWF password flag, and scene preserves it through cloning and renders `*`
-glyphs without changing the text value. These branches are currently local.
+glyphs without changing the text value. The scene fix is published as
+[33TU/scene#1](https://github.com/33TU/scene/pull/1); the matching SWF loader and
+player integration branches are currently local.
 
 Run `node scripts/check-password-masking.cjs` to check glyphs and widths, original
 values, toggling, selection replacement, UTF-16/whitespace, HTML and cloning.
