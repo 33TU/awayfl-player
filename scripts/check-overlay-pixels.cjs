@@ -127,6 +127,67 @@ function integration() {
     return 'Live filter-manager: repeated overlay, destination offset, unaffected pixels and no WebGL errors passed';
 }
 
+function displayMasks() {
+    const game = _AWAY_DEBUG_PLAYER_.player.root._children.find(n => n.name === 'scene').adapter;
+    const s = game.sec;
+    function rect(color, x, y, width, height) {
+        const sprite = s.flash.display.Sprite.axClass.axConstruct([]);
+        sprite.$Bggraphics.$BgbeginFill(color);
+        sprite.$Bggraphics.$BgdrawRect(x, y, width, height);
+        sprite.$Bggraphics.$BgendFill();
+        return sprite;
+    }
+    for (const mode of ['direct', 'ancestor', 'cachedAncestor']) {
+        const root = rect(0xb40000, 0, 0, 64, 64);
+        const group = s.flash.display.Sprite.axClass.axConstruct([]);
+        const overlay = rect(0xffffff, 0, 0, 64, 64);
+        const mask = rect(0, 8, 8, 16, 16);
+        overlay.$BgblendMode = 'overlay';
+        root.$BgaddChild(group); group.$BgaddChild(overlay); root.$BgaddChild(mask);
+        if (mode === 'direct') overlay.$Bgmask = mask;
+        else group.$Bgmask = mask;
+        if (mode === 'cachedAncestor') group.$BgcacheAsBitmap = true;
+        const bitmap = new s.flash.display.BitmapData(64, 64, true, 0);
+        try {
+            bitmap.$Bgdraw(root);
+            for (const [x, y] of [[4, 4], [32, 32], [60, 60]]) {
+                const pixel = bitmap.$BggetPixel32(x, y) >>> 0;
+                if (pixel !== 0xffb40000)
+                    throw Error(`${mode}: masked overlay erased or changed backdrop at ${x},${y}: ${pixel.toString(16)}`);
+            }
+            const inside = bitmap.$BggetPixel32(12, 12) >>> 0;
+            if ((inside >>> 24) !== 255 || inside === 0xffb40000)
+                throw Error(`${mode}: overlay disappeared inside mask: ${inside.toString(16)}`);
+        } finally {
+            bitmap.$Bgdispose();
+        }
+    }
+    // A translucent backdrop must not be source-over blended a second time
+    // merely because its composite quad has a mask.
+    const inside = [];
+    for (const masked of [false, true]) {
+        const root = s.flash.display.Sprite.axClass.axConstruct([]);
+        root.$Bggraphics.$BgbeginFill(0xb40000, 0.5);
+        root.$Bggraphics.$BgdrawRect(0, 0, 64, 64);
+        root.$Bggraphics.$BgendFill();
+        const overlay = rect(0xffffff, 0, 0, 64, 64);
+        overlay.$Bgalpha = 0.5;
+        overlay.$BgblendMode = 'overlay';
+        root.$BgaddChild(overlay);
+        if (masked) {
+            const mask = rect(0, 8, 8, 16, 16);
+            root.$BgaddChild(mask); overlay.$Bgmask = mask;
+        }
+        const bitmap = new s.flash.display.BitmapData(64, 64, true, 0);
+        try {
+            bitmap.$Bgdraw(root);
+            inside.push(bitmap.$BggetPixel32(12, 12) >>> 0);
+        } finally { bitmap.$Bgdispose(); }
+    }
+    if (inside[0] !== inside[1]) throw Error('Mask blended the translucent backdrop twice: ' + inside);
+    return 'Display-list masks: direct, ancestor and cached-ancestor masks preserve preceding siblings';
+}
+
 (async () => {
     const port = Number(process.argv[2] || 9234);
     const pages = await (await fetch(`http://127.0.0.1:${port}/json`)).json();
@@ -135,7 +196,7 @@ function integration() {
     const result = await new Promise((resolve, reject) => {
         const timer = setTimeout(() => reject(Error('Browser timed out')), 30000);
         ws.onmessage = ({data}) => { const m = JSON.parse(data); if (m.id === 1) { clearTimeout(timer); resolve(m); } };
-        ws.send(JSON.stringify({id:1, method:'Runtime.evaluate', params:{expression:`[...(${pixels})(${JSON.stringify(shader)}), (${integration})()]`, returnByValue:true}}));
+        ws.send(JSON.stringify({id:1, method:'Runtime.evaluate', params:{expression:`[...(${pixels})(${JSON.stringify(shader)}), (${integration})(), (${displayMasks})()]`, returnByValue:true}}));
     });
     ws.close();
     assert.ok(!result.error && !result.result.exceptionDetails, JSON.stringify(result));

@@ -22,7 +22,7 @@ const { CacheRenderer } = load('renderer/lib/CacheRenderer.ts', {
     './RenderGroup': { RenderGroup: { getInstance: () => ({ registerMaterial() {} }) } },
     './base/RenderEntity': { RenderEntity: { registerRenderable() {} } },
 });
-function check(glVersion, filters, fail) {
+function check(glVersion, filters, fail, masked = false) {
     const image = () => ({ width: 20, height: 10, rect: new core.Rectangle(0, 0, 20, 10) });
     const target = image(), savedTarget = image(), savedProjection = {}, allocated = [], released = [], events = [];
     const parent = { view: { target: savedTarget, projection: savedProjection },
@@ -37,6 +37,7 @@ function check(glVersion, filters, fail) {
         copyPixels(src, dst, rect, point, merge, mode) { assert.notEqual(src, dst); assert.equal(dst, target); if (mode) { assert.equal(mode, 'overlay'); assert.equal(merge, true); events.push('composite'); } },
     };
     const cache = Object.assign(Object.create(CacheRenderer.prototype), {
+        _parentNode: { getMaskOwners: () => masked ? [{}] : null },
         _style: { image: target }, node: { container: { blendMode: 'overlay', filters: filters ? [{}] : null } },
         useNonNativeBlend: true, parentRenderer: parent, fail, events,
         getPaddedBounds: () => target.rect, getBoundsScale: () => 1, _initRender() {},
@@ -48,9 +49,11 @@ function check(glVersion, filters, fail) {
     assert.equal(parent.view.target, savedTarget);
     assert.equal(parent.view.projection, savedProjection);
     assert.equal(events.at(-1), 'pop');
-    if (!fail) assert.deepEqual(events, ['push', 'backdrop', 'reset', 'source', ...(filters ? ['filter'] : []), 'composite', 'pop']);
+    if (!fail) assert.deepEqual(events, ['push', 'backdrop', ...(masked ? [] : ['reset']), 'source', ...(filters ? ['filter'] : []), 'composite', 'pop']);
 }
-for (const version of [1, 2]) for (const filters of [false, true]) for (const failure of [null, 'source', 'backdrop']) check(version, filters, failure);
+for (const version of [1, 2]) for (const filters of [false, true])
+    for (const failure of [null, 'source', 'backdrop']) for (const masked of [false, true])
+        check(version, filters, failure, masked);
 
 // ES5 compilation must preserve the receiver for the render-order getter.
 const { _Render_MaterialBase: MaterialBase } = load('renderer/lib/base/_Render_MaterialBase.ts', {

@@ -75,6 +75,27 @@ pixels. The production AQW login was visually checked and resized between
 room test was performed for this change. Stage typechecking passes; renderer
 still reports its two pre-existing `AssetEvent.INVALIDATE` typing errors.
 
+### Masked overlays erasing the room
+
+Enabling overlays exposed a second case in Battleon: the compositor discarded
+all preceding draw commands, then submitted its full-backdrop quad through the
+overlay's small mask. Everything outside that mask vanished, leaving black
+terrain and missing character/UI graphics even though the bitmap pixels were
+valid. Login-only validation did not catch this.
+
+For masked composites the renderer now retains preceding siblings. The final
+composite replaces pixels inside its mask rather than source-over blending the
+already-captured backdrop a second time. Unmasked composites still replace the
+preceding draw list. The original mask remains active, so the overlay cannot
+bleed into areas outside it.
+
+`check-overlay-pixels.cjs` now also renders actual Flash display lists into
+BitmapData with direct, ancestor and cached-ancestor masks. These checks verify
+both overlay coverage inside the mask and unchanged background pixels outside.
+The failure was reproduced with the cached Battleon SWF and its rasterized
+background; the rebuilt player displays that background and NPC details with
+all authored blend modes enabled. This reproduction requires no server login.
+
 This remains an opt-in compositor, with parent-sized backdrop textures and
 additional rendering per blended object. It does not claim full Flash blend
 mode parity or change the default settings of other players.
