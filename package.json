@@ -23,12 +23,12 @@
 		"build": "npm run build:dev",
 		"build:swf-loader": "tsc --project ../swf-loader --baseUrl ../awayfl-player/node_modules",
 		"prebuild:dev": "npm run clean:bin && npm run build:swf-loader",
-		"build:dev": "webpack --config webpack.config.js --progress",
+		"build:dev": "rspack build --config rspack.config.js",
 		"prebuild:prod": "npm run clean:bin && npm run build:swf-loader",
-		"build:prod": "webpack --config webpack.config.js  --progress --env prod",
+		"build:prod": "rspack build --config rspack.config.js --env prod",
 		"server": "npm run server:dev",
 		"preserver:dev": "npm run build:swf-loader",
-		"server:dev": "webpack-dev-server --config webpack.config.js --progress",
+		"server:dev": "rspack dev --config rspack.config.js",
 		"server:dev:hmr": "npm run server:dev -- --hot",
 		"server:prod": "http-server bin --cors",
 		"start": "npm run server:dev",
@@ -37,7 +37,13 @@
 		"copyVersionToIndex": "node ./scripts/copyVersionToIndex.js ./index.ts && git add ./index.ts && git commit -m \"update version number in index.ts\"",
 		"preversion": "npm run clean",
 		"version": "npm run yarnImport && npm run copyVersionToIndex && npm run tsc:build && npm run rollup",
-		"postversion": "git push && git push --tags && npm publish"
+		"postversion": "git push && git push --tags && npm publish",
+		"build:dev:webpack": "webpack --config webpack.config.js --progress",
+		"build:prod:webpack": "webpack --config webpack.config.js  --progress --env prod",
+		"server:dev:webpack": "webpack-dev-server --config webpack.config.js --progress",
+		"prebuild:dev:webpack": "npm run clean:bin && npm run build:swf-loader",
+		"prebuild:prod:webpack": "npm run clean:bin && npm run build:swf-loader",
+		"preserver:dev:webpack": "npm run build:swf-loader"
 	},
 	"keywords": [
 		"AwayFL",
@@ -81,7 +87,11 @@
 		"@awayjs/view": "^0.6.0",
 		"@rollup/plugin-commonjs": "^18.0.0",
 		"@rollup/plugin-node-resolve": "^11.2.1",
+		"@rspack/cli": "2.2.6",
+		"@rspack/core": "2.2.6",
+		"@rspack/dev-server": "2.2.1",
 		"copy-webpack-plugin": "^11.0.0",
+		"html-rspack-plugin": "6.1.11",
 		"html-webpack-plugin": "^5.5.0",
 		"rimraf": "^4.4.0",
 		"rollup": "^2.79.1",
@@ -96,5 +106,8 @@
 		"webpack-cli": "^5.0.1",
 		"webpack-dev-server": "^4.12.0",
 		"webpack-merge": "^5.8.0"
+	},
+	"engines": {
+		"node": "^20.19.0 || >=22.12.0"
 	}
 }

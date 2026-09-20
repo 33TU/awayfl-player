@@ -11,8 +11,8 @@ Open http://127.0.0.1:8080/as3pb-bench.html. The benchmark starts automatically;
 use **Run Benchmark** to repeat it. Completion is indicated by **Done.**
 
 Keep the sibling `../avm2`, `../playerglobal`, and `../swf-loader` checkouts.
-Webpack uses the first two directly from source. The startup/build scripts compile
-the local SWF loader with TypeScript so its imported const enums are inlined.
+Rspack uses the first two directly from source (Webpack is available as a fallback).
+The startup/build scripts compile the local SWF loader with TypeScript so its imported const enums are inlined.
 Dependencies are resolved from this player's `node_modules`. Restart the server
 after editing the SWF loader to recompile it.
 
@@ -30,6 +30,85 @@ Validated in headless Chrome: AS3PB bytes, AS3PB memory, AMF3, and JSON complete
 without uncaught exceptions, including the SWF's memory correctness checks.
 Timing results describe this patched runtime and vary by browser and machine.
 Existing dependency/export warnings remain in the development console.
+
+## Rspack builds
+
+`npm run build:dev`, `npm run build:prod`, and `npm run server:dev` use Rspack.
+The parent workspace's `just prod` recipe therefore uses Rspack too. Run
+`npm install` after updating this branch. Building requires Node.js
+`^20.19.0 || >=22.12.0`; these measurements used Node 24.13.1.
+
+Webpack remains available with the same page URLs and output structure:
+
+```sh
+npm run build:dev:webpack
+npm run build:prod:webpack
+npm run server:dev:webpack -- --port 8080 --host 127.0.0.1
+```
+
+`build.config.js` shares the game templates, asset copying, local runtime aliases,
+and per-game production folders between both bundlers. `rspack.config.js` uses
+SWC for TypeScript and minification, with ES5/loose class transforms matching the
+runtime's callable constructors and assignment-style fields. The SWF loader is
+still compiled by TypeScript first to inline its external const enums. Source
+transpilation does not replace type checking.
+
+Rspack 2 treats missing exports as errors by default. Its configuration restores
+Webpack's `exportsPresence: 'auto'` behavior, leaving the existing five AVM2 type
+reexport warnings and GraphicsEndFill mismatch visible. The migration does not
+fix or hide those upstream issues. See the official
+[Webpack migration guide](https://www.rspack.dev/guide/migration/webpack) and
+[Rspack 2 export-checking defaults](https://www.rspack.dev/guide/migration/rspack_1.x).
+
+Three alternating production builds of each bundler gave the following seconds:
+
+| Bundler | Full command, three runs | Median full command | Median bundling |
+| --- | --- | ---: | ---: |
+| Webpack | 18.41, 17.66, 18.71 | 18.41 | 15.16 |
+| Rspack | 4.15, 4.16, 4.29 | 4.16 | 1.39 |
+
+The full command includes npm startup, output cleanup, and the SWF-loader
+TypeScript build. Bundling is the duration reported by each compiler. Each run
+started a fresh process; these are local measurements with warm OS caches, not
+cold-machine or incremental-build timings. Rspack 2.2.6 reduced the full median
+from 18.41 s to 4.16 s (4.4x faster), and bundling from 15.16 s to 1.39 s (10.9x).
+The shared loader build accounts for much of the remaining startup cost.
+
+The minified Main.js grew from 3,207,104 to 3,246,572 bytes (1.2%). Rspack emits
+`Main.js.LICENSE.txt` beside each game's bundle. Assets and per-game HTML match
+the Webpack output; root-index formatting and JavaScript minification differ.
+These build-time improvements do not establish faster SWF execution.
+
+A separate three-pair alternating runtime comparison used one warmup and one
+unprofiled measured invocation per fresh production page in Chrome 153.0.8010.47:
+
+| Codec | Webpack totals, ms | Rspack totals, ms | Median Webpack → Rspack |
+| --- | --- | --- | --- |
+| AS3PB bytes | 631, 618, 617 | 623, 671, 648 | 618 → 648 |
+| AS3PB memory | 974, 951, 1065 | 969, 1035, 1079 | 974 → 1035 |
+| AMF3 | 3270, 3263, 3493 | 3405, 3439, 3351 | 3270 → 3405 |
+| JSON | 1649, 1674, 1731 | 1700, 1825, 1914 | 1674 → 1825 |
+
+Median codec totals were 4–9% higher with the Rspack bundle in this small sample.
+The faster build has a potential execution-time tradeoff, so this migration stays
+on its trial branch for review. Use `build:prod:webpack` to compare the previous
+transpilation/minification pipeline. The sample is too small for a general runtime
+performance claim; no SWF execution speedup is claimed.
+
+Validation includes development-server and production browser runs through
+`Done.`, with zero captured exceptions, 63,598 AMF3 bytes, and all 100 ByteArray
+payloads preserved. The SWF's byte/cursor/round-trip assertions and the focused
+runtime/slot-writer scripts pass. Editing the player entry or a sibling AVM2
+source triggers a development rebuild. Webpack's production fallback also
+completes the browser benchmark. The existing JSON discrepancy remains unchanged.
+
+To repeat the full production comparison, alternate these commands with a wall
+clock timer (both include the same prebuild step):
+
+```sh
+npm run build:prod:webpack
+npm run build:prod
+```
 
 ## Performance investigation
 
