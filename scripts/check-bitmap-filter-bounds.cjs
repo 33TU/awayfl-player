@@ -157,3 +157,34 @@ for (const axis of ['x', 'y']) {
     assert.equal(cache._style.image.height, pad.height);
 }
 console.log('Passed: offscreen bitmap bounds, viewport clipping, empty cache skipping, and empty-to-visible texture recovery.');
+
+// Apply filters through the actual display-object setter after the cache has
+// already been rendered. Padding must refresh without moving or changing text.
+const displayExports = {};
+new Function('require', 'exports', ts.transpileModule(fs.readFileSync(
+    path.resolve(__dirname, '../../scene/lib/display/DisplayObject.ts'), 'utf8'), {
+    compilerOptions: { target: ts.ScriptTarget.ES2020, module: ts.ModuleKind.CommonJS },
+}).outputText)(name => {
+    if (name === '@awayjs/core') return core;
+    if (name === '../Settings') return { Settings: { USE_UNSAFE_FILTERS: true } };
+    return {};
+}, displayExports);
+const display = Object.create(displayExports.DisplayObject.prototype);
+cache._asset.container = display;
+display._renderObjects = {};
+display.invalidate = () => cache.onInvalidate();
+cache.onInvalidate = RendererBase.prototype.onInvalidate;
+cache.parentRenderer.getParentPosition = () => new core.Vector3D();
+cache._boundsPicker.getBoxBounds = () => new core.Box(100, 100, 0, 30, 30, 0);
+cache.stage.filterManager = { computeFiltersPadding(rect, filters) {
+    const amount = filters[0].blurX;
+    rect.x -= amount; rect.y -= amount; rect.width += amount * 2; rect.height += amount * 2;
+} };
+cache._boundsDirty = true;
+assert.equal(cache.getPaddedBounds().width, 34);
+for (const [filters, width] of [[[{ blurX: 3 }], 40], [[{ blurX: 20 }], 74], [[], 34]]) {
+    display.filters = filters;
+    assert.equal(cache.getPaddedBounds().width, width, 'filter-only changes must recompute cache padding');
+    assert.equal(cache._style.image.width, width);
+}
+console.log('Passed: adding, widening, and removing filters refreshes existing cache bounds without text or transform changes.');

@@ -297,3 +297,30 @@ error or context loss (about 1084 MB peak, 469 MB after shrinking). These are
 engine estimates, not measured driver memory. Software rendering was slow at
 4K; this does not establish that the separate reported whole-browser freeze
 while typing in chat is fixed. No authenticated server session was exercised.
+
+### Skill key labels and changing name outlines
+
+AQW's `Game.getKeyboardDict()` calls `describeType(Keyboard).constant.@name`
+then maps keyboard codes back to labels. AVM2 marked both constant and mutable
+slot traits `readwrite`, so XML reflection emitted `<variable>` for every
+keyboard constant. The game's dictionary was empty. Constant traits now report
+`readonly`, producing `<constant>` entries for both static and instance consts.
+The real game method now returns `1` through `6` for key codes 49 through 54.
+
+`Avatar.initAvatar()` replaces the name clip's timeline drop shadow with a
+black `GlowFilter(0, 1, 3, 3, 64, 1)`. Scene previously invalidated only material
+style on filter assignment. Existing cache bounds and filter padding remained
+stale until another transform/content invalidation, potentially clipping the
+new outline. Filter assignment now also invalidates the display object, so the
+cache recomputes its bounds without requiring movement or a text change.
+
+```sh
+node scripts/check-describe-constants.cjs
+node scripts/check-bitmap-filter-bounds.cjs
+```
+
+Both new regressions fail against their previous source. Browser checks use
+AQW's own keyboard lookup and AvatarMC name clip without logging into a server.
+The name test changes the filter after its first render, then verifies that the
+cache bounds refresh. This addresses a reproduced filter invalidation defect;
+the user's intermittent room-transition symptom still needs in-game confirmation.
