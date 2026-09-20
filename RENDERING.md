@@ -40,3 +40,28 @@ That requires the stage's `USE_NON_NATIVE_BLEND` compositor, which currently
 loses much of the rendered scene when enabled for this SWF. It remains disabled;
 this change does not claim full Flash filter/blend parity. Fixing that compositor
 is a separate renderer issue, rather than changing the SWF's colors or alpha.
+
+## Battleon black rectangles after joining a room
+
+AQW rasterizes background MovieClips with `BitmapData.draw`. Those clips use
+negative local coordinates, which the draw matrix translates into the bitmap.
+The renderer clipped their filter bounds against the screen origin before
+applying that translation. Some blur textures acquired negative dimensions
+(for example, 412 by -368), and the cached background contained black rectangles.
+
+The renderer's `fix/bitmap-filter-bounds` branch preserves full filter bounds
+when the root view targets an image. The destination texture clips the final
+draw. Normal screen clipping is unchanged. Keeping the full filter image can
+use more temporary texture memory than clipping it to a viewport.
+
+```sh
+node scripts/check-bitmap-filter-bounds.cjs
+```
+
+The check exercises the actual renderer bounds calculation with translated
+geometry and confirms screen clipping remains intact. It fails on the previous
+renderer. Browser validation loaded the cached Battleon SWF under a mock World
+and drew its background into a transparent 960 by 500 BitmapData using the
+map's transform. The black terrain was reproduced before the fix and disappears
+afterward with blur/glow enabled. This does not substitute for a full authenticated
+room-join test.

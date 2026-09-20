@@ -120,3 +120,28 @@ fix it returned normally, and the map's `cellSetup` callback ran on advancement.
 This is an isolated reproduction; a full authenticated server join still needs
 verification. Rebuild with `npm run build:prod` and hard-reload the loader page
 before retrying. The existing Hono process can keep running.
+
+## Room asset loading
+
+The `fix/loader-content-attachment` scene branch lets adapters opt out of
+automatically attaching raw parser content. The `fix/loader-assets` playerglobal
+branch uses that option because it already attaches AS3 Bitmap/SWF display
+objects. Previously a menu JPEG added both a Bitmap and a raw SceneImage2D to
+the display list. The latter threw `_setParent is not a function`, then
+`advanceFrame is not a function`, preventing further frame updates.
+
+The playerglobal branch also gives each URL/loadBytes operation a fresh scene
+factory. SWF character IDs are file-local; reusing the old dictionary could
+resolve a font or shape to an unrelated asset from the preceding SWF. Old
+factories remain intact for retained timelines, and content still attached to
+the Loader is removed before a new load.
+
+```sh
+node scripts/check-loader-assets.cjs
+```
+
+Browser checks verified that AQW's menu JPEG completes with one Bitmap child and
+that a single Loader can load NoBots.swf followed by the game-menu SWF. Both
+reproductions failed on the previous bundle and complete without exceptions
+with these changes. The separate bitmap/filter rendering fix is documented in
+[RENDERING.md](RENDERING.md).
