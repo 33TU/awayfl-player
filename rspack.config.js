@@ -58,8 +58,6 @@ module.exports = (env = {}) => {
 			extensions: ['.webpack.js', '.web.js', '.js', '.ts', '.tsx']
 		},
 		module: {
-			// Keep existing type reexports and GraphicsEndFill diagnostics as warnings.
-			parser: { javascript: { exportsPresence: 'auto' } },
 			rules: [{
 				test: /\.tsx?$/,
 				exclude: /node_modules/,

@@ -29,7 +29,7 @@ optimization because its bytecode reuses local register 0.
 Validated in headless Chrome: AS3PB bytes, AS3PB memory, AMF3, and JSON completed
 without uncaught exceptions, including the SWF's memory correctness checks.
 Timing results describe this patched runtime and vary by browser and machine.
-Existing dependency/export warnings remain in the development console.
+The six previous build export warnings are fixed as described below.
 
 ## Rspack builds
 
@@ -45,12 +45,18 @@ runtime's callable constructors and assignment-style fields. The SWF loader is
 still compiled by TypeScript first to inline its external const enums. Source
 transpilation does not replace type checking.
 
-Rspack 2 treats missing exports as errors by default. Its configuration restores
-Webpack's `exportsPresence: 'auto'` behavior, leaving the existing five AVM2 type
-reexport warnings and GraphicsEndFill mismatch visible. The migration does not
-fix or hide those upstream issues. See the official
-[Webpack migration guide](https://www.rspack.dev/guide/migration/webpack) and
-[Rspack 2 export-checking defaults](https://www.rspack.dev/guide/migration/rspack_1.x).
+Missing runtime exports use Rspack's default error severity. AVM2's five
+interface reexports now use `export type`, and playerglobal recognizes the
+`[graphicsdata EndFill]` tag without importing a constructor missing from the
+installed `@awayjs/graphics` 0.5.101. The tag matches the engine's
+[GraphicsEndFill definition](https://github.com/awayjs/graphics/blob/dev/lib/draw/GraphicsEndFill.ts).
+Development and production builds now complete with zero warnings.
+
+`node scripts/check-graphics-data.cjs` exercises the actual conversion method
+with installed engine strokes/paths, end-fill tags, and unknown records. It also
+reproduced the original undefined-constructor crash before the fix. This removes
+the export mismatch; it does not implement the separate `readGraphicsData` API
+missing from the installed engine version.
 
 Three alternating production builds of each bundler gave the following seconds:
 
