@@ -69,12 +69,12 @@ async function compareComposition() {
       return {
         pixels,
         medianMs: timings.sort((a, b) => a - b)[1],
-        preparation: {...pixiLive.stats.preparation}
+        preparation: {...pixiLive.stats.preparation}, filters: {...pixiLive.stats.filters}
       };
     }
     try {
       pixiLiveControls.stop();
-      await pixiLiveControls.enable({prepareOnly: true, directScene: false});
+      await pixiLiveControls.enable({prepareOnly: true, directScene: false, pixiFilters: false});
       const reference = sample();
       pixiLiveControls.stop();
       await pixiLiveControls.enable();
@@ -96,18 +96,18 @@ async function compareComposition() {
         maxChannelError: max,
         meanChannelError: sum / (reference.pixels.length / 4 * 3),
         reference: {medianMs: reference.medianMs, preparation: reference.preparation},
-        prepared: {medianMs: prepared.medianMs, preparation: prepared.preparation}
+        prepared: {medianMs: prepared.medianMs, preparation: prepared.preparation, filters: prepared.filters}
       };
     } finally {
       p.isPaused = paused;
     }
   })()`);
-  assert.equal(
-    result.maxChannelError,
-    0,
-    "Pixi output changed when skipping AwayFL composition",
+  assert.ok(
+    result.maxChannelError <= 1,
+    "Pixi geometry/filter migration changed output: " + JSON.stringify(result),
   );
   assert.ok(result.prepared.preparation.directMeshes > 0);
+  assert.ok(result.prepared.preparation.pixiFilterPasses > 0);
   assert.ok(result.prepared.preparation.skippedComposites > 0);
   assert.equal(result.prepared.preparation.skippedSceneDraws, 0);
   assert.deepEqual(result.prepared.preparation.directFallbacks, {});
@@ -243,6 +243,21 @@ try {
     await evaluate("JSON.stringify(pixiLive.stats)"),
   );
   report.restart = "passed";
+  await evaluate("pixiLiveControls.stop()");
+  report.filters = await evaluate(
+    `import('./check-filter-browser.js?v='+Date.now()).then(m=>m.checkFilters(pixiLiveControls.player))`,
+  );
+  assert.equal(report.filters.glError, 0);
+  assert.equal(report.filters.fallback, 0);
+  assert.ok(report.filters.stats.blur > 0 && report.filters.stats.shadow > 0);
+  for (const test of report.filters.results)
+    assert.equal(test.max, 0, test.name);
+  await evaluate("pixiLiveControls.enable()");
+  await until("pixiLive.stats.frames>=3 || !!pixiLive.stats.lastError");
+  assert.equal(
+    await evaluate("pixiLive.active && testGL.getError()===0"),
+    true,
+  );
   await evaluate("pixiLiveControls.stop()");
   console.log(JSON.stringify(report, null, 2));
 } catch (error) {

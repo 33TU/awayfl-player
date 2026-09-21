@@ -23,8 +23,8 @@ parameters are forwarded. `?autostart=0` waits for an explicit button click.
 Pixi now owns the final scene drawing and top-level blend composition. The
 preparation pass suppresses AwayFL's scene draw calls, scene clears, backdrop
 copies and top-level composites. It preserves their projection setup so the
-captured geometry does not shift. Offscreen filters, cached source images and
-nested effects still render through AwayFL.
+captured geometry does not shift. Blur, glow and drop-shadow GPU passes now render through Pixi. Cached source
+images, other filters and nested blend composition still render through AwayFL.
 
 The live bridge now reads ordinary triangle meshes and strokes directly from
 AwayFL's CPU geometry, including embedded text geometry, UVs, color transforms,
@@ -32,8 +32,9 @@ mask geometry and indexed draw ranges. These meshes skip AwayFL material
 activation, vertex uploads and draw-call capture. CPU buffer invalidation updates
 cached geometry; unchanged uniforms and cached sprite frames are retained.
 
-Offscreen filters and nested effects still use AwayFL, and the bridge still uses
-its scene traversal and projection setup. Unsupported materials, animators and
+AwayFL still schedules filter passes, allocates their temporary images and
+computes padding; Pixi submits supported blur/glow/shadow passes. The bridge also
+still uses AwayFL scene traversal and projection setup. Unsupported materials, animators and
 cold shader programs use the capture path. This is an intermediate backend
 migration, not a fully independent Pixi renderer or a guaranteed 24 FPS result.
 
@@ -111,7 +112,7 @@ combat effects you care about. The login scene remains behind the map fixture.
 
 Capture uses private AwayFL rendering APIs and currently requires WebGL 2.
 Native blend modes outside the adapter's supported set fail explicitly. A Pixi
-WebGPU backend, replacing AwayFL's remaining preparation/filter passes and native
+WebGPU backend, replacing AwayFL's remaining preparation/filter scheduling and native
 vector batching are future work.
 
 ## Live browser checks
@@ -119,10 +120,12 @@ vector batching are future work.
 With a disposable Chrome running on debugging port 9234, run `npm run check:live`
 (Node 22+). `CDP_URL` overrides the debugger URL. The script creates and closes
 its own page, types a probe into the username field, loads the no-login Battleon
-fixture, compares direct geometry against the previous capture-based Pixi output at login
-and in Battleon (also after resizing), checks direct coverage, resizes twice,
+fixture, compares direct geometry and Pixi filter passes against the previous capture-based
+Pixi output with AwayFL filters at login and in Battleon (also after resizing), checks direct coverage, resizes twice,
 checks zero live pixel readbacks, switches renderers,
-injects a capture failure, checks restoration of hooks, then restarts Pixi.
+injects a capture failure, checks restoration of hooks, then restarts Pixi. It also
+compares 17 isolated filter fixtures, including cropped rectangles and in-place
+filtering, and resumes the live renderer afterwards.
 It never submits login or game chat. The local test uses SwiftShader; timing
 figures from it are not representative of hardware rendering in Brave.
 
@@ -145,14 +148,16 @@ Run `npm run check:direct` for CPU-only tests of indexed subranges, interleaved
 UVs, geometry reuse, vertex/index invalidation, unsupported animator fallback and
 hook cleanup. Run `npm run check:live` for the browser integration checks.
 
-`live-smoke-result.json` records the local browser check. Its pixel comparison
-uses the same paused scene in the previous preparation/capture bridge and the
-new direct adapter. Login, Battleon and resized Battleon matched exactly in the
-local run. The warm Battleon frame used 2,513 direct mesh submissions (including
-masks), no compatibility mesh fallbacks and no captured scene draws. CPU geometry
-also loaded without GPU buffer readbacks. This checks migration regressions,
-not accuracy against Flash or Ruffle; both share the pre-existing visual
-limitations above. `liveReadbacks` excludes the test's explicit pixel comparisons.
+The original direct-adapter check matched the previous preparation/capture bridge
+exactly at login, in Battleon and after resizing. The current
+`live-smoke-result.json` expands that check to include Pixi filter passes: Battleon
+still matched exactly, with at most 1/255 RGB channel differences at login and
+after resizing. The warm Battleon frame used about 2,500 direct mesh submissions
+(including masks), no compatibility mesh fallbacks and no captured scene draws.
+CPU geometry also loaded without GPU buffer readbacks. This checks migration
+regressions, not accuracy against Flash or Ruffle; both share the pre-existing
+visual limitations above. `liveReadbacks` excludes the test's explicit pixel
+comparisons.
 
 `pixiLive.stats.preparation` reports `directMeshes`, `directCaches`,
 `directFallbacks`, actual AwayFL offscreen draws and captured scene draws
@@ -164,5 +169,34 @@ Calling `enable()` after stopping selects the direct adapter again.
 Median completion timings include preparation, Pixi submission and `gl.finish()`
 for a paused, warmed scene on SwiftShader. They are not live gameplay FPS or a
 hardware GPU speedup claim. Renderer independence still requires moving source
-filters and nested effects to Pixi and removing the remaining AwayFL traversal
+cache rendering, filter scheduling and nested blend composition to Pixi and removing the remaining AwayFL traversal
 and shared-context machinery.
+
+## Pixi filter passes
+
+`filter-passes.mjs` moves blur, glow and drop-shadow GPU draws to Pixi meshes,
+borrowing the existing source/destination textures in the shared context. It
+preserves the existing filter equations and quality settings rather than
+substituting the community GlowFilter's different algorithm. This includes
+inner, knockout, hideObject, colour/alpha/strength and directional shadows.
+No CPU pixel readback or duplicate AwayFL filter draw occurs in the live path.
+Multisampled destinations and other filter kinds keep their AwayFL path.
+
+The isolated tests in `check-filter-browser.mjs` compare RGBA pixels against
+AwayFL on an asymmetric, translucent, non-square fixture. Their GPU readbacks
+are test-only. Scene comparisons allow one channel value of rounding difference
+(1/255); isolated filter cases require exact agreement. These establish migration
+compatibility, not independent Flash/Ruffle correctness. Shader programs and
+quad geometry are reused, but shared-context state restoration still happens
+per pass. This is not a demonstrated performance improvement.
+
+`pixiLive.stats.filters` counts cumulative Pixi blur/shadow passes;
+`pixiLive.stats.preparation.pixiFilterPasses` counts them in the latest frame.
+To compare the previous filter path while retaining Pixi scene rendering:
+
+```js
+pixiLiveControls.stop();
+await pixiLiveControls.enable({ pixiFilters: false });
+```
+
+Stop and call `enable()` with no options to restore Pixi filtering.

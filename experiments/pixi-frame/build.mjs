@@ -48,3 +48,11 @@ await writeFile(
   ),
 );
 console.log("Built " + outdir);
+
+await build({
+  entryPoints: ["check-filter-browser.mjs"],
+  bundle: true,
+  format: "esm",
+  target: "es2022",
+  outfile: outdir + "check-filter-browser.js",
+});

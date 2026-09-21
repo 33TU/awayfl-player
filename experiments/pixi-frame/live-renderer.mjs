@@ -279,6 +279,7 @@ void main(){awayMain();vec2 p=gl_Position.xy/gl_Position.w;p=p*vec2(0.5,${g.offs
   return {
     renderer,
     scene,
+    texture,
     render(frame) {
       epoch++;
       if (renderer.width !== frame.width || renderer.height !== frame.height)

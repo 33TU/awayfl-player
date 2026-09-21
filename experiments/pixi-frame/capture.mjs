@@ -29,6 +29,7 @@ export function captureFrame(player, options = {}) {
     directCaches: 0,
     directFallbacks: {},
     awayDraws: 0,
+    pixiFilterPasses: 0,
     skippedSceneDraws: 0,
     skippedSceneClears: 0,
     skippedComposites: 0,
@@ -38,7 +39,8 @@ export function captureFrame(player, options = {}) {
     activeCache = null,
     recorded = 0,
     scenePass = false,
-    backdropPass = false;
+    backdropPass = false,
+    pixiFilterPass = false;
   const prepareOnly = !!options.prepareOnly;
   function hook(object, key, replacement) {
     const descriptor = Object.getOwnPropertyDescriptor(object, key);
@@ -531,6 +533,23 @@ export function captureFrame(player, options = {}) {
         },
     );
     const manager = stage.filterManager;
+    if (options.filters)
+      hook(
+        manager,
+        "drawTask",
+        (old) =>
+          function (task) {
+            let handled;
+            pixiFilterPass = true;
+            try {
+              handled = options.filters.draw(task);
+            } finally {
+              pixiFilterPass = false;
+            }
+            if (!handled) return old.apply(this, arguments);
+            stats.pixiFilterPasses++;
+          },
+      );
     hook(
       manager,
       "compositePixels",
@@ -596,7 +615,7 @@ export function captureFrame(player, options = {}) {
         "clear",
         (old) =>
           function () {
-            if (scenePass) {
+            if (scenePass && !pixiFilterPass) {
               stats.skippedSceneClears++;
               return;
             }
@@ -626,6 +645,7 @@ export function captureFrame(player, options = {}) {
       "drawArrays",
       (old) =>
         function (mode, first, count) {
+          if (pixiFilterPass) return old.apply(this, arguments);
           record(mode, first, count);
           if (prepareOnly && scenePass) {
             stats.skippedSceneDraws++;
@@ -640,6 +660,7 @@ export function captureFrame(player, options = {}) {
       "drawElements",
       (old) =>
         function (mode, count, type, offset) {
+          if (pixiFilterPass) return old.apply(this, arguments);
           record(mode, 0, count, type, offset);
           if (prepareOnly && scenePass) {
             stats.skippedSceneDraws++;

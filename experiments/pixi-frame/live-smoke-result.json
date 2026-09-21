@@ -6,78 +6,91 @@
       565
     ],
     "pixelsDifferingOver3Percent": 0,
-    "maxChannelError": 0,
-    "meanChannelError": 0,
+    "maxChannelError": 1,
+    "meanChannelError": 0.004810712811215423,
     "reference": {
-      "medianMs": 10.700000002980232,
+      "medianMs": 15.5,
       "preparation": {
-        "meshes": 131,
+        "meshes": 130,
         "cachedImages": 11,
         "overlays": 4,
         "masks": 0,
-        "triangles": 97194,
+        "triangles": 97192,
         "unsupported": [],
         "directMeshes": 0,
         "directCaches": 0,
         "directFallbacks": {},
         "awayDraws": 80,
-        "skippedSceneDraws": 144,
+        "pixiFilterPasses": 0,
+        "skippedSceneDraws": 143,
         "skippedSceneClears": 4,
         "skippedComposites": 4,
         "skippedBackdropFlushes": 4
       }
     },
     "prepared": {
-      "medianMs": 9.299999997019768,
+      "medianMs": 9,
       "preparation": {
-        "meshes": 131,
+        "meshes": 130,
         "cachedImages": 11,
         "overlays": 4,
         "masks": 0,
-        "triangles": 97194,
+        "triangles": 97192,
         "unsupported": [],
-        "directMeshes": 131,
+        "directMeshes": 130,
         "directCaches": 13,
         "directFallbacks": {},
-        "awayDraws": 80,
+        "awayDraws": 47,
+        "pixiFilterPasses": 33,
         "skippedSceneDraws": 0,
         "skippedSceneClears": 4,
         "skippedComposites": 4,
         "skippedBackdropFlushes": 4
+      },
+      "filters": {
+        "blur": 150,
+        "shadow": 15,
+        "unsupported": 0
       }
     }
   },
   "fixture": {
     "mode": "direct-scene",
-    "frames": 59,
-    "captureMs": 73.89999999850988,
-    "pixiMs": 24.899999998509884,
+    "frames": 64,
+    "captureMs": 88.60000000149012,
+    "pixiMs": 26.5,
     "lastError": null,
     "transport": {
       "initialBufferReads": 0,
-      "bufferUploads": 861,
-      "textureCopies": 65,
+      "bufferUploads": 849,
+      "textureCopies": 69,
       "pixelReadbacks": 1
     },
+    "filters": {
+      "blur": 2852,
+      "shadow": 208,
+      "unsupported": 0
+    },
     "preparation": {
-      "meshes": 2490,
+      "meshes": 2484,
       "cachedImages": 546,
       "overlays": 140,
       "masks": 92,
-      "triangles": 448536,
+      "triangles": 447084,
       "unsupported": [],
-      "directMeshes": 2512,
+      "directMeshes": 2506,
       "directCaches": 653,
       "directFallbacks": {},
-      "awayDraws": 1662,
+      "awayDraws": 1505,
+      "pixiFilterPasses": 157,
       "skippedSceneDraws": 0,
       "skippedSceneClears": 122,
       "skippedComposites": 140,
       "skippedBackdropFlushes": 140
     },
     "scene": {
-      "commands": 3036,
-      "textures": 710,
+      "commands": 3030,
+      "textures": 784,
       "programs": 4
     }
   },
@@ -90,18 +103,19 @@
     "maxChannelError": 0,
     "meanChannelError": 0,
     "reference": {
-      "medianMs": 71.20000000298023,
+      "medianMs": 73.29999999701977,
       "preparation": {
         "meshes": 2491,
         "cachedImages": 546,
         "overlays": 140,
         "masks": 92,
-        "triangles": 449198,
+        "triangles": 448538,
         "unsupported": [],
         "directMeshes": 0,
         "directCaches": 0,
         "directFallbacks": {},
         "awayDraws": 1051,
+        "pixiFilterPasses": 0,
         "skippedSceneDraws": 3166,
         "skippedSceneClears": 122,
         "skippedComposites": 140,
@@ -109,22 +123,28 @@
       }
     },
     "prepared": {
-      "medianMs": 66,
+      "medianMs": 77.20000000298023,
       "preparation": {
         "meshes": 2491,
         "cachedImages": 546,
         "overlays": 140,
         "masks": 92,
-        "triangles": 449198,
+        "triangles": 448538,
         "unsupported": [],
         "directMeshes": 2513,
         "directCaches": 653,
         "directFallbacks": {},
-        "awayDraws": 1051,
+        "awayDraws": 1018,
+        "pixiFilterPasses": 33,
         "skippedSceneDraws": 0,
         "skippedSceneClears": 122,
         "skippedComposites": 140,
         "skippedBackdropFlushes": 140
+      },
+      "filters": {
+        "blur": 150,
+        "shadow": 15,
+        "unsupported": 0
       }
     }
   },
@@ -153,21 +173,22 @@
       458
     ],
     "pixelsDifferingOver3Percent": 0,
-    "maxChannelError": 0,
-    "meanChannelError": 0,
+    "maxChannelError": 1,
+    "meanChannelError": 3.0021834061135373e-05,
     "reference": {
-      "medianMs": 71,
+      "medianMs": 70.19999999552965,
       "preparation": {
         "meshes": 2505,
         "cachedImages": 546,
         "overlays": 140,
         "masks": 92,
-        "triangles": 458502,
+        "triangles": 457416,
         "unsupported": [],
         "directMeshes": 0,
         "directCaches": 0,
         "directFallbacks": {},
         "awayDraws": 1064,
+        "pixiFilterPasses": 0,
         "skippedSceneDraws": 3180,
         "skippedSceneClears": 122,
         "skippedComposites": 140,
@@ -175,22 +196,28 @@
       }
     },
     "prepared": {
-      "medianMs": 69.90000000596046,
+      "medianMs": 65.80000000447035,
       "preparation": {
         "meshes": 2505,
         "cachedImages": 546,
         "overlays": 140,
         "masks": 92,
-        "triangles": 458502,
+        "triangles": 457416,
         "unsupported": [],
         "directMeshes": 2527,
         "directCaches": 653,
         "directFallbacks": {},
-        "awayDraws": 1064,
+        "awayDraws": 1026,
+        "pixiFilterPasses": 38,
         "skippedSceneDraws": 0,
         "skippedSceneClears": 122,
         "skippedComposites": 140,
         "skippedBackdropFlushes": 140
+      },
+      "filters": {
+        "blur": 170,
+        "shadow": 20,
+        "unsupported": 0
       }
     }
   },
@@ -208,5 +235,118 @@
     "restored": true,
     "hooks": true
   },
-  "restart": "passed"
+  "restart": "passed",
+  "filters": {
+    "results": [
+      {
+        "name": "outer glow",
+        "max": 0,
+        "mean": 0,
+        "changed": 0
+      },
+      {
+        "name": "shadow",
+        "max": 0,
+        "mean": 0,
+        "changed": 0
+      },
+      {
+        "name": "inner",
+        "max": 0,
+        "mean": 0,
+        "changed": 0
+      },
+      {
+        "name": "knockout",
+        "max": 0,
+        "mean": 0,
+        "changed": 0
+      },
+      {
+        "name": "inner knockout",
+        "max": 0,
+        "mean": 0,
+        "changed": 0
+      },
+      {
+        "name": "hide object",
+        "max": 0,
+        "mean": 0,
+        "changed": 0
+      },
+      {
+        "name": "inner hide object",
+        "max": 0,
+        "mean": 0,
+        "changed": 0
+      },
+      {
+        "name": "quality 1",
+        "max": 0,
+        "mean": 0,
+        "changed": 0
+      },
+      {
+        "name": "quality 3",
+        "max": 0,
+        "mean": 0,
+        "changed": 0
+      },
+      {
+        "name": "zero blur",
+        "max": 0,
+        "mean": 0,
+        "changed": 0
+      },
+      {
+        "name": "scaled",
+        "max": 0,
+        "mean": 0,
+        "changed": 0
+      },
+      {
+        "name": "negative distance",
+        "max": 0,
+        "mean": 0,
+        "changed": 0
+      },
+      {
+        "name": "transparent",
+        "max": 0,
+        "mean": 0,
+        "changed": 0
+      },
+      {
+        "name": "blur",
+        "max": 0,
+        "mean": 0,
+        "changed": 0
+      },
+      {
+        "name": "cropped",
+        "max": 0,
+        "mean": 0,
+        "changed": 0
+      },
+      {
+        "name": "in place",
+        "max": 0,
+        "mean": 0,
+        "changed": 0
+      },
+      {
+        "name": "filter chain",
+        "max": 0,
+        "mean": 0,
+        "changed": 0
+      }
+    ],
+    "stats": {
+      "blur": 174,
+      "shadow": 17,
+      "unsupported": 0
+    },
+    "fallback": 0,
+    "glError": 0
+  }
 }

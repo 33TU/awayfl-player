@@ -1,3 +1,4 @@
+import { createFilterPasses } from "./filter-passes.mjs";
 import { createDirectScene } from "./direct-scene.mjs";
 import { captureFrame } from "./capture.mjs";
 import { saveGL, createTransport, mirrorGL } from "./shared-gl.mjs";
@@ -5,7 +6,12 @@ import { createLiveRenderer } from "./live-renderer.mjs";
 
 export async function startLive(
   player,
-  { onStatus = () => {}, prepareOnly = true, directScene = true } = {},
+  {
+    onStatus = () => {},
+    prepareOnly = true,
+    directScene = true,
+    pixiFilters = true,
+  } = {},
 ) {
   const root = player._renderer,
     gl = player._view.stage.context._gl;
@@ -26,6 +32,9 @@ export async function startLive(
     programs = new Map(),
     original = root.render,
     direct = prepareOnly && directScene ? createDirectScene() : null;
+  const filters = pixiFilters
+    ? createFilterPasses(player._view.stage, live, transport)
+    : null;
   let stopped = false,
     inFrame = false,
     frames = 0,
@@ -41,6 +50,7 @@ export async function startLive(
     pixiMs: 0,
     lastError: null,
     transport: transport.stats,
+    filters: filters?.stats,
   };
   function stop() {
     if (stopped) return;
@@ -50,6 +60,7 @@ export async function startLive(
     try {
       transport.suspend();
       direct?.destroy();
+      filters?.destroy();
       live.destroy();
       transport.destroy();
     } finally {
@@ -70,6 +81,7 @@ export async function startLive(
         quiet: true,
         prepareOnly,
         direct,
+        filters,
         render: () => original.apply(this, args),
       });
       stats.preparation = frame.stats;

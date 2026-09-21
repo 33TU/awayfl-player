@@ -727,6 +727,9 @@ export function createTransport(gl) {
     suspend() {
       tracking = false;
     },
+    resume() {
+      tracking = true;
+    },
     geometryKey(bindings, index, first, count, type, offset) {
       return [
         identity(index),
