@@ -96,9 +96,39 @@ The failure was reproduced with the cached Battleon SWF and its rasterized
 background; the rebuilt player displays that background and NPC details with
 all authored blend modes enabled. This reproduction requires no server login.
 
-This remains an opt-in compositor, with parent-sized backdrop textures and
-additional rendering per blended object. It does not claim full Flash blend
-mode parity or change the default settings of other players.
+This remains an opt-in compositor. It does not claim full Flash blend-mode
+parity or change the default settings of other players.
+
+### Overlay rendering cost
+
+`fix/overlay-performance` in renderer/player builds on the compositor fix. The
+first unmasked screen composite provides a shared backdrop. Later composites
+use their own padded bounds and append only newly collected drawing commands
+to that backdrop. Masked quads retain their original masks. MSAA updates use
+the bounds of the changed batch, so each tiny highlight no longer resolves a
+full-screen multisample image. Unchanged isolated sources are reused; content,
+transform, color-transform and filter invalidation still rerasterize them.
+Backdrop composition refreshes every frame regardless of source invalidation.
+Nested caches and BitmapData.draw keep the existing capture path because their
+projection coordinates differ from the screen.
+
+In the local Battleon SWF reproduction at approximately 996x570 render pixels,
+141 overlay caches previously stored 79.6 million image pixels. The optimized
+path stored about 0.74 million, including the extra isolated-source caches
+(roughly 99% less). These figures exclude temporary buffers and GPU overhead.
+Short SwiftShader samples measured a median around 57 ms versus 64 ms before;
+variance was substantial, so this is not a hardware-GPU FPS prediction.
+
+The production build and overlay/mask/bounds/render-target checks pass. Live
+Battleon output from cached sources matches freshly rasterized sources byte
+for byte, including after resizing to a 1600x1000 window, with no WebGL errors.
+The map reproduction loads the cached map and rasterizes its background without
+a server login; authenticated gameplay still needs user confirmation.
+
+`check-overlay-compositing.cjs` covers source reuse versus changing backdrops,
+nonzero capture origins, incremental batches, MSAA, feedback avoidance and
+exception state restoration. `check-overlay-pixels.cjs` also compares source
+reuse with forced source rerasterization in the currently loaded scene.
 
 ## Battleon black rectangles after joining a room
 

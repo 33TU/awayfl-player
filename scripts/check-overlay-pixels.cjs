@@ -188,6 +188,37 @@ function displayMasks() {
     return 'Display-list masks: direct, ancestor and cached-ancestor masks preserve preceding siblings';
 }
 
+function cachedOverlaySources() {
+    let renderer;
+    const caches = [];
+    function walk(node) {
+        for (const cache of Object.values(node._renderObjects || {})) {
+            if (!cache.useNonNativeBlend) continue;
+            caches.push(cache);
+            renderer = cache;
+            while (renderer.parentRenderer) renderer = renderer.parentRenderer;
+        }
+        for (const child of node._children || []) walk(child);
+    }
+    walk(_AWAY_DEBUG_PLAYER_.player.root);
+    if (!renderer) throw Error('Load a scene with overlay blends before testing source reuse');
+    const gl = renderer.stage.context._gl;
+    function pixels() {
+        renderer.render();
+        const result = new Uint8Array(gl.drawingBufferWidth * gl.drawingBufferHeight * 4);
+        gl.readPixels(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight, gl.RGBA, gl.UNSIGNED_BYTE, result);
+        return result;
+    }
+    const cached = pixels();
+    for (const cache of caches) cache._invalid = true;
+    const fresh = pixels();
+    for (let i = 0; i < cached.length; i++) {
+        if (cached[i] !== fresh[i]) throw Error(`Cached overlay source differs from rerendered source at byte ${i}`);
+    }
+    if (gl.isContextLost() || gl.getError()) throw Error('Overlay source reuse caused a WebGL error');
+    return 'Live scene: cached and freshly rasterized overlay sources produce identical pixels';
+}
+
 (async () => {
     const port = Number(process.argv[2] || 9234);
     const pages = await (await fetch(`http://127.0.0.1:${port}/json`)).json();
@@ -196,7 +227,7 @@ function displayMasks() {
     const result = await new Promise((resolve, reject) => {
         const timer = setTimeout(() => reject(Error('Browser timed out')), 30000);
         ws.onmessage = ({data}) => { const m = JSON.parse(data); if (m.id === 1) { clearTimeout(timer); resolve(m); } };
-        ws.send(JSON.stringify({id:1, method:'Runtime.evaluate', params:{expression:`[...(${pixels})(${JSON.stringify(shader)}), (${integration})(), (${displayMasks})()]`, returnByValue:true}}));
+        ws.send(JSON.stringify({id:1, method:'Runtime.evaluate', params:{expression:`[...(${pixels})(${JSON.stringify(shader)}), (${integration})(), (${displayMasks})(), (${cachedOverlaySources})()]`, returnByValue:true}}));
     });
     ws.close();
     assert.ok(!result.error && !result.result.exceptionDetails, JSON.stringify(result));
