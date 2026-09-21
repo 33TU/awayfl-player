@@ -1,10 +1,11 @@
+import { createDirectScene } from "./direct-scene.mjs";
 import { captureFrame } from "./capture.mjs";
 import { saveGL, createTransport, mirrorGL } from "./shared-gl.mjs";
 import { createLiveRenderer } from "./live-renderer.mjs";
 
 export async function startLive(
   player,
-  { onStatus = () => {}, prepareOnly = true } = {},
+  { onStatus = () => {}, prepareOnly = true, directScene = true } = {},
 ) {
   const root = player._renderer,
     gl = player._view.stage.context._gl;
@@ -23,13 +24,18 @@ export async function startLive(
   const unmirror = mirrorGL(gl, player._view.stage.context),
     transport = createTransport(gl),
     programs = new Map(),
-    original = root.render;
+    original = root.render,
+    direct = prepareOnly && directScene ? createDirectScene() : null;
   let stopped = false,
     inFrame = false,
     frames = 0,
     lastStatus = 0;
   const stats = {
-    mode: prepareOnly ? "pixi-composition" : "double-render-reference",
+    mode: direct
+      ? "direct-scene"
+      : prepareOnly
+        ? "pixi-composition"
+        : "double-render-reference",
     frames: 0,
     captureMs: 0,
     pixiMs: 0,
@@ -43,6 +49,7 @@ export async function startLive(
     const restore = saveGL(gl);
     try {
       transport.suspend();
+      direct?.destroy();
       live.destroy();
       transport.destroy();
     } finally {
@@ -62,6 +69,7 @@ export async function startLive(
         programs,
         quiet: true,
         prepareOnly,
+        direct,
         render: () => original.apply(this, args),
       });
       stats.preparation = frame.stats;
@@ -85,6 +93,10 @@ export async function startLive(
     } catch (error) {
       console.error("[Pixi live]", error);
       stats.lastError = error.message;
+      // A capture can throw before an AwayFL draw reaches its deferred VAO
+      // unbind. Reset that state before fallback material activation can clear
+      // attributes on the interrupted mesh's VAO.
+      player._view.stage.context._vaoContext?.unbindVertexArrays();
       stop();
       original.apply(this, args);
       onStatus("Pixi stopped: " + error.message, stats);

@@ -144,19 +144,33 @@ void main(){awayMain();vec2 p=gl_Position.xy/gl_Position.w;p=p*vec2(0.5,${g.offs
         for (const [name, a] of Object.entries(g.attributes))
           if (geometry.attributes[name].buffer.data !== a.data)
             geometry.attributes[name].buffer.data = a.data;
-        group.uniforms.uAwayViewport.set([
+        let changed = false;
+        function updateUniform(name, value) {
+          const previous = group.uniforms[name];
+          if (Array.isArray(value)) {
+            if (value.some((v, i) => previous[i] !== Math.fround(v))) {
+              previous.set(value);
+              changed = true;
+            }
+          } else if (previous !== value) {
+            group.uniforms[name] = value;
+            changed = true;
+          }
+        }
+        updateUniform("uAwayViewport", [
           g.viewport.x,
           g.viewport.y,
           g.viewport.width,
           g.viewport.height,
         ]);
-        for (const [name, u] of Object.entries(g.uniforms)) {
-          if (Array.isArray(u.value)) group.uniforms[name].set(u.value);
-          else group.uniforms[name] = u.value;
+        for (const [name, u] of Object.entries(g.uniforms))
+          updateUniform(name, u.value);
+        if (changed) group.update();
+        for (const [name, t] of Object.entries(g.samplers)) {
+          const source = texture(t).source;
+          if (shader.resources[name] !== source)
+            shader.resources[name] = source;
         }
-        group.update();
-        for (const [name, t] of Object.entries(g.samplers))
-          shader.resources[name] = texture(t).source;
         object.blendMode = g.blend;
         const b = g.bounds || g.viewport;
         Object.assign(geometry._bounds, {
@@ -231,15 +245,21 @@ void main(){awayMain();vec2 p=gl_Position.xy/gl_Position.w;p=p*vec2(0.5,${g.offs
       update(c) {
         if (sprite) {
           const t = texture(c.pixels);
-          crop.source = t.source;
-          Object.assign(crop.frame, {
-            x: 0,
-            y: 0,
-            width: c.bounds.width,
-            height: c.bounds.height,
-          });
-          crop.orig.copyFrom(crop.frame);
-          crop.update();
+          if (
+            crop.source !== t.source ||
+            crop.frame.width !== c.bounds.width ||
+            crop.frame.height !== c.bounds.height
+          ) {
+            crop.source = t.source;
+            Object.assign(crop.frame, {
+              x: 0,
+              y: 0,
+              width: c.bounds.width,
+              height: c.bounds.height,
+            });
+            crop.orig.copyFrom(crop.frame);
+            crop.update();
+          }
           sprite.position.set(c.bounds.x, c.bounds.y);
           sprite.width = c.bounds.width;
           sprite.height = c.bounds.height;

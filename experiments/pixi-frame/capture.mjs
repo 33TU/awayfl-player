@@ -25,6 +25,9 @@ export function captureFrame(player, options = {}) {
     masks: 0,
     triangles: 0,
     unsupported: [],
+    directMeshes: 0,
+    directCaches: 0,
+    directFallbacks: {},
     awayDraws: 0,
     skippedSceneDraws: 0,
     skippedSceneClears: 0,
@@ -196,7 +199,8 @@ export function captureFrame(player, options = {}) {
   function record(mode, first, count, indexType, indexOffset) {
     if (
       !active ||
-      (active.entity.renderer !== root && !active.entity.renderer._maskConfig) ||
+      (active.entity.renderer !== root &&
+        !active.entity.renderer._maskConfig) ||
       (active.entity.renderer === root &&
         active.renderable.assetType === "[renderer CacheRenderer]")
     )
@@ -339,27 +343,37 @@ export function captureFrame(player, options = {}) {
     if (prepareOnly) {
       // Keep material activation and geometry uploads for capture, but only
       // offscreen source/filter passes should submit AwayFL GPU draws.
-      hook(base, "executeRender", (old) => function () {
-        const previous = scenePass;
-        scenePass = this === root || (!!this._maskConfig && previous);
-        try {
-          return old.apply(this, arguments);
-        } finally {
-          scenePass = previous;
-        }
-      });
-      hook(root, "flushBlendBackdrop", (old) => function () {
-        // Preserve AwayFL's projection/viewport setup for captured geometry.
-        // Only the draws and copy into the accumulator are redundant.
-        const previous = backdropPass;
-        backdropPass = true;
-        try {
-          stats.skippedBackdropFlushes++;
-          return old.apply(this, arguments);
-        } finally {
-          backdropPass = previous;
-        }
-      });
+      hook(
+        base,
+        "executeRender",
+        (old) =>
+          function () {
+            const previous = scenePass;
+            scenePass = this === root || (!!this._maskConfig && previous);
+            try {
+              return old.apply(this, arguments);
+            } finally {
+              scenePass = previous;
+            }
+          },
+      );
+      hook(
+        root,
+        "flushBlendBackdrop",
+        (old) =>
+          function () {
+            // Preserve AwayFL's projection/viewport setup for captured geometry.
+            // Only the draws and copy into the accumulator are redundant.
+            const previous = backdropPass;
+            backdropPass = true;
+            try {
+              stats.skippedBackdropFlushes++;
+              return old.apply(this, arguments);
+            } finally {
+              backdropPass = previous;
+            }
+          },
+      );
     }
     hook(
       context._texContext,
@@ -469,6 +483,50 @@ export function captureFrame(player, options = {}) {
               );
             }
           }
+          if (options.direct && scenePass) {
+            for (const item of items) {
+              // Mask geometry is still collected using the existing traversal.
+              // Its meshes take this same direct path when supported.
+              if (
+                this._activeMasksDirty ||
+                this._checkMaskOwners(item.entity.maskOwners)
+              ) {
+                this._activeMaskOwners = item.entity.maskOwners;
+                if (this._activeMaskOwners)
+                  this._renderMasks(this._activeMaskOwners);
+                else if (!this._maskConfig) context.disableStencil();
+                this._activeMasksDirty = false;
+              }
+              if (
+                this === root &&
+                item.renderable.assetType === "[renderer CacheRenderer]"
+              ) {
+                stats.directCaches++;
+                continue;
+              }
+              const target = this.view.target;
+              const viewport = target
+                ? targets.get(target)
+                : { x: 0, y: 0, width, height };
+              if (!viewport) throw Error("Missing direct projection bounds");
+              const b = root.getBlendBatchBounds([item]);
+              const recipe = options.direct.recipe(item, {
+                metadata,
+                transport: options.transport,
+                viewport: { ...viewport },
+                offscreen: !!target,
+                bounds: { x: b.x, y: b.y, width: b.width, height: b.height },
+                fallback: (reason) =>
+                  (stats.directFallbacks[reason] =
+                    (stats.directFallbacks[reason] || 0) + 1),
+              });
+              if (recipe) {
+                draws.set(item, [recipe]);
+                stats.directMeshes++;
+              } else old.call(this, [item]);
+            }
+            return;
+          }
           return old.apply(this, arguments);
         },
     );
@@ -481,7 +539,11 @@ export function captureFrame(player, options = {}) {
           if (activeCache)
             sources.set(
               activeCache,
-              sourcePixels(source, activeCache, source !== activeCache._blendSource),
+              sourcePixels(
+                source,
+                activeCache,
+                source !== activeCache._blendSource,
+              ),
             );
           if (prepareOnly && activeCache?.parentRenderer === root) {
             stats.skippedComposites++;
@@ -496,20 +558,29 @@ export function captureFrame(player, options = {}) {
       (old) =>
         function (source, target, rect, point, merge, blend) {
           if (
-            prepareOnly && backdropPass &&
+            prepareOnly &&
+            backdropPass &&
             target === root._blendAccumulator?.style.image
-          ) return;
+          )
+            return;
           // A top-level non-native cache no longer needs a copied backdrop.
           // Its isolated source and filters use separate temporary images.
           if (
-            prepareOnly && activeCache?.parentRenderer === root &&
-            activeCache.useNonNativeBlend && !blend &&
+            prepareOnly &&
+            activeCache?.parentRenderer === root &&
+            activeCache.useNonNativeBlend &&
+            !blend &&
             target === activeCache.style.image
-          ) return;
+          )
+            return;
           if (activeCache && blend) {
             sources.set(
               activeCache,
-              sourcePixels(source, activeCache, source !== activeCache._blendSource),
+              sourcePixels(
+                source,
+                activeCache,
+                source !== activeCache._blendSource,
+              ),
             );
             if (prepareOnly && activeCache.parentRenderer === root) {
               stats.skippedComposites++;
@@ -519,13 +590,19 @@ export function captureFrame(player, options = {}) {
           return old.apply(this, arguments);
         },
     );
-    if (prepareOnly) hook(gl, "clear", (old) => function () {
-      if (scenePass) {
-        stats.skippedSceneClears++;
-        return;
-      }
-      return old.apply(this, arguments);
-    });
+    if (prepareOnly)
+      hook(
+        gl,
+        "clear",
+        (old) =>
+          function () {
+            if (scenePass) {
+              stats.skippedSceneClears++;
+              return;
+            }
+            return old.apply(this, arguments);
+          },
+      );
     hook(
       gl,
       "bufferData",

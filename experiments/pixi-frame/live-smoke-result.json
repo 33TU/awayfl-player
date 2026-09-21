@@ -9,7 +9,7 @@
     "maxChannelError": 0,
     "meanChannelError": 0,
     "reference": {
-      "medianMs": 6.5,
+      "medianMs": 10.700000002980232,
       "preparation": {
         "meshes": 131,
         "cachedImages": 11,
@@ -17,15 +17,18 @@
         "masks": 0,
         "triangles": 97194,
         "unsupported": [],
-        "awayDraws": 232,
-        "skippedSceneDraws": 0,
-        "skippedSceneClears": 0,
-        "skippedComposites": 0,
-        "skippedBackdropFlushes": 0
+        "directMeshes": 0,
+        "directCaches": 0,
+        "directFallbacks": {},
+        "awayDraws": 80,
+        "skippedSceneDraws": 144,
+        "skippedSceneClears": 4,
+        "skippedComposites": 4,
+        "skippedBackdropFlushes": 4
       }
     },
     "prepared": {
-      "medianMs": 11.299999997019768,
+      "medianMs": 9.299999997019768,
       "preparation": {
         "meshes": 131,
         "cachedImages": 11,
@@ -33,8 +36,11 @@
         "masks": 0,
         "triangles": 97194,
         "unsupported": [],
+        "directMeshes": 131,
+        "directCaches": 13,
+        "directFallbacks": {},
         "awayDraws": 80,
-        "skippedSceneDraws": 144,
+        "skippedSceneDraws": 0,
         "skippedSceneClears": 4,
         "skippedComposites": 4,
         "skippedBackdropFlushes": 4
@@ -42,14 +48,14 @@
     }
   },
   "fixture": {
-    "mode": "pixi-composition",
+    "mode": "direct-scene",
     "frames": 59,
-    "captureMs": 125.10000000149012,
-    "pixiMs": 32,
+    "captureMs": 73.89999999850988,
+    "pixiMs": 24.899999998509884,
     "lastError": null,
     "transport": {
-      "initialBufferReads": 124,
-      "bufferUploads": 5097,
+      "initialBufferReads": 0,
+      "bufferUploads": 861,
       "textureCopies": 65,
       "pixelReadbacks": 1
     },
@@ -60,15 +66,18 @@
       "masks": 92,
       "triangles": 448536,
       "unsupported": [],
+      "directMeshes": 2512,
+      "directCaches": 653,
+      "directFallbacks": {},
       "awayDraws": 1662,
-      "skippedSceneDraws": 3165,
+      "skippedSceneDraws": 0,
       "skippedSceneClears": 122,
       "skippedComposites": 140,
       "skippedBackdropFlushes": 140
     },
     "scene": {
       "commands": 3036,
-      "textures": 709,
+      "textures": 710,
       "programs": 4
     }
   },
@@ -81,7 +90,7 @@
     "maxChannelError": 0,
     "meanChannelError": 0,
     "reference": {
-      "medianMs": 97.40000000596046,
+      "medianMs": 71.20000000298023,
       "preparation": {
         "meshes": 2491,
         "cachedImages": 546,
@@ -89,15 +98,18 @@
         "masks": 92,
         "triangles": 449198,
         "unsupported": [],
-        "awayDraws": 4466,
-        "skippedSceneDraws": 0,
-        "skippedSceneClears": 0,
-        "skippedComposites": 0,
-        "skippedBackdropFlushes": 0
+        "directMeshes": 0,
+        "directCaches": 0,
+        "directFallbacks": {},
+        "awayDraws": 1051,
+        "skippedSceneDraws": 3166,
+        "skippedSceneClears": 122,
+        "skippedComposites": 140,
+        "skippedBackdropFlushes": 140
       }
     },
     "prepared": {
-      "medianMs": 78.5,
+      "medianMs": 66,
       "preparation": {
         "meshes": 2491,
         "cachedImages": 546,
@@ -105,8 +117,11 @@
         "masks": 92,
         "triangles": 449198,
         "unsupported": [],
+        "directMeshes": 2513,
+        "directCaches": 653,
+        "directFallbacks": {},
         "awayDraws": 1051,
-        "skippedSceneDraws": 3166,
+        "skippedSceneDraws": 0,
         "skippedSceneClears": 122,
         "skippedComposites": 140,
         "skippedBackdropFlushes": 140
@@ -141,7 +156,7 @@
     "maxChannelError": 0,
     "meanChannelError": 0,
     "reference": {
-      "medianMs": 88.10000000149012,
+      "medianMs": 71,
       "preparation": {
         "meshes": 2505,
         "cachedImages": 546,
@@ -149,15 +164,18 @@
         "masks": 92,
         "triangles": 458502,
         "unsupported": [],
-        "awayDraws": 4493,
-        "skippedSceneDraws": 0,
-        "skippedSceneClears": 0,
-        "skippedComposites": 0,
-        "skippedBackdropFlushes": 0
+        "directMeshes": 0,
+        "directCaches": 0,
+        "directFallbacks": {},
+        "awayDraws": 1064,
+        "skippedSceneDraws": 3180,
+        "skippedSceneClears": 122,
+        "skippedComposites": 140,
+        "skippedBackdropFlushes": 140
       }
     },
     "prepared": {
-      "medianMs": 74.89999999850988,
+      "medianMs": 69.90000000596046,
       "preparation": {
         "meshes": 2505,
         "cachedImages": 546,
@@ -165,8 +183,11 @@
         "masks": 92,
         "triangles": 458502,
         "unsupported": [],
+        "directMeshes": 2527,
+        "directCaches": 653,
+        "directFallbacks": {},
         "awayDraws": 1064,
-        "skippedSceneDraws": 3180,
+        "skippedSceneDraws": 0,
         "skippedSceneClears": 122,
         "skippedComposites": 140,
         "skippedBackdropFlushes": 140

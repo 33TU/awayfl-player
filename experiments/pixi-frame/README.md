@@ -26,19 +26,25 @@ copies and top-level composites. It preserves their projection setup so the
 captured geometry does not shift. Offscreen filters, cached source images and
 nested effects still render through AwayFL.
 
-This remains an experimental bridge. AwayFL still traverses the scene, activates
-materials and uploads geometry for capture; Pixi then submits the final scene.
-Removing duplicate GPU draws does not remove this CPU overhead or guarantee
-24 FPS. The renderer toggle allows comparison on your own GPU.
+The live bridge now reads ordinary triangle meshes and strokes directly from
+AwayFL's CPU geometry, including embedded text geometry, UVs, color transforms,
+mask geometry and indexed draw ranges. These meshes skip AwayFL material
+activation, vertex uploads and draw-call capture. CPU buffer invalidation updates
+cached geometry; unchanged uniforms and cached sprite frames are retained.
 
-The bridge reuses meshes, programs and uploaded geometry between frames. It
-borrows GPU textures (including persistent isolated blend sources) in the shared
-WebGL 2 context, snapshots temporary blend sources with GPU copies, and mirrors
-buffer uploads. Buffers that existed before
-activation may be downloaded once; live frames do not read back pixels. AwayFL
-keeps input, ActionScript, timelines and networking. Pixi's input listeners are
-disabled. WebGL state and hooks are restored when switching back or when a
-capture fails, and stopping Pixi does not destroy AwayFL's graphics context.
+Offscreen filters and nested effects still use AwayFL, and the bridge still uses
+its scene traversal and projection setup. Unsupported materials, animators and
+cold shader programs use the capture path. This is an intermediate backend
+migration, not a fully independent Pixi renderer or a guaranteed 24 FPS result.
+
+The bridge borrows GPU textures (including persistent isolated blend sources)
+in the shared WebGL 2 context and snapshots temporary blend sources with GPU
+copies. Direct geometry needs no GPU buffer readbacks. The compatibility path
+may download existing buffers once; live rendering does not read back pixels.
+AwayFL keeps input, ActionScript, timelines and networking. Pixi's input listeners
+are disabled. WebGL state and hooks are restored when switching back or after a
+capture failure, including unbinding an interrupted AwayFL vertex array before
+fallback. Stopping Pixi does not destroy AwayFL's graphics context.
 
 This uses private APIs from both engines. Fractional-size alignment differences
 remain in the shared adapter: the 835×478 Battleon fixture had about 16.6% of
@@ -113,8 +119,8 @@ vector batching are future work.
 With a disposable Chrome running on debugging port 9234, run `npm run check:live`
 (Node 22+). `CDP_URL` overrides the debugger URL. The script creates and closes
 its own page, types a probe into the username field, loads the no-login Battleon
-fixture, compares the prepared and double-rendered Pixi output at login and in
-Battleon (also after resizing), checks that AwayFL draws decrease, resizes twice,
+fixture, compares direct geometry against the previous capture-based Pixi output at login
+and in Battleon (also after resizing), checks direct coverage, resizes twice,
 checks zero live pixel readbacks, switches renderers,
 injects a capture failure, checks restoration of hooks, then restarts Pixi.
 It never submits login or game chat. The local test uses SwiftShader; timing
@@ -133,20 +139,30 @@ In that run, median completion times were 26.1 ms for AwayFL and 4.6 ms for Pixi
 Those software-renderer results are exploratory, not an Intel GPU or live-game
 speedup claim. Pixel differences and the warm-cache-only scope still apply.
 
-## Composition optimization validation
+## Direct adapter validation
 
-`live-smoke-result.json` records the latest local browser check. Its pixel check
-compares two Pixi frames of the same paused scene: the original double-render
-reference and the new preparation-only path. This checks for regressions from
-skipping AwayFL composition, not accuracy against Flash or Ruffle. The local run
-had zero pixel differences at login, in Battleon and after resizing. Warm
-Battleon preparation fell from 4,466 AwayFL GPU draws to 1,051, with 140
-top-level composites skipped. Both paths
-still share the adapter's pre-existing visual limitations above.
+Run `npm run check:direct` for CPU-only tests of indexed subranges, interleaved
+UVs, geometry reuse, vertex/index invalidation, unsupported animator fallback and
+hook cleanup. Run `npm run check:live` for the browser integration checks.
 
-For debugging, `pixiLive.stats.preparation` reports actual AwayFL draws and
-skipped scene draws/composites. The test-only reference is available through
-`pixiLiveControls.stop(); await pixiLiveControls.enable({prepareOnly:false})`;
-calling `enable()` after stopping selects the optimized path again. Median
-completion timings include preparation, Pixi submission and `gl.finish()` for a
-paused, warmed scene on SwiftShader; they are not live gameplay FPS.
+`live-smoke-result.json` records the local browser check. Its pixel comparison
+uses the same paused scene in the previous preparation/capture bridge and the
+new direct adapter. Login, Battleon and resized Battleon matched exactly in the
+local run. The warm Battleon frame used 2,513 direct mesh submissions (including
+masks), no compatibility mesh fallbacks and no captured scene draws. CPU geometry
+also loaded without GPU buffer readbacks. This checks migration regressions,
+not accuracy against Flash or Ruffle; both share the pre-existing visual
+limitations above. `liveReadbacks` excludes the test's explicit pixel comparisons.
+
+`pixiLive.stats.preparation` reports `directMeshes`, `directCaches`,
+`directFallbacks`, actual AwayFL offscreen draws and captured scene draws
+(`skippedSceneDraws`). For debugging, select the previous bridge with
+`pixiLiveControls.stop(); await pixiLiveControls.enable({directScene:false})`.
+Calling `enable()` after stopping selects the direct adapter again.
+`{prepareOnly:false}` retains the older double-render reference for diagnosis.
+
+Median completion timings include preparation, Pixi submission and `gl.finish()`
+for a paused, warmed scene on SwiftShader. They are not live gameplay FPS or a
+hardware GPU speedup claim. Renderer independence still requires moving source
+filters and nested effects to Pixi and removing the remaining AwayFL traversal
+and shared-context machinery.

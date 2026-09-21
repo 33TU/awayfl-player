@@ -74,7 +74,7 @@ async function compareComposition() {
     }
     try {
       pixiLiveControls.stop();
-      await pixiLiveControls.enable({prepareOnly: false});
+      await pixiLiveControls.enable({prepareOnly: true, directScene: false});
       const reference = sample();
       pixiLiveControls.stop();
       await pixiLiveControls.enable();
@@ -102,10 +102,19 @@ async function compareComposition() {
       p.isPaused = paused;
     }
   })()`);
-  assert.equal(result.maxChannelError, 0, "Pixi output changed when skipping AwayFL composition");
-  assert.ok(result.prepared.preparation.skippedSceneDraws > 0);
+  assert.equal(
+    result.maxChannelError,
+    0,
+    "Pixi output changed when skipping AwayFL composition",
+  );
+  assert.ok(result.prepared.preparation.directMeshes > 0);
   assert.ok(result.prepared.preparation.skippedComposites > 0);
-  assert.ok(result.prepared.preparation.awayDraws < result.reference.preparation.awayDraws);
+  assert.equal(result.prepared.preparation.skippedSceneDraws, 0);
+  assert.deepEqual(result.prepared.preparation.directFallbacks, {});
+  assert.ok(
+    result.prepared.preparation.awayDraws <=
+      result.reference.preparation.awayDraws,
+  );
   return result;
 }
 const report = {};
@@ -216,7 +225,7 @@ try {
   });
   // Deliberate capture failure must return control to AwayFL and remove hooks.
   await evaluate(
-    `window.testRead=testGL.getBufferSubData;testGL.getBufferSubData=()=>{throw Error('injected capture failure')};pixiLiveControls.enable()`,
+    `window.testRead=testGL.getBufferSubData;testGL.getBufferSubData=()=>{throw Error('injected capture failure')};pixiLiveControls.enable({directScene:false})`,
   );
   await until("!!pixiLive.stats.lastError");
   report.failureRecovery = await evaluate(
@@ -228,10 +237,17 @@ try {
   assert.equal(report.failureRecovery.hooks, true);
   await evaluate("pixiLiveControls.enable()");
   await until("pixiLive.stats.frames>=3 || !!pixiLive.stats.lastError");
-  assert.equal(await evaluate("pixiLive.active"), true);
+  assert.equal(
+    await evaluate("pixiLive.active"),
+    true,
+    await evaluate("JSON.stringify(pixiLive.stats)"),
+  );
   report.restart = "passed";
   await evaluate("pixiLiveControls.stop()");
   console.log(JSON.stringify(report, null, 2));
+} catch (error) {
+  console.error(JSON.stringify(report, null, 2));
+  throw error;
 } finally {
   ws.close();
   await fetch(endpoint + "/json/close/" + target.id);

@@ -4,7 +4,8 @@
   "type": "module",
   "scripts": {
     "build": "node build.mjs",
-    "check:live": "node check-live.mjs"
+    "check:live": "node check-live.mjs",
+    "check:direct": "node check-direct.mjs"
   },
   "dependencies": {
     "pixi.js": "8.21.0"
