@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+  <meta charset="utf-8" /><meta
+    name="viewport"
+    content="width=device-width,initial-scale=1"
+  />
+  <title>AQW — live Pixi experiment</title>
+  <style>
+    html,
+    body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      background: #0d0e11;
+      color: #eee;
+      font: 14px system-ui;
+    }
+    header {
+      height: 42px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 0 12px;
+      box-sizing: border-box;
+    }
+    button {
+      cursor: pointer;
+      padding: 5px 10px;
+    }
+    a {
+      color: #b6d9ff;
+    }
+    #status {
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+    }
+    iframe {
+      display: block;
+      border: 0;
+      width: 100%;
+      height: calc(100% - 42px);
+    }
+  </style>
+  <header>
+    <button id="toggle" disabled>Enable Pixi</button
+    ><span id="status">Loading AwayFL…</span
+    ><a href="./index.html">Frame comparison</a>
+  </header>
+  <iframe id="player" title="AQW player" allow="autoplay; fullscreen"></iframe>
+  <script type="module" src="./play.js"></script>
+</html>

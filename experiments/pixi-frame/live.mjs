@@ -1,0 +1,97 @@
+import { captureFrame } from "./capture.mjs";
+import { saveGL, createTransport, mirrorGL } from "./shared-gl.mjs";
+import { createLiveRenderer } from "./live-renderer.mjs";
+
+export async function startLive(player, { onStatus = () => {} } = {}) {
+  const root = player._renderer,
+    gl = player._view.stage.context._gl;
+  if (!gl?.getBufferSubData)
+    throw Error("Live Pixi currently requires WebGL 2.");
+  const wasPaused = player.isPaused;
+  player.isPaused = true;
+  const restore = saveGL(gl);
+  let live;
+  try {
+    live = await createLiveRenderer(gl);
+  } finally {
+    restore();
+    player.isPaused = wasPaused;
+  }
+  const unmirror = mirrorGL(gl, player._view.stage.context),
+    transport = createTransport(gl),
+    programs = new Map(),
+    original = root.render;
+  let stopped = false,
+    inFrame = false,
+    frames = 0,
+    lastStatus = 0;
+  const stats = {
+    frames: 0,
+    captureMs: 0,
+    pixiMs: 0,
+    lastError: null,
+    transport: transport.stats,
+  };
+  function stop() {
+    if (stopped) return;
+    stopped = true;
+    root.render = original;
+    const restore = saveGL(gl);
+    try {
+      transport.suspend();
+      live.destroy();
+      transport.destroy();
+    } finally {
+      restore();
+      unmirror();
+    }
+    onStatus("AwayFL renderer active", stats);
+  }
+  root.render = function (...args) {
+    if (inFrame || stopped) return original.apply(this, args);
+    inFrame = true;
+    try {
+      transport.begin();
+      const begin = performance.now();
+      const frame = captureFrame(player, {
+        transport,
+        programs,
+        quiet: true,
+        render: () => original.apply(this, args),
+      });
+      stats.captureMs = performance.now() - begin;
+      transport.suspend();
+      const restore = saveGL(gl),
+        start = performance.now();
+      try {
+        live.render(frame);
+      } finally {
+        restore();
+      }
+      stats.pixiMs = performance.now() - start;
+      stats.frames = ++frames;
+      stats.scene = live.stats();
+      transport.sweep();
+      if (performance.now() - lastStatus > 1000) {
+        lastStatus = performance.now();
+        onStatus("Live Pixi — experimental", stats);
+      }
+    } catch (error) {
+      console.error("[Pixi live]", error);
+      stats.lastError = error.message;
+      stop();
+      original.apply(this, args);
+      onStatus("Pixi stopped: " + error.message, stats);
+    } finally {
+      inFrame = false;
+    }
+  };
+  onStatus("Live Pixi — experimental", stats);
+  return {
+    stop,
+    stats,
+    get active() {
+      return !stopped;
+    },
+  };
+}

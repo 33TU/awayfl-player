@@ -1,7 +1,7 @@
-# Pixi frozen-frame experiment
+# Pixi renderer experiments
 
-This is an isolated renderer experiment, not a playable Pixi AwayFL backend.
-It does not replace the normal player bundle or change its loader settings.
+The branch contains a frozen-frame comparison and an experimental live bridge.
+Neither replaces the normal player bundle or changes its loader settings.
 PixiJS is pinned to 8.21.0 in this package's own lockfile.
 
 From this directory:
@@ -12,6 +12,36 @@ npm run build
 ```
 
 With the existing Hono proxy running, open:
+
+https://localhost:4433/game/gamefiles/pixi-benchmark/play.html
+
+The live page starts Pixi after AwayFL loads. Log in and play inside the embedded
+player. **Use AwayFL** switches rendering back without reconnecting; **Enable
+Pixi** switches again. `?renderScale=1.5&fps=1` is the default; the normal loader
+parameters are forwarded. `?autostart=0` waits for an explicit button click.
+
+This is a compatibility prototype, **not a performance replacement yet**.
+AwayFL still executes its original rendering pass to prepare scene commands,
+filtered images and blend sources. Pixi then renders the live scene on the same
+canvas. That duplicates work and can be slower than AwayFL. Replacing this
+preparation pass is necessary before making live performance claims.
+
+The bridge reuses meshes, programs and uploaded geometry between frames. It
+borrows GPU textures in the shared WebGL 2 context, snapshots temporary blend
+sources with GPU copies, and mirrors buffer uploads. Buffers that existed before
+activation may be downloaded once; live frames do not read back pixels. AwayFL
+keeps input, ActionScript, timelines and networking. Pixi's input listeners are
+disabled. WebGL state and hooks are restored when switching back or when a
+capture fails, and stopping Pixi does not destroy AwayFL's graphics context.
+
+This uses private APIs from both engines. Fractional-size alignment differences
+remain in the shared adapter: the 835×478 Battleon fixture had about 16.6% of
+pixels differing over 3/255 (mean RGB error about 4.15), also reproduced with the
+frozen adapter at that size. The previous 945×541 comparison below is not a
+universal accuracy result. Server login, combat and every possible SWF effect
+have not been automated or exhaustively validated.
+
+## Frozen comparison
 
 https://localhost:4433/game/gamefiles/pixi-benchmark/index.html
 
@@ -69,8 +99,18 @@ combat effects you care about. The login scene remains behind the map fixture.
 
 Capture uses private AwayFL rendering APIs and currently requires WebGL 2.
 Native blend modes outside the adapter's supported set fail explicitly. A Pixi
-WebGPU backend, dynamic display-list adapter, filter regeneration and native
+WebGPU backend, removing AwayFL's rendering pass, filter regeneration and native
 vector batching are future work.
+
+## Live browser checks
+
+With a disposable Chrome running on debugging port 9234, run `npm run check:live`
+(Node 22+). `CDP_URL` overrides the debugger URL. The script creates and closes
+its own page, types a probe into the username field, loads the no-login Battleon
+fixture, resizes twice, checks zero live pixel readbacks, switches renderers,
+injects a capture failure, checks restoration of hooks, then restarts Pixi.
+It never submits login or game chat. The local test uses SwiftShader; timing
+figures from it are not representative of hardware rendering in Brave.
 
 ## Initial local validation
 

@@ -1,5 +1,5 @@
 /** Capture one frozen AwayFL frame. All temporary hooks are restored synchronously. */
-export function captureFrame(player) {
+export function captureFrame(player, options = {}) {
   const root = player._renderer,
     stage = player._view.stage,
     context = stage.context,
@@ -14,7 +14,7 @@ export function captureFrame(player) {
     masks = new Map(),
     sources = new Map();
   const buffers = new Map(),
-    programs = new Map(),
+    programs = options.programs || new Map(),
     textures = new Map(),
     targets = new Map(),
     boundTextures = new Map();
@@ -43,6 +43,7 @@ export function captureFrame(player) {
   const base = owner(root, "applyTraversable");
   function texturePixels(texture, sampler = {}) {
     if (!texture) throw Error("Missing captured texture");
+    if (options.transport) return options.transport.texture(texture);
     if (textures.has(texture)) return textures.get(texture);
     const w = texture.width ?? texture._width,
       h = texture.height ?? texture._height;
@@ -80,13 +81,16 @@ export function captureFrame(player) {
       gl.deleteFramebuffer(fb);
     }
   }
-  function sourcePixels(image) {
+  function sourcePixels(image, key, snapshot = false) {
     const texture = stage.abstractions.getAbstraction(image).getTexture();
+    if (options.transport)
+      return options.transport.texture(texture, snapshot ? key : undefined);
     // Temporary images may be reused later in this same capture.
     textures.delete(texture);
     return texturePixels(texture);
   }
   function bufferBytes(buffer) {
+    if (options.transport) return options.transport.bufferBytes(buffer);
     if (buffers.has(buffer)) return buffers.get(buffer);
     const old = gl.getParameter(gl.COPY_READ_BUFFER_BINDING);
     gl.bindBuffer(gl.COPY_READ_BUFFER, buffer);
@@ -183,52 +187,86 @@ export function captureFrame(player) {
       (active.entity.renderer !== root && !active.entity.renderer._maskConfig)
     )
       return;
-    if (++recorded % 200 === 0) console.info("[Pixi] Captured draws", recorded);
+    if (++recorded % 200 === 0 && !options.quiet)
+      console.info("[Pixi] Captured draws", recorded);
     if (mode !== gl.TRIANGLES)
       throw Error("Unsupported primitive mode: " + mode);
     const program = gl.getParameter(gl.CURRENT_PROGRAM),
       meta = metadata(program);
-    const indices = [];
-    if (indexType) {
-      if (indexType !== gl.UNSIGNED_INT && indexType !== gl.UNSIGNED_SHORT)
-        throw Error("Unsupported index type: " + indexType);
-      const bytes = bufferBytes(
-        gl.getParameter(gl.ELEMENT_ARRAY_BUFFER_BINDING),
-      );
-      const view = new DataView(bytes.buffer);
-      const size = indexType === gl.UNSIGNED_INT ? 4 : 2;
-      for (let i = 0; i < count; i++)
-        indices.push(
-          size === 4
-            ? view.getUint32(indexOffset + i * size, true)
-            : view.getUint16(indexOffset + i * size, true),
-        );
-    } else for (let i = 0; i < count; i++) indices.push(first + i);
-    const attributes = {};
-    for (const a of meta.attributes) {
+    const bindings = meta.attributes.map((a) => {
       const loc = a.location;
-      const type = gl.getVertexAttrib(loc, gl.VERTEX_ATTRIB_ARRAY_TYPE),
-        size = gl.getVertexAttrib(loc, gl.VERTEX_ATTRIB_ARRAY_SIZE);
-      if (
-        type !== gl.FLOAT ||
-        !gl.getVertexAttrib(loc, gl.VERTEX_ATTRIB_ARRAY_ENABLED)
-      )
-        throw Error("Unsupported vertex attribute: " + a.name);
-      const bytes = bufferBytes(
-        gl.getVertexAttrib(loc, gl.VERTEX_ATTRIB_ARRAY_BUFFER_BINDING),
-      );
-      const stride =
-          gl.getVertexAttrib(loc, gl.VERTEX_ATTRIB_ARRAY_STRIDE) || size * 4,
-        offset = gl.getVertexAttribOffset(loc, gl.VERTEX_ATTRIB_ARRAY_POINTER);
-      const view = new DataView(bytes.buffer),
-        data = new Float32Array(count * size);
-      for (let i = 0; i < count; i++)
-        for (let j = 0; j < size; j++)
-          data[i * size + j] = view.getFloat32(
-            offset + indices[i] * stride + j * 4,
-            true,
+      return {
+        name: a.name,
+        buffer: gl.getVertexAttrib(loc, gl.VERTEX_ATTRIB_ARRAY_BUFFER_BINDING),
+        size: gl.getVertexAttrib(loc, gl.VERTEX_ATTRIB_ARRAY_SIZE),
+        type: gl.getVertexAttrib(loc, gl.VERTEX_ATTRIB_ARRAY_TYPE),
+        enabled: gl.getVertexAttrib(loc, gl.VERTEX_ATTRIB_ARRAY_ENABLED),
+        stride: gl.getVertexAttrib(loc, gl.VERTEX_ATTRIB_ARRAY_STRIDE),
+        offset: gl.getVertexAttribOffset(loc, gl.VERTEX_ATTRIB_ARRAY_POINTER),
+      };
+    });
+    const indexBuffer = indexType
+      ? gl.getParameter(gl.ELEMENT_ARRAY_BUFFER_BINDING)
+      : null;
+    const geometryKey = options.transport?.geometryKey(
+      bindings,
+      indexBuffer,
+      first,
+      count,
+      indexType,
+      indexOffset,
+    );
+    let attributes =
+      geometryKey && options.transport.geometries.get(geometryKey);
+    if (!attributes) {
+      const indices = [];
+      if (indexType) {
+        if (indexType !== gl.UNSIGNED_INT && indexType !== gl.UNSIGNED_SHORT)
+          throw Error("Unsupported index type: " + indexType);
+        const bytes = bufferBytes(
+          gl.getParameter(gl.ELEMENT_ARRAY_BUFFER_BINDING),
+        );
+        const view = new DataView(bytes.buffer);
+        const size = indexType === gl.UNSIGNED_INT ? 4 : 2;
+        for (let i = 0; i < count; i++)
+          indices.push(
+            size === 4
+              ? view.getUint32(indexOffset + i * size, true)
+              : view.getUint16(indexOffset + i * size, true),
           );
-      attributes[a.name] = { data, size };
+      } else for (let i = 0; i < count; i++) indices.push(first + i);
+      attributes = {};
+      for (const a of meta.attributes) {
+        const loc = a.location;
+        const type = gl.getVertexAttrib(loc, gl.VERTEX_ATTRIB_ARRAY_TYPE),
+          size = gl.getVertexAttrib(loc, gl.VERTEX_ATTRIB_ARRAY_SIZE);
+        if (
+          type !== gl.FLOAT ||
+          !gl.getVertexAttrib(loc, gl.VERTEX_ATTRIB_ARRAY_ENABLED)
+        )
+          throw Error("Unsupported vertex attribute: " + a.name);
+        const bytes = bufferBytes(
+          gl.getVertexAttrib(loc, gl.VERTEX_ATTRIB_ARRAY_BUFFER_BINDING),
+        );
+        const stride =
+            gl.getVertexAttrib(loc, gl.VERTEX_ATTRIB_ARRAY_STRIDE) || size * 4,
+          offset = gl.getVertexAttribOffset(
+            loc,
+            gl.VERTEX_ATTRIB_ARRAY_POINTER,
+          );
+        const view = new DataView(bytes.buffer),
+          data = new Float32Array(count * size);
+        for (let i = 0; i < count; i++)
+          for (let j = 0; j < size; j++)
+            data[i * size + j] = view.getFloat32(
+              offset + indices[i] * stride + j * 4,
+              true,
+            );
+        attributes[a.name] = { data, size };
+      }
+
+      if (geometryKey)
+        options.transport.geometries.set(geometryKey, attributes);
     }
     const uniforms = {},
       samplers = {};
@@ -315,6 +353,8 @@ export function captureFrame(player) {
         function (renderable) {
           const item =
             this._renderEntity.abstractions.getAbstraction(renderable);
+          if (renderable.assetType === "[renderer CacheRenderer]")
+            hookCache(renderable);
           const result = old.apply(this, arguments);
           if (this === root)
             commands.push({
@@ -337,34 +377,32 @@ export function captureFrame(player) {
     );
     // Discover renderable/cache prototypes from the current scene.
     const seen = new Set();
+    function hookCache(r) {
+      const proto = Object.getPrototypeOf(r);
+      if (seen.has(proto)) return;
+      seen.add(proto);
+      hook(
+        proto,
+        "render",
+        (old) =>
+          function () {
+            const saved = activeCache;
+            activeCache = this;
+            try {
+              return old.apply(this, arguments);
+            } finally {
+              activeCache = saved;
+            }
+          },
+      );
+      if (!options.transport) r.onInvalidate();
+    }
     function walk(n) {
-      for (const r of Object.values(n._renderObjects || {})) {
-        if (
-          r.assetType === "[renderer CacheRenderer]" &&
-          !seen.has(Object.getPrototypeOf(r))
-        ) {
-          const proto = Object.getPrototypeOf(r);
-          seen.add(proto);
-          hook(
-            proto,
-            "render",
-            (old) =>
-              function () {
-                const saved = activeCache;
-                activeCache = this;
-                try {
-                  return old.apply(this, arguments);
-                } finally {
-                  activeCache = saved;
-                }
-              },
-          );
-          r.onInvalidate();
-        }
-      }
+      for (const r of Object.values(n._renderObjects || {}))
+        if (r.assetType === "[renderer CacheRenderer]") hookCache(r);
       for (const c of n._children || []) walk(c);
     }
-    walk(player.root);
+    if (!options.transport) walk(player.root);
     const renderablePrototypes = new Set();
     hook(
       base,
@@ -401,7 +439,8 @@ export function captureFrame(player) {
       "compositePixels",
       (old) =>
         function (source) {
-          if (activeCache) sources.set(activeCache, sourcePixels(source));
+          if (activeCache)
+            sources.set(activeCache, sourcePixels(source, activeCache, true));
           return old.apply(this, arguments);
         },
     );
@@ -411,7 +450,7 @@ export function captureFrame(player) {
       (old) =>
         function (source, target, rect, point, merge, blend) {
           if (activeCache && blend)
-            sources.set(activeCache, sourcePixels(source));
+            sources.set(activeCache, sourcePixels(source, activeCache, true));
           return old.apply(this, arguments);
         },
     );
@@ -451,9 +490,12 @@ export function captureFrame(player) {
           return old.apply(this, arguments);
         },
     );
-    root.render();
-    const reference = new Uint8Array(width * height * 4);
-    gl.readPixels(0, 0, width, height, gl.RGBA, gl.UNSIGNED_BYTE, reference);
+    (options.render || (() => root.render()))();
+    const reference = options.transport
+      ? null
+      : new Uint8Array(width * height * 4);
+    if (reference)
+      gl.readPixels(0, 0, width, height, gl.RGBA, gl.UNSIGNED_BYTE, reference);
     const maskMemo = new Map();
     function maskRecipe(node) {
       if (maskMemo.has(node)) return maskMemo.get(node);
@@ -465,6 +507,7 @@ export function captureFrame(player) {
     }
     const output = commands.map(({ item, cache, maskNodes }) => {
       const entry = {
+        key: item,
         masks: maskNodes.map((layer) => layer.flatMap(maskRecipe)),
       };
       if (entry.masks.length) stats.masks++;
@@ -472,7 +515,11 @@ export function captureFrame(player) {
         const b = cache.getPaddedBounds();
         const blend = cache.node.container.blendMode || "normal";
         const pixels = cache.useNonNativeBlend
-          ? sources.get(cache)
+          ? sources.get(cache) ||
+            options.transport?.sourceFor(cache) ||
+            (options.transport && cache._blendSource
+              ? sourcePixels(cache._blendSource)
+              : null)
           : sourcePixels(cache.style.image);
         if (!pixels) throw Error("Missing isolated blend source");
         if (

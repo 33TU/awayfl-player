@@ -28,4 +28,23 @@ const html = (await readFile("index.html", "utf8")).replace(
   "./main.js?v=" + hash,
 );
 await writeFile(outdir + "index.html", html);
+await build({
+  entryPoints: ["play.mjs"],
+  bundle: true,
+  format: "esm",
+  target: "es2022",
+  outfile: outdir + "play.js",
+  sourcemap: true,
+});
+const playHash = createHash("sha256")
+  .update(await readFile(outdir + "play.js"))
+  .digest("hex")
+  .slice(0, 12);
+await writeFile(
+  outdir + "play.html",
+  (await readFile("play.html", "utf8")).replace(
+    "./play.js",
+    "./play.js?v=" + playHash,
+  ),
+);
 console.log("Built " + outdir);

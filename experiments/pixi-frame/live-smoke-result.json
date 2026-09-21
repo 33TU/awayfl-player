@@ -1,0 +1,53 @@
+{
+  "environment": "Headless Chrome, SwiftShader software WebGL 2; no server login",
+  "mouseAndKeyboard": "passed",
+  "fixture": {
+    "frames": 91,
+    "captureMs": 122,
+    "pixiMs": 26.899999998509884,
+    "lastError": null,
+    "transport": {
+      "initialBufferReads": 130,
+      "bufferUploads": 4969,
+      "textureCopies": 1051,
+      "pixelReadbacks": 0
+    },
+    "scene": {
+      "commands": 3030,
+      "textures": 609,
+      "programs": 4
+    }
+  },
+  "liveReadbacks": 0,
+  "resizes": [
+    {
+      "size": [
+        1200,
+        687
+      ],
+      "error": 0,
+      "lost": false
+    },
+    {
+      "size": [
+        800,
+        458
+      ],
+      "error": 0,
+      "lost": false
+    }
+  ],
+  "cleanup": {
+    "render": true,
+    "pause": true,
+    "hooks": true,
+    "lost": false
+  },
+  "failureRecovery": {
+    "active": false,
+    "message": "injected capture failure",
+    "restored": true,
+    "hooks": true
+  },
+  "restart": "passed"
+}
