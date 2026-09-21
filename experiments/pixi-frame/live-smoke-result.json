@@ -1,21 +1,116 @@
 {
-  "environment": "Headless Chrome, SwiftShader software WebGL 2; no server login",
   "mouseAndKeyboard": "passed",
+  "loginComposition": {
+    "size": [
+      986,
+      565
+    ],
+    "pixelsDifferingOver3Percent": 0,
+    "maxChannelError": 0,
+    "meanChannelError": 0,
+    "reference": {
+      "medianMs": 6.5,
+      "preparation": {
+        "meshes": 131,
+        "cachedImages": 11,
+        "overlays": 4,
+        "masks": 0,
+        "triangles": 97194,
+        "unsupported": [],
+        "awayDraws": 232,
+        "skippedSceneDraws": 0,
+        "skippedSceneClears": 0,
+        "skippedComposites": 0,
+        "skippedBackdropFlushes": 0
+      }
+    },
+    "prepared": {
+      "medianMs": 11.299999997019768,
+      "preparation": {
+        "meshes": 131,
+        "cachedImages": 11,
+        "overlays": 4,
+        "masks": 0,
+        "triangles": 97194,
+        "unsupported": [],
+        "awayDraws": 80,
+        "skippedSceneDraws": 144,
+        "skippedSceneClears": 4,
+        "skippedComposites": 4,
+        "skippedBackdropFlushes": 4
+      }
+    }
+  },
   "fixture": {
-    "frames": 91,
-    "captureMs": 122,
-    "pixiMs": 26.899999998509884,
+    "mode": "pixi-composition",
+    "frames": 59,
+    "captureMs": 125.10000000149012,
+    "pixiMs": 32,
     "lastError": null,
     "transport": {
-      "initialBufferReads": 130,
-      "bufferUploads": 4969,
-      "textureCopies": 1051,
-      "pixelReadbacks": 0
+      "initialBufferReads": 124,
+      "bufferUploads": 5097,
+      "textureCopies": 65,
+      "pixelReadbacks": 1
+    },
+    "preparation": {
+      "meshes": 2490,
+      "cachedImages": 546,
+      "overlays": 140,
+      "masks": 92,
+      "triangles": 448536,
+      "unsupported": [],
+      "awayDraws": 1662,
+      "skippedSceneDraws": 3165,
+      "skippedSceneClears": 122,
+      "skippedComposites": 140,
+      "skippedBackdropFlushes": 140
     },
     "scene": {
-      "commands": 3030,
-      "textures": 609,
+      "commands": 3036,
+      "textures": 709,
       "programs": 4
+    }
+  },
+  "composition": {
+    "size": [
+      986,
+      565
+    ],
+    "pixelsDifferingOver3Percent": 0,
+    "maxChannelError": 0,
+    "meanChannelError": 0,
+    "reference": {
+      "medianMs": 97.40000000596046,
+      "preparation": {
+        "meshes": 2491,
+        "cachedImages": 546,
+        "overlays": 140,
+        "masks": 92,
+        "triangles": 449198,
+        "unsupported": [],
+        "awayDraws": 4466,
+        "skippedSceneDraws": 0,
+        "skippedSceneClears": 0,
+        "skippedComposites": 0,
+        "skippedBackdropFlushes": 0
+      }
+    },
+    "prepared": {
+      "medianMs": 78.5,
+      "preparation": {
+        "meshes": 2491,
+        "cachedImages": 546,
+        "overlays": 140,
+        "masks": 92,
+        "triangles": 449198,
+        "unsupported": [],
+        "awayDraws": 1051,
+        "skippedSceneDraws": 3166,
+        "skippedSceneClears": 122,
+        "skippedComposites": 140,
+        "skippedBackdropFlushes": 140
+      }
     }
   },
   "liveReadbacks": 0,
@@ -37,8 +132,51 @@
       "lost": false
     }
   ],
+  "resizedComposition": {
+    "size": [
+      800,
+      458
+    ],
+    "pixelsDifferingOver3Percent": 0,
+    "maxChannelError": 0,
+    "meanChannelError": 0,
+    "reference": {
+      "medianMs": 88.10000000149012,
+      "preparation": {
+        "meshes": 2505,
+        "cachedImages": 546,
+        "overlays": 140,
+        "masks": 92,
+        "triangles": 458502,
+        "unsupported": [],
+        "awayDraws": 4493,
+        "skippedSceneDraws": 0,
+        "skippedSceneClears": 0,
+        "skippedComposites": 0,
+        "skippedBackdropFlushes": 0
+      }
+    },
+    "prepared": {
+      "medianMs": 74.89999999850988,
+      "preparation": {
+        "meshes": 2505,
+        "cachedImages": 546,
+        "overlays": 140,
+        "masks": 92,
+        "triangles": 458502,
+        "unsupported": [],
+        "awayDraws": 1064,
+        "skippedSceneDraws": 3180,
+        "skippedSceneClears": 122,
+        "skippedComposites": 140,
+        "skippedBackdropFlushes": 140
+      }
+    }
+  },
   "cleanup": {
     "render": true,
+    "execute": true,
+    "flush": true,
     "pause": true,
     "hooks": true,
     "lost": false

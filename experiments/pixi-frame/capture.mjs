@@ -1,4 +1,4 @@
-/** Capture one frozen AwayFL frame. All temporary hooks are restored synchronously. */
+/** Capture one AwayFL frame. All temporary hooks are restored synchronously. */
 export function captureFrame(player, options = {}) {
   const root = player._renderer,
     stage = player._view.stage,
@@ -25,14 +25,26 @@ export function captureFrame(player, options = {}) {
     masks: 0,
     triangles: 0,
     unsupported: [],
+    awayDraws: 0,
+    skippedSceneDraws: 0,
+    skippedSceneClears: 0,
+    skippedComposites: 0,
+    skippedBackdropFlushes: 0,
   };
   let active = null,
     activeCache = null,
-    recorded = 0;
+    recorded = 0,
+    scenePass = false,
+    backdropPass = false;
+  const prepareOnly = !!options.prepareOnly;
   function hook(object, key, replacement) {
+    const descriptor = Object.getOwnPropertyDescriptor(object, key);
     const old = object[key];
     object[key] = replacement(old);
-    restores.push(() => (object[key] = old));
+    restores.push(() => {
+      if (descriptor) Object.defineProperty(object, key, descriptor);
+      else delete object[key];
+    });
   }
   function owner(object, key) {
     while (object && !Object.hasOwn(object, key))
@@ -184,7 +196,9 @@ export function captureFrame(player, options = {}) {
   function record(mode, first, count, indexType, indexOffset) {
     if (
       !active ||
-      (active.entity.renderer !== root && !active.entity.renderer._maskConfig)
+      (active.entity.renderer !== root && !active.entity.renderer._maskConfig) ||
+      (active.entity.renderer === root &&
+        active.renderable.assetType === "[renderer CacheRenderer]")
     )
       return;
     if (++recorded % 200 === 0 && !options.quiet)
@@ -322,6 +336,31 @@ export function captureFrame(player, options = {}) {
     draws.get(active).push(entry);
   }
   try {
+    if (prepareOnly) {
+      // Keep material activation and geometry uploads for capture, but only
+      // offscreen source/filter passes should submit AwayFL GPU draws.
+      hook(base, "executeRender", (old) => function () {
+        const previous = scenePass;
+        scenePass = this === root || (!!this._maskConfig && previous);
+        try {
+          return old.apply(this, arguments);
+        } finally {
+          scenePass = previous;
+        }
+      });
+      hook(root, "flushBlendBackdrop", (old) => function () {
+        // Preserve AwayFL's projection/viewport setup for captured geometry.
+        // Only the draws and copy into the accumulator are redundant.
+        const previous = backdropPass;
+        backdropPass = true;
+        try {
+          stats.skippedBackdropFlushes++;
+          return old.apply(this, arguments);
+        } finally {
+          backdropPass = previous;
+        }
+      });
+    }
     hook(
       context._texContext,
       "setTextureAt",
@@ -440,7 +479,14 @@ export function captureFrame(player, options = {}) {
       (old) =>
         function (source) {
           if (activeCache)
-            sources.set(activeCache, sourcePixels(source, activeCache, true));
+            sources.set(
+              activeCache,
+              sourcePixels(source, activeCache, source !== activeCache._blendSource),
+            );
+          if (prepareOnly && activeCache?.parentRenderer === root) {
+            stats.skippedComposites++;
+            return true;
+          }
           return old.apply(this, arguments);
         },
     );
@@ -449,11 +495,37 @@ export function captureFrame(player, options = {}) {
       "copyPixels",
       (old) =>
         function (source, target, rect, point, merge, blend) {
-          if (activeCache && blend)
-            sources.set(activeCache, sourcePixels(source, activeCache, true));
+          if (
+            prepareOnly && backdropPass &&
+            target === root._blendAccumulator?.style.image
+          ) return;
+          // A top-level non-native cache no longer needs a copied backdrop.
+          // Its isolated source and filters use separate temporary images.
+          if (
+            prepareOnly && activeCache?.parentRenderer === root &&
+            activeCache.useNonNativeBlend && !blend &&
+            target === activeCache.style.image
+          ) return;
+          if (activeCache && blend) {
+            sources.set(
+              activeCache,
+              sourcePixels(source, activeCache, source !== activeCache._blendSource),
+            );
+            if (prepareOnly && activeCache.parentRenderer === root) {
+              stats.skippedComposites++;
+              return;
+            }
+          }
           return old.apply(this, arguments);
         },
     );
+    if (prepareOnly) hook(gl, "clear", (old) => function () {
+      if (scenePass) {
+        stats.skippedSceneClears++;
+        return;
+      }
+      return old.apply(this, arguments);
+    });
     hook(
       gl,
       "bufferData",
@@ -478,6 +550,11 @@ export function captureFrame(player, options = {}) {
       (old) =>
         function (mode, first, count) {
           record(mode, first, count);
+          if (prepareOnly && scenePass) {
+            stats.skippedSceneDraws++;
+            return;
+          }
+          stats.awayDraws++;
           return old.apply(this, arguments);
         },
     );
@@ -487,6 +564,11 @@ export function captureFrame(player, options = {}) {
       (old) =>
         function (mode, count, type, offset) {
           record(mode, 0, count, type, offset);
+          if (prepareOnly && scenePass) {
+            stats.skippedSceneDraws++;
+            return;
+          }
+          stats.awayDraws++;
           return old.apply(this, arguments);
         },
     );

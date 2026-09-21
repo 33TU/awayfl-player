@@ -18,13 +18,13 @@ function onStatus(message, stats) {
   status.title = JSON.stringify(stats, null, 2);
   button.textContent = bridge?.active ? "Use AwayFL" : "Enable Pixi";
 }
-async function enable() {
+async function enable(options = {}) {
   if (busy || bridge?.active || !player) return;
   busy = true;
   button.disabled = true;
   const target = player;
   try {
-    const created = await startLive(target, { onStatus });
+    const created = await startLive(target, { ...options, onStatus });
     if (player !== target) {
       created.stop();
       return;

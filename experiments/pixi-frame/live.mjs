@@ -2,7 +2,10 @@ import { captureFrame } from "./capture.mjs";
 import { saveGL, createTransport, mirrorGL } from "./shared-gl.mjs";
 import { createLiveRenderer } from "./live-renderer.mjs";
 
-export async function startLive(player, { onStatus = () => {} } = {}) {
+export async function startLive(
+  player,
+  { onStatus = () => {}, prepareOnly = true } = {},
+) {
   const root = player._renderer,
     gl = player._view.stage.context._gl;
   if (!gl?.getBufferSubData)
@@ -26,6 +29,7 @@ export async function startLive(player, { onStatus = () => {} } = {}) {
     frames = 0,
     lastStatus = 0;
   const stats = {
+    mode: prepareOnly ? "pixi-composition" : "double-render-reference",
     frames: 0,
     captureMs: 0,
     pixiMs: 0,
@@ -57,8 +61,10 @@ export async function startLive(player, { onStatus = () => {} } = {}) {
         transport,
         programs,
         quiet: true,
+        prepareOnly,
         render: () => original.apply(this, args),
       });
+      stats.preparation = frame.stats;
       stats.captureMs = performance.now() - begin;
       transport.suspend();
       const restore = saveGL(gl),

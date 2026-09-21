@@ -20,15 +20,21 @@ player. **Use AwayFL** switches rendering back without reconnecting; **Enable
 Pixi** switches again. `?renderScale=1.5&fps=1` is the default; the normal loader
 parameters are forwarded. `?autostart=0` waits for an explicit button click.
 
-This is a compatibility prototype, **not a performance replacement yet**.
-AwayFL still executes its original rendering pass to prepare scene commands,
-filtered images and blend sources. Pixi then renders the live scene on the same
-canvas. That duplicates work and can be slower than AwayFL. Replacing this
-preparation pass is necessary before making live performance claims.
+Pixi now owns the final scene drawing and top-level blend composition. The
+preparation pass suppresses AwayFL's scene draw calls, scene clears, backdrop
+copies and top-level composites. It preserves their projection setup so the
+captured geometry does not shift. Offscreen filters, cached source images and
+nested effects still render through AwayFL.
+
+This remains an experimental bridge. AwayFL still traverses the scene, activates
+materials and uploads geometry for capture; Pixi then submits the final scene.
+Removing duplicate GPU draws does not remove this CPU overhead or guarantee
+24 FPS. The renderer toggle allows comparison on your own GPU.
 
 The bridge reuses meshes, programs and uploaded geometry between frames. It
-borrows GPU textures in the shared WebGL 2 context, snapshots temporary blend
-sources with GPU copies, and mirrors buffer uploads. Buffers that existed before
+borrows GPU textures (including persistent isolated blend sources) in the shared
+WebGL 2 context, snapshots temporary blend sources with GPU copies, and mirrors
+buffer uploads. Buffers that existed before
 activation may be downloaded once; live frames do not read back pixels. AwayFL
 keeps input, ActionScript, timelines and networking. Pixi's input listeners are
 disabled. WebGL state and hooks are restored when switching back or when a
@@ -99,7 +105,7 @@ combat effects you care about. The login scene remains behind the map fixture.
 
 Capture uses private AwayFL rendering APIs and currently requires WebGL 2.
 Native blend modes outside the adapter's supported set fail explicitly. A Pixi
-WebGPU backend, removing AwayFL's rendering pass, filter regeneration and native
+WebGPU backend, replacing AwayFL's remaining preparation/filter passes and native
 vector batching are future work.
 
 ## Live browser checks
@@ -107,7 +113,9 @@ vector batching are future work.
 With a disposable Chrome running on debugging port 9234, run `npm run check:live`
 (Node 22+). `CDP_URL` overrides the debugger URL. The script creates and closes
 its own page, types a probe into the username field, loads the no-login Battleon
-fixture, resizes twice, checks zero live pixel readbacks, switches renderers,
+fixture, compares the prepared and double-rendered Pixi output at login and in
+Battleon (also after resizing), checks that AwayFL draws decrease, resizes twice,
+checks zero live pixel readbacks, switches renderers,
 injects a capture failure, checks restoration of hooks, then restarts Pixi.
 It never submits login or game chat. The local test uses SwiftShader; timing
 figures from it are not representative of hardware rendering in Brave.
@@ -124,3 +132,21 @@ commands; 0.546% of pixels differed by more than 3/255 in an RGB channel.
 In that run, median completion times were 26.1 ms for AwayFL and 4.6 ms for Pixi.
 Those software-renderer results are exploratory, not an Intel GPU or live-game
 speedup claim. Pixel differences and the warm-cache-only scope still apply.
+
+## Composition optimization validation
+
+`live-smoke-result.json` records the latest local browser check. Its pixel check
+compares two Pixi frames of the same paused scene: the original double-render
+reference and the new preparation-only path. This checks for regressions from
+skipping AwayFL composition, not accuracy against Flash or Ruffle. The local run
+had zero pixel differences at login, in Battleon and after resizing. Warm
+Battleon preparation fell from 4,466 AwayFL GPU draws to 1,051, with 140
+top-level composites skipped. Both paths
+still share the adapter's pre-existing visual limitations above.
+
+For debugging, `pixiLive.stats.preparation` reports actual AwayFL draws and
+skipped scene draws/composites. The test-only reference is available through
+`pixiLiveControls.stop(); await pixiLiveControls.enable({prepareOnly:false})`;
+calling `enable()` after stopping selects the optimized path again. Median
+completion timings include preparation, Pixi submission and `gl.finish()` for a
+paused, warmed scene on SwiftShader; they are not live gameplay FPS.
