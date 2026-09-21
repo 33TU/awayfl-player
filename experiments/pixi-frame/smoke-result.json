@@ -1,0 +1,96 @@
+{
+  "login": {
+    "environment": {
+      "gpu": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+      "devicePixelRatio": 1,
+      "api": "WebGL 2"
+    },
+    "resolution": [
+      945,
+      541
+    ],
+    "capture": {
+      "meshes": 129,
+      "cachedImages": 11,
+      "overlays": 4,
+      "masks": 0,
+      "triangles": 96870,
+      "unsupported": []
+    },
+    "pixelComparison": {
+      "pixelsDifferingOver3Percent": 1.701,
+      "meanChannelError": 0.199,
+      "maxChannelError": 95,
+      "exact": false
+    },
+    "scope": "Frozen warm-cache rendering only; no ActionScript, animation or source-cache rebuild timing.",
+    "timings": {
+      "away": {
+        "medianRenderCompletionMs": 2.3,
+        "medianDrawCalls": 230,
+        "samples": 10
+      },
+      "pixi": {
+        "medianRenderCompletionMs": 0.7,
+        "medianDrawCalls": 143,
+        "samples": 10
+      },
+      "comparable": false,
+      "note": "gl.finish is intentional here. These are isolated render completion times, not live game FPS. Pixel differences must be resolved before claiming equivalent rendering performance."
+    },
+    "afterMeasurementPixelComparison": {
+      "pixelsDifferingOver3Percent": 1.701,
+      "meanChannelError": 0.199,
+      "maxChannelError": 95,
+      "exact": false
+    }
+  },
+  "battleon": {
+    "environment": {
+      "gpu": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+      "devicePixelRatio": 1,
+      "api": "WebGL 2"
+    },
+    "resolution": [
+      945,
+      541
+    ],
+    "capture": {
+      "meshes": 2483,
+      "cachedImages": 546,
+      "overlays": 140,
+      "masks": 92,
+      "triangles": 446762,
+      "unsupported": []
+    },
+    "pixelComparison": {
+      "pixelsDifferingOver3Percent": 0.546,
+      "meanChannelError": 0.099,
+      "maxChannelError": 102,
+      "exact": false
+    },
+    "scope": "Frozen warm-cache rendering only; no ActionScript, animation or source-cache rebuild timing.",
+    "timings": {
+      "away": {
+        "medianRenderCompletionMs": 26.1,
+        "medianDrawCalls": 4458,
+        "samples": 10
+      },
+      "pixi": {
+        "medianRenderCompletionMs": 4.6,
+        "medianDrawCalls": 3420,
+        "samples": 10
+      },
+      "comparable": false,
+      "note": "gl.finish is intentional here. These are isolated render completion times, not live game FPS. Pixel differences must be resolved before claiming equivalent rendering performance."
+    },
+    "afterMeasurementPixelComparison": {
+      "pixelsDifferingOver3Percent": 0.546,
+      "meanChannelError": 0.099,
+      "maxChannelError": 102,
+      "exact": false
+    }
+  },
+  "repeatCaptureAndResume": "passed",
+  "webglError": 0
+}

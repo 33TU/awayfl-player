@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+  <meta charset="utf-8" /><meta
+    name="viewport"
+    content="width=device-width"
+  /><title>AwayFL / Pixi frame experiment</title>
+  <style>
+    body {
+      font: 16px system-ui;
+      background: #17191d;
+      color: #ddd;
+      margin: 20px;
+    }
+    button {
+      padding: 10px;
+      margin: 4px;
+      background: #e8bd5f;
+      border: 0;
+      border-radius: 5px;
+      color: #111;
+      cursor: pointer;
+    }
+    button:disabled {
+      opacity: 0.4;
+    }
+    iframe {
+      width: 100%;
+      height: 680px;
+      border: 1px solid #555;
+    }
+    main {
+      max-width: 1100px;
+      margin: auto;
+    }
+    .comparison {
+      display: flex;
+      gap: 12px;
+    }
+    .comparison figure {
+      margin: 0;
+      width: 50%;
+    }
+    canvas {
+      width: 100%;
+      height: auto;
+      background: #000;
+    }
+    pre {
+      white-space: pre-wrap;
+      padding: 14px;
+      background: #252831;
+    }
+    p {
+      line-height: 1.5;
+    }
+    a {
+      color: #e8bd5f;
+    }
+  </style>
+  <main>
+    <h1>AwayFL / Pixi frame experiment</h1>
+    <p>
+      Replay a frozen frame through Pixi WebGL. Existing bitmap caches are
+      captured as images; uncached vector geometry and material shaders are
+      preserved. Masks and advanced blends are rebuilt in Pixi. This is a
+      rendering experiment, not a playable Pixi backend.
+    </p>
+    <button id="fixture">Load Battleon fixture (no login)</button
+    ><button id="capture">Capture & compare</button
+    ><button id="measure" disabled>Measure both renderers</button
+    ><button id="resume" disabled>Resume AwayFL</button>
+    <p id="status">
+      Waiting for the AwayFL login screen. You can load the fixture, or log in
+      below and visit a room before capturing.
+    </p>
+    <iframe
+      id="player"
+      src="/game/gamefiles/loader-awayfl.html?renderScale=1.5&fps=1"
+      title="AwayFL player"
+    ></iframe>
+    <div class="comparison">
+      <figure>
+        <figcaption>AwayFL reference</figcaption>
+        <canvas id="reference"></canvas>
+      </figure>
+      <figure>
+        <figcaption>Pixi replay</figcaption>
+        <canvas id="pixi"></canvas>
+      </figure>
+    </div>
+    <p>Difference image (amplified):</p>
+    <canvas id="difference" style="max-width: 550px"></canvas>
+    <pre id="report">No frame captured.</pre>
+    <script type="module" src="./main.js"></script>
+  </main>
+</html>
