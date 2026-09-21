@@ -215,8 +215,18 @@ function cachedOverlaySources() {
     for (let i = 0; i < cached.length; i++) {
         if (cached[i] !== fresh[i]) throw Error(`Cached overlay source differs from rerendered source at byte ${i}`);
     }
+    // Compare the direct cache-quad append with the previous MSAA path in
+    // the same frame, without advancing the game's timelines.
+    const needsAntialias = renderer.needsBlendAntialias;
+    try {
+        renderer.needsBlendAntialias = () => true;
+        const antialiased = pixels();
+        for (let i = 0; i < fresh.length; i++) {
+            if (fresh[i] !== antialiased[i]) throw Error(`Direct cache append differs from MSAA at byte ${i}`);
+        }
+    } finally { renderer.needsBlendAntialias = needsAntialias; }
     if (gl.isContextLost() || gl.getError()) throw Error('Overlay source reuse caused a WebGL error');
-    return 'Live scene: cached and freshly rasterized overlay sources produce identical pixels';
+    return 'Live scene: source reuse and direct cache appends both match their reference pixels';
 }
 
 (async () => {

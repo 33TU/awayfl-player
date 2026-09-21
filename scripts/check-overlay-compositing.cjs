@@ -87,10 +87,11 @@ for (const version of [1, 2]) for (const filters of [false, true])
 }
 const { RendererBase: ActualRenderer } = load('renderer/lib/RendererBase.ts', {
     '@awayjs/core': core, '@awayjs/stage': { Settings: { ENABLE_MULTISAMPLE_TEXTURE: true } },
+    './CacheRenderer': { CacheRenderer },
 });
 for (const glVersion of [1, 2]) for (const failure of [false, true]) {
     const cacheImage = {}, msaaImage = {}, cache = { style: { image: cacheImage } };
-    const quad = { renderable: cache }, sibling = {}, opaque = {};
+    const quad = { renderable: cache }, sibling = { renderable: { assetType: 'vector' } }, opaque = { renderable: { assetType: 'vector' } };
     const projection = {}, target = {}, passes = [];
     const r = Object.assign(Object.create(ActualRenderer.prototype), {
         _blendAccumulator: cache, _disableClear: false,
@@ -120,6 +121,32 @@ for (const glVersion of [1, 2]) for (const failure of [false, true]) {
         assert.equal(passes.length, glVersion === 2 ? 2 : 1, 'only seed the changed region and draw new siblings');
     }
     assert.equal(r.view.projection, projection); assert.equal(r.view.target, target); assert.equal(r._disableClear, false);
+}
+
+// Cached quads already have antialiased source pixels. Masks and vectors
+// still need MSAA even when mixed into a batch of cached quads.
+{
+    const image = {}, cache = { style: { image } };
+    const quad = { renderable: cache };
+    const unmasked = { renderable: { assetType: CacheRenderer.assetType }, entity: { maskOwners: null } };
+    const masked = { renderable: { assetType: CacheRenderer.assetType }, entity: { maskOwners: [{}] } };
+    const vector = { renderable: { assetType: 'vector' }, entity: { maskOwners: null } };
+    const r = Object.assign(Object.create(ActualRenderer.prototype), {
+        _blendAccumulator: cache, _disableClear: false,
+        _blendedRenderables: [quad, unmasked], _opaqueRenderables: [],
+        view: { projection: {}, target: null },
+        stage: { context: { glVersion: 2 }, filterManager: { popTemp() { throw Error('Unnecessary MSAA allocation'); } } },
+        _initRender(target) { assert.equal(target, image); },
+        executeRender() {
+            assert.deepEqual(this._blendedRenderables, [unmasked]);
+            assert.equal(this._disableClear, true);
+        },
+    });
+    assert.equal(r.needsBlendAntialias([unmasked]), false);
+    assert.equal(r.needsBlendAntialias([unmasked, masked]), true);
+    assert.equal(r.needsBlendAntialias([unmasked, vector]), true);
+    assert.equal(r.flushBlendBackdrop(), image);
+    assert.deepEqual(r._blendedRenderables, [quad]);
 }
 
 // ES5 compilation must preserve the receiver for the render-order getter.

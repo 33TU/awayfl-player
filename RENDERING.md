@@ -130,6 +130,22 @@ nonzero capture origins, incremental batches, MSAA, feedback avoidance and
 exception state restoration. `check-overlay-pixels.cjs` also compares source
 reuse with forced source rerasterization in the currently loaded scene.
 
+### Avoid antialiasing cached pixels twice
+
+Backdrop batches containing only unmasked CacheRenderer quads now append
+directly to the accumulator. Those quads already contain antialiased pixels
+and use integer screen bounds. Batches containing vector geometry or masks
+retain the MSAA path; masks still need antialiased edges of their own.
+
+A same-build comparison in the local Battleon reproduction forced the previous
+MSAA path, then enabled direct appends: 30-frame SwiftShader samples after five
+warmup frames measured median rendering times of 54.5 ms and 49.8 ms. The live
+pixel comparison found no changed bytes. This is a modest additional saving,
+not a comparison against pre-overlay rendering or a hardware-GPU guarantee.
+The production build and compositor, bounds, render-target and live pixel tests
+pass. The live test compares direct appends against forced MSAA in the same
+scene without advancing timelines.
+
 ## Battleon black rectangles after joining a room
 
 AQW rasterizes background MovieClips with `BitmapData.draw`. Those clips use
