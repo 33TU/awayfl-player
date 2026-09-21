@@ -58,7 +58,7 @@ for (const version of [1, 2]) for (const filters of [false, true])
         check(version, filters, failure, masked);
 
 // A static source can be reused, but its backdrop/composite must refresh.
-{
+for (const direct of [false, true]) {
     const target = { width: 8, height: 8, rect: new core.Rectangle(0, 0, 8, 8) };
     const parentBounds = new core.Rectangle(10, 20, 100, 100);
     const bounds = new core.Rectangle(30, 50, 8, 8);
@@ -71,7 +71,14 @@ for (const version of [1, 2]) for (const filters of [false, true])
         getPaddedBounds: () => bounds, _initRender() {},
         stage: { context: { glVersion: 1 }, pushRenderTargetConfig() {}, popRenderTarget() {}, filterManager: {
             popTemp() { return { ...target }; }, pushTemp() {},
+            compositePixels(src, back, dst, rect, backRect, mode) {
+                assert.equal(back, backdrop); assert.equal(dst, target); assert.equal(mode, 'overlay');
+                assert.deepEqual([backRect.x, backRect.y, backRect.width, backRect.height], [20, 30, 8, 8]);
+                if (direct) composites++;
+                return direct;
+            },
             copyPixels(src, dst, rect, point, merge, mode) {
+                if (direct && (src === backdrop || mode)) throw Error('Direct composition must skip intermediate copies');
                 if (src === backdrop) assert.deepEqual([rect.x, rect.y, rect.width, rect.height], [20, 30, 8, 8]);
                 else if (mode) composites++;
                 else rasterCopies++;

@@ -146,6 +146,45 @@ The production build and compositor, bounds, render-target and live pixel tests
 pass. The live test compares direct appends against forced MSAA in the same
 scene without advancing timelines.
 
+### Read the shared backdrop directly
+
+The screen compositor now supplies the source and accumulated backdrop as
+separate shader inputs and writes into the overlay's own target. Previously
+it first copied the backdrop into that target, composed through another
+scratch texture, and copied the scratch result back. Explicit backdrop UVs
+allow the new path to remove both copies, including when the overlay occupies
+a small region far from the backdrop origin. Input/target aliasing and
+unsupported blend modes retain the existing path. Nested/offscreen caches
+continue to use the existing capture coordinates.
+
+Stage's dedicated CompositeFilter retains its shader variant between calls,
+releases backdrop references after use, and shares the existing blend shader
+math. Live pixel tests compare the direct path with the previous copied path
+and exercise changing backdrop colors, offsets, and input preservation.
+They also check the actual Battleon scene. Stage typechecking and production
+build pass; renderer checking against local stage declarations retains the two
+existing AssetEvent.INVALIDATE errors.
+
+In a same-build Battleon comparison, median synchronous whole-frame work
+(including scripts/animation) fell from 60 to 55.2 ms and draw calls from about
+4,820 to 4,550. Actual game frames in headless SwiftShader stayed around 2.4 FPS,
+so this does **not** establish 24 FPS. Render-method timings alone are not an
+FPS measurement. Hardware-accelerated Brave needs a separate measurement.
+
+The build now serves a bounded, reversible frame diagnostic. Run while the
+Brave tab is visible and the room has finished loading:
+
+```js
+import('/awayfl/diagnostics/performance.mjs').then(m => m.measure()).then(console.log)
+```
+
+It observes five seconds without forcing GPU synchronization or altering the
+SWF's frame rate. The report includes observed game FPS, target FPS, median/p95
+synchronous frame work, drawing-buffer size, DPR, visibility and GPU renderer.
+The observer restores the original callback automatically. GPU completion time
+is not separately measured, and hidden tabs/room loads should not be compared
+with steady visible gameplay.
+
 ## Battleon black rectangles after joining a room
 
 AQW rasterizes background MovieClips with `BitmapData.draw`. Those clips use

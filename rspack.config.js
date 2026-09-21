@@ -142,6 +142,9 @@ const processConfig = (config, rootPath) => {
 		var fileConfig = config.fileconfigs[i];
 		var folderName = fileConfig.rt_filename;
 		var outputPath = config.split ? folderName + "/" : "";
+		plugins.push(new CopyRspackPlugin({
+			patterns: [{ from: path.join(rootPath, 'src/diagnostics'), to: outputPath + 'diagnostics' }],
+		}));
 
 		//	if split, copy buildins to each output folder:
 

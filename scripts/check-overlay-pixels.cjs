@@ -25,6 +25,10 @@ task.destRect = { x: 2, y: 1, width: 4, height: 2 };
 task._program3D = { uploadUniform() {} };
 task.activate({ abstractions: { getAbstraction: () => ({ activate() {} }) } });
 assert.deepEqual([...task.uvMatrices[1]], [.25, .25, .5, .5]);
+task.backRect = { x: 4, y: 2, width: 2, height: 1 };
+task.activate({ abstractions: { getAbstraction: () => ({ activate() {} }) } });
+assert.deepEqual([...task.uvMatrices[1]], [.5, .5, .25, .25]);
+task.backRect = null;
 const shader = { vertex: task.getVertexCode(), fragment: task.getFragmentCode() };
 function pixels(shader) {
     const results = [];
@@ -100,7 +104,7 @@ function integration() {
     }
     walk(player.root);
     if (!Image) throw Error('No cached image constructor available');
-    const source = new Image(1, 1, false), target = new Image(4, 1, false);
+    const source = new Image(1, 1, false), target = new Image(4, 1, false), output = new Image(1, 1, false);
     const upload = (image, data) => stage.abstractions.getAbstraction(image).getTexture()
         .uploadFromArray(new Uint8Array(data), 0, true);
     const before = gl.getError();
@@ -120,9 +124,30 @@ function integration() {
                 throw Error('Filter-manager overlay/copy failed: ' + [...actual]);
             if (gl.getError()) throw Error('Filter-manager WebGL error');
         }
+        for (const red of [90, 180]) {
+            upload(source, [255, 255, 255, 102]);
+            upload(target, [0,255,0,255, 0,0,255,255, red,0,0,255, 255,0,255,255]);
+            const backRect = source.rect.clone(); backRect.x = 2;
+            if (!stage.filterManager.compositePixels(source, target, output, source.rect, backRect, 'overlay'))
+                throw Error('Direct compositor was not selected');
+            stage.setRenderTarget(output, false);
+            const actual = new Uint8Array(4);
+            gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, actual);
+            const expectedRed = Math.round(red * 0.6 + Math.min(255, red * 2) * 0.4);
+            if (Math.abs(actual[0] - expectedRed) > 2 || actual[1] || actual[2] || actual[3] !== 255)
+                throw Error('Direct compositor offset failed: ' + [...actual]);
+            stage.setRenderTarget(target, false);
+            const unchanged = new Uint8Array(16);
+            gl.readPixels(0, 0, 4, 1, gl.RGBA, gl.UNSIGNED_BYTE, unchanged);
+            if (unchanged[8] !== red || unchanged[0] !== 0 || unchanged[1] !== 255)
+                throw Error('Direct compositor overwrote backdrop');
+            if (gl.getError()) throw Error('Direct compositor WebGL error');
+        }
+        if (stage.filterManager.compositePixels(source, target, target, source.rect, source.rect, 'overlay'))
+            throw Error('Direct compositor allowed texture feedback');
     } finally {
         stage.popRenderTarget();
-        source.dispose(); target.dispose();
+        source.dispose(); target.dispose(); output.dispose();
     }
     return 'Live filter-manager: repeated overlay, destination offset, unaffected pixels and no WebGL errors passed';
 }
@@ -225,8 +250,17 @@ function cachedOverlaySources() {
             if (fresh[i] !== antialiased[i]) throw Error(`Direct cache append differs from MSAA at byte ${i}`);
         }
     } finally { renderer.needsBlendAntialias = needsAntialias; }
+    const manager = renderer.stage.filterManager;
+    const composite = manager.compositePixels;
+    try {
+        manager.compositePixels = () => false;
+        const copied = pixels();
+        for (let i = 0; i < fresh.length; i++) {
+            if (Math.abs(fresh[i] - copied[i]) > 1) throw Error(`Direct composition differs from copied backdrop at byte ${i}`);
+        }
+    } finally { manager.compositePixels = composite; }
     if (gl.isContextLost() || gl.getError()) throw Error('Overlay source reuse caused a WebGL error');
-    return 'Live scene: source reuse and direct cache appends both match their reference pixels';
+    return 'Live scene: source reuse, cache appends and direct composition match their reference pixels';
 }
 
 (async () => {
