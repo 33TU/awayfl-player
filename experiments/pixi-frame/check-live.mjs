@@ -141,6 +141,69 @@ async function compareComposition({
   return result;
 }
 const report = {};
+async function compareNativeScale(serverScreen = false) {
+  const result = await evaluate(`(async()=>{
+    const p=pixiLiveControls.player, g=p._view.stage.context._gl;
+    const paused=p.isPaused;
+    p.isPaused=true;
+    const game=p.root._children.find(n=>n.name==='scene').adapter;
+    game.$Bgstage.$Bgfocus=null;
+    let roi={x:350,y:195,width:200,height:155};
+    if (${serverScreen}) {
+      const legend=game.$BgmcLogin.$Bgsl.$Bglegend;
+      const a=legend.$BglocalToGlobal(new game.sec.flash.geom.Point(-30,70));
+      const b=legend.$BglocalToGlobal(new game.sec.flash.geom.Point(325,125));
+      roi={x:a.$Bgx,y:a.$Bgy,width:b.$Bgx-a.$Bgx,height:b.$Bgy-a.$Bgy};
+    }
+    function sample() {
+      for(let i=0;i<3;i++) p._renderer.render();
+      const pixels=new Uint8Array(g.drawingBufferWidth*g.drawingBufferHeight*4);
+      g.readPixels(0,0,g.drawingBufferWidth,g.drawingBufferHeight,g.RGBA,g.UNSIGNED_BYTE,pixels);
+      return pixels;
+    }
+    try {
+      pixiLiveControls.stop();
+      const reference=sample();
+      await pixiLiveControls.enable();
+      const actual=sample();
+      let max=0, changed=0;
+      for(let i=0;i<reference.length;i++) {
+        const delta=Math.abs(reference[i]-actual[i]);
+        max=Math.max(max,delta);
+        if(delta>1) changed++;
+      }
+      const w=g.drawingBufferWidth,h=g.drawingBufferHeight;
+      let foreground=0,maskDifference=0,displacedPixels=0;
+      const bright=(pixels,x,y)=>{const i=((h-y-1)*w+x)*4;return pixels[i]>180&&pixels[i+1]>180&&pixels[i+2]>180;};
+      function nearby(pixels,x,y) {
+        for(let dy=-1;dy<=1;dy++) for(let dx=-1;dx<=1;dx++)
+          if(bright(pixels,x+dx,y+dy)) return true;
+        return false;
+      }
+      for(let y=Math.floor(roi.y*h/550);y<Math.ceil((roi.y+roi.height)*h/550);y++)
+        for(let x=Math.floor(roi.x*w/960);x<Math.ceil((roi.x+roi.width)*w/960);x++) {
+          const i=((h-y-1)*w+x)*4;
+          const a=reference[i]>180&&reference[i+1]>180&&reference[i+2]>180;
+          const b=actual[i]>180&&actual[i+1]>180&&actual[i+2]>180;
+          if(a||b) foreground++;
+          if(a!==b) {
+            maskDifference++;
+            if(!nearby(a?actual:reference,x,y)) displacedPixels++;
+          }
+        }
+      return {size:[w,h],maxChannelError:max,changedChannels:changed,foreground,maskDifference,displacedPixels};
+    } finally { p.isPaused=paused; }
+  })()`);
+  assert.ok(result.size[0] > 960 * 3, "Must exceed the cache raster scale cap");
+  // Native/Pixi blend colors can differ. Compare the bright text/icon coverage
+  // inside the controls, allowing one pixel of rasterization/antialiasing variation.
+  assert.ok(result.foreground > 100, JSON.stringify(result));
+  assert.ok(
+    result.displacedPixels / result.foreground < 0.01,
+    JSON.stringify(result),
+  );
+  return result;
+}
 try {
   await send("Runtime.enable");
   await send("Network.enable");
@@ -153,7 +216,7 @@ try {
     mobile: false,
   });
   await send("Page.navigate", {
-    url: "https://localhost:4433/game/gamefiles/pixi-benchmark/play.html?autostart=0",
+    url: "https://localhost:4433/game/gamefiles/pixi-benchmark/play.html?autostart=0&renderScale=0",
   });
   await until(
     `(()=>{const p=window.pixiLiveControls?.player;return p?.root?._children?.some(n=>n.name==='scene'&&n._children.some(c=>c.name==='mcLogin'))})()`,
@@ -196,6 +259,40 @@ try {
   );
   report.mouseAndKeyboard = "passed";
   report.loginComposition = await compareComposition();
+  // Compare with actual native composition, not another capture configuration:
+  // both capture paths could otherwise share the same coordinate-space bug.
+  const beforeScale = await evaluate("pixiLive.stats.frames");
+  await send("Emulation.setDeviceMetricsOverride", {
+    width: 3200,
+    height: 1900,
+    deviceScaleFactor: 1,
+    mobile: false,
+  });
+  await until(
+    `pixiLive.stats.frames>${beforeScale + 2} || !!pixiLive.stats.lastError`,
+  );
+  report.highScaleLogin = await compareNativeScale();
+  // Construct the server screen with local dummy data, without authentication
+  // or sending any login/server-selection requests.
+  await evaluate(`(()=>{
+    const game=pixiLiveControls.player.root._children.find(n=>n.name==='scene').adapter;
+    const sec=game.sec;
+    game.axClass.$BgobjLogin=sec.createObjectFromJS({iAccess:0,iLevel:1,iAge:20,iUpgDays:-1});
+    game.axClass.$BgobjLogin.$Bgservers=sec.createArray(Array.from({length:8},(_,i)=>
+      sec.createObjectFromJS({sName:'Local test '+i,sIP:'127.0.0.1',iLevel:0,iCount:2,iMax:100,bUpg:0,bOnline:1,iChat:1,sLang:'en'})));
+    game.axClass.$BgloginInfo=sec.createObjectFromJS({strUsername:'Renderer test'});
+    game.$BgmcLogin.$BggotoAndStop('Servers');
+  })()`);
+  report.highScaleServers = await compareNativeScale(true);
+  await evaluate(
+    `pixiLiveControls.player.root._children.find(n=>n.name==='scene').adapter.$BgmcLogin.$BggotoAndStop(1)`,
+  );
+  await send("Emulation.setDeviceMetricsOverride", {
+    width: 1000,
+    height: 650,
+    deviceScaleFactor: 1,
+    mobile: false,
+  });
   await evaluate("pixiLiveControls.loadFixture().then(()=>true)");
   await until(
     "pixiLive.stats.scene?.commands>1000 || pixiLive.stats.lastError",

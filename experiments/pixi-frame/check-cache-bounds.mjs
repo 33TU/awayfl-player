@@ -33,6 +33,27 @@ for (const screenScale of [1.5, 3, 3.5, 4.2]) {
     width,
     height,
   );
+  // Backdrop draws use a padded GPU target, often much larger than the stage.
+  // Mapping its normalized coordinates must agree with the filtered rectangle.
+  const targetWidth = 8192,
+    targetHeight = 4096;
+  const viewport = projectCacheBounds(
+    { x: 0, y: 0, width: targetWidth, height: targetHeight },
+    scale,
+    matrix,
+    width,
+    height,
+  );
+  assert.ok(
+    Math.abs(
+      viewport.x + ((120 * scale) / targetWidth) * viewport.width - result.x,
+    ) < 1e-9,
+  );
+  assert.ok(
+    Math.abs(
+      viewport.y + ((400 * scale) / targetHeight) * viewport.height - result.y,
+    ) < 1e-9,
+  );
   for (const [key, expected] of Object.entries({
     x: 120 * screenScale + offset.x,
     y: 400 * screenScale + offset.y,

@@ -10,6 +10,11 @@ export function captureFrame(player, options = {}) {
     throw Error("The capture adapter currently requires WebGL 2.");
   const width = gl.drawingBufferWidth,
     height = gl.drawingBufferHeight;
+  // Backdrop flushes temporarily replace the root projection with a capped
+  // texture projection. Keep the final screen projection for their recipes.
+  const screenMatrix = root.view.viewMatrix3D._rawData.slice();
+  const screenBounds = (bounds, scale = root.getBoundsScale()) =>
+    projectCacheBounds(bounds, scale, screenMatrix, width, height);
   const restores = [],
     commands = [],
     draws = new Map(),
@@ -399,12 +404,16 @@ export function captureFrame(player, options = {}) {
       (old) =>
         function (target, pad) {
           const b = pad || this._paddedBounds;
-          targets.set(target, {
+          const viewport = {
             x: b.x,
             y: b.y,
             width: target.width,
             height: target.height,
-          });
+          };
+          targets.set(
+            target,
+            this === root ? screenBounds(viewport) : viewport,
+          );
           return old.apply(this, arguments);
         },
     );
@@ -772,13 +781,7 @@ export function captureFrame(player, options = {}) {
           kind: "cache",
           pixels,
           textureFrame: { width: b.width, height: b.height },
-          bounds: projectCacheBounds(
-            b,
-            cache.getBoundsScale(),
-            root.view.viewMatrix3D._rawData,
-            width,
-            height,
-          ),
+          bounds: screenBounds(b, cache.getBoundsScale()),
           blend,
         };
       }
