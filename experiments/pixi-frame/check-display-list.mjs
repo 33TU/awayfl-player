@@ -154,6 +154,14 @@ try {
     glow.$Bgknockout=false;glow.$Bginner=true;box.$Bgfilters=s.createArray([glow]);const innerGlow=effect();
     box.$Bgfilters=s.createArray([new s.flash.filters.DropShadowFilter(12,0,0xff0000,1,0,0,1,1,false,false,true)]);
     const shadowPixels=effect();
+    const matrix=new s.flash.filters.ColorMatrixFilter(s.createArray([
+      0,1,0,0,0, 0,0,0,0,0, 0,0,0,0,128, 0,0,0,1,0]));
+    box.$Bgfilters=s.createArray([matrix]);const matrixPixels=effect();
+    matrix.$Bgmatrix=s.createArray([0,0,0,0,64, 0,1,0,0,0, 0,0,0,0,0, 0,0,0,1,0]);
+    box.$Bgfilters=s.createArray([matrix]);const changedMatrix=effect();
+    box.$Bgfilters=s.createArray([new s.flash.filters.BevelFilter(4,0,0xffffff,1,0,1,4,4,1,1,'inner',false)]);
+    const bevelPixels=effect();
+    box.$Bgfilters=s.createArray([new s.flash.filters.BlurFilter(8,8,1)]);const blurPixels=effect();
     box.$Bgfilters=s.createArray([]);const clearedGlow=effect();
     window.outlinePixel=pixel;window.readOutlineFrame=readFrame;
     // Exercise CPU-backed bitmap updates while native needUpload stays true.
@@ -168,7 +176,7 @@ try {
     const gpuBitmap=sample(),gpuReported=pixiLive.stats.unsupported['gpu-bitmap'];
     data.adaptee.syncData=noReadback;data.adaptee._imageDataDirty=false;
     window.testDisplayObjects={g,parent,box,mask};
-    return {red,moved,transformReused,green,hidden,clipped,masked,unmasked,removed,readded,glowPixels,strongerGlow,qualityGlow,knockoutGlow,innerGlow,shadowPixels,clearedGlow,bitmapBlue,bitmapGreen,bitmapRed,gpuBitmap,gpuReported,stats:structuredClone(pixiLive.stats)};
+    return {red,moved,transformReused,green,hidden,clipped,masked,unmasked,removed,readded,glowPixels,strongerGlow,qualityGlow,knockoutGlow,innerGlow,shadowPixels,matrixPixels,changedMatrix,bevelPixels,blurPixels,clearedGlow,bitmapBlue,bitmapGreen,bitmapRed,gpuBitmap,gpuReported,stats:structuredClone(pixiLive.stats)};
   })()`);
   const black = [0, 0, 0, 255],
     red = [255, 0, 0, 255],
@@ -203,6 +211,15 @@ try {
   assert.ok(report.pixels.innerGlow.edge[0] > 0, "inner edge");
   assert.deepEqual(report.pixels.shadowPixels.right, red);
   assert.deepEqual(report.pixels.shadowPixels.edge, black);
+  assert.deepEqual(report.pixels.matrixPixels.inside, [255, 0, 128, 255]);
+  assert.deepEqual(report.pixels.changedMatrix.inside, [64, 255, 0, 255]);
+  assert.deepEqual(report.pixels.bevelPixels.inside, green);
+  assert.notDeepEqual(
+    report.pixels.bevelPixels.edge,
+    green,
+    "bevel changes the edge",
+  );
+  assert.ok(report.pixels.blurPixels.left[1] > 0, "blur extends the shape");
   assert.deepEqual(report.pixels.clearedGlow.left, black);
   assert.deepEqual(report.pixels.clearedGlow.inside, green);
   report.textOutline = await evaluate(`(()=>{

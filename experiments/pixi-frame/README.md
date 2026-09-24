@@ -114,16 +114,34 @@ timeline masks, and scroll rectangles have initial implementations. Bitmap edits
 are observed without clearing AwayFL's pending upload flags, allowing a clean
 switch back. The overlay passes mouse input through to the original player.
 
+The direct backend uses stock Pixi filters (`pixi-filters` 6.1.5), with no custom
+Flash glow/shadow shaders:
+
+| Flash effect | Pixi equivalent |
+| --- | --- |
+| Strong narrow outer glow (including AQW name outlines) | `OutlineFilter` |
+| Other glows | `GlowFilter` |
+| Drop shadow | `DropShadowFilter` |
+| Inner shadow | Inner `GlowFilter` approximation |
+| Blur | `BlurFilter` |
+| Bevel | `BevelFilter` |
+| Color matrix | `ColorMatrixFilter` (byte offsets normalized to 0–1) |
+
+Effects favor visual similarity over Flash pixel parity. Glow/outline sampling
+quality is 0.1, glow radius is capped at 32 render pixels, and blur/shadow quality
+is capped at two passes. Strength is bounded at 16; high-strength narrow glows
+become crisp outlines. Glow radii are circular, inner shadows lose their direction,
+shadow knockout uses Pixi's shadow-only mode, and bevel type/knockout/blur have no
+exact mapping. Filter sizes follow display scale, with quarter-pixel rounding.
+Unchanged parameters reuse filters. A changed glow radius recreates the filter,
+because Pixi compiles its WebGL sampling radius into the shader.
+
 **Compatibility is incomplete.** GPU-only `BitmapData` images are skipped and
-reported as `gpu-bitmap`; some game backgrounds therefore disappear. Flash bevel
-and color-matrix filters are not implemented. Glow and drop shadow use Pixi-owned
-GPU passes with Flash composition (strength, inner, knockout and hideObject),
-including the black glow used for AQW text outlines. Their Gaussian blur kernel
-is approximate; padding and offsets follow the display scale. Strokes, blur and
-isolated blend groups are also approximations and reported. Detached masks,
-3D transforms and animated materials need further work. Cache-as-bitmap hints do
-not yet create retained Pixi render textures. Do not compare FPS with the working
-bridge or Ruffle as though the output were equivalent.
+reported as `gpu-bitmap`; some game backgrounds therefore disappear. Other filter
+kinds are still omitted and reported. Strokes and isolated blend groups are
+approximations. Detached masks, 3D transforms and animated materials need further
+work. Cache-as-bitmap hints do not yet create retained Pixi render textures.
+Do not compare FPS with the working bridge or Ruffle as though output were equivalent.
 
 `pixiLive.stats` reports `mode: "display-list"`, `syncMs`, `pixiMs`, mesh counts,
 cumulative `geometryBuilds`/`textureUploads`, and per-frame `unsupported` counts.
@@ -141,7 +159,8 @@ npm run check:display-list
 The browser check needs disposable Chrome on CDP port 9234. It opens its own tab,
 never logs in, and checks input, retained resources, pixel output after movement,
 redrawing, visibility, masks, bitmap edits, resize and stop/restart. It also checks
-glow/shadow composition and embedded text outlines after text changes and resize,
+glow/shadow effects, bevel, blur, color-matrix edits and embedded text outlines
+after text changes and resize,
 and rejects shader-link errors and destroyed-texture warnings. It replaces
 AwayFL's root render function with a throwing stub during the direct-path tests.
 It also loads the offline Battleon fixture and exposes its original vector

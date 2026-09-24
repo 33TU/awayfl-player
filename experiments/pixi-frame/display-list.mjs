@@ -12,13 +12,13 @@ import {
   UniformGroup,
   Graphics,
   AlphaFilter,
-  BlurFilter,
 } from "pixi.js";
 import "./flash-blends.mjs";
 import {
-  DisplayListShadowFilter,
-  shadowOptions,
-} from "./display-list-shadow.mjs";
+  describeFilter,
+  createFilter,
+  destroyFilter,
+} from "./display-list-filters.mjs";
 import {
   createAssetTracker,
   triangleData,
@@ -500,37 +500,24 @@ export async function startDisplayList(player, { onStatus = () => {} } = {}) {
     r.node = node;
     const blend = node.blendMode || "normal";
     const filters = node.filters || [];
-    for (const f of filters)
-      missing(
-        (["blur", "glow", "dropShadow"].includes(f.filterName)
-          ? "approximate-filter:"
-          : "filter:") + f.filterName,
-      );
+    const sx = Math.hypot(world.a, world.b),
+      sy = Math.hypot(world.c, world.d);
+    const descriptions = filters
+      .map((f) => {
+        const d = describeFilter(f, sx, sy);
+        if (!d) missing("filter:" + f.filterName);
+        else if (f.filterName !== "colorMatrix")
+          missing("approximate-filter:" + f.filterName);
+        return d;
+      })
+      .filter(Boolean);
     if (!["normal", "layer", ""].includes(blend))
       missing("blend-group:" + blend);
-    const key = JSON.stringify([
-      blend,
-      filters.map((f) =>
-        ["glow", "dropShadow"].includes(f.filterName)
-          ? { filterName: f.filterName, ...shadowOptions(f) }
-          : f,
-      ),
-    ]);
+    const key = JSON.stringify([blend, descriptions]);
     if (r.filterKey !== key) {
       r.content.filters = null;
-      for (const f of r.filters) f.destroy();
-      r.filters = [];
-      for (const f of filters)
-        if (["glow", "dropShadow"].includes(f.filterName))
-          r.filters.push(new DisplayListShadowFilter(shadowOptions(f)));
-        else if (f.filterName === "blur")
-          r.filters.push(
-            new BlurFilter({
-              strengthX: f.blurX / 2,
-              strengthY: f.blurY / 2,
-              quality: Math.max(1, f.quality || 1),
-            }),
-          );
+      for (const f of r.filters) destroyFilter(f);
+      r.filters = descriptions.map(createFilter);
       if (!["normal", "layer", ""].includes(blend)) {
         const mapped = blend === "hardlight" ? "hard-light" : blend;
         if (
@@ -553,12 +540,6 @@ export async function startDisplayList(player, { onStatus = () => {} } = {}) {
       r.content.filters = r.filters.length ? r.filters : null;
       r.filterKey = key;
     }
-    for (const f of r.filters)
-      if (f instanceof DisplayListShadowFilter)
-        f.updateScale(
-          Math.hypot(world.a, world.b),
-          Math.hypot(world.c, world.d),
-        );
     path.delete(node);
     return r.outer;
   }
@@ -595,7 +576,7 @@ export async function startDisplayList(player, { onStatus = () => {} } = {}) {
     r.content.removeChildren();
     r.outer.removeChildren();
     for (const m of r.meshes) if (m) disposeMesh(m);
-    for (const f of r.filters) f.destroy();
+    for (const f of r.filters) destroyFilter(f);
     for (const w of r.wrappers) {
       w.removeChildren();
       w.destroy();

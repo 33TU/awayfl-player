@@ -12,6 +12,7 @@
     "check:display-list": "node check-display-list.mjs"
   },
   "dependencies": {
+    "pixi-filters": "6.1.5",
     "pixi.js": "8.21.0"
   },
   "devDependencies": {
