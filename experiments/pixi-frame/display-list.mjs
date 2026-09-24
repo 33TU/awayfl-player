@@ -12,7 +12,20 @@ import {
   Graphics,
   AlphaFilter,
 } from "pixi.js";
-import "./flash-blends.mjs";
+import { FlashHardLightBlend } from "./flash-blends.mjs";
+import {
+  OverlayBlend,
+  DarkenBlend,
+  LightenBlend,
+  DifferenceBlend,
+} from "pixi.js";
+const advancedBlends = {
+  overlay: OverlayBlend,
+  "hard-light": FlashHardLightBlend,
+  darken: DarkenBlend,
+  lighten: LightenBlend,
+  difference: DifferenceBlend,
+};
 import { createGeometryCache } from "./display-list-geometry.mjs";
 import {
   describeFilter,
@@ -102,11 +115,17 @@ export async function startDisplayList(player, { onStatus = () => {} } = {}) {
     customMeshes: 0,
     geometryBuilds: 0,
     textureUploads: 0,
+    drawnFrames: 0,
+    reusedFrames: 0,
     renderSize: [0, 0],
     unsupported: {},
     lastError: null,
   };
   const geometryCache = createGeometryCache(tracker, stats);
+  let visualDirty = true,
+    previousProjection,
+    previousBuilds = -1,
+    previousUploads = -1;
   let stopped = false,
     statusTime = performance.now(),
     statusFrames = 0;
@@ -181,6 +200,7 @@ export async function startDisplayList(player, { onStatus = () => {} } = {}) {
     return t;
   }
   function disposeMesh(r) {
+    visualDirty = true;
     r.mesh.removeFromParent();
     r.mesh.destroy();
     r.shader?.destroy();
@@ -261,6 +281,21 @@ export async function startDisplayList(player, { onStatus = () => {} } = {}) {
         mesh.shader = r.shader;
       }
     }
+    const paintKey = [
+      geometry,
+      texture,
+      radial,
+      sampler?.imageRect?.width,
+      sampler?.imageRect?.height,
+      sampler?.imageRect?.x,
+      sampler?.imageRect?.y,
+      material?.style?.color,
+      material?.ambientMethod?.alpha,
+    ];
+    if (!same(r.paintKey, paintKey)) {
+      visualDirty = true;
+      r.paintKey = paintKey;
+    }
     r.shape = shape;
     r.geometryEntry = geometryEntry;
     r.mesh.geometry = geometry;
@@ -295,11 +330,15 @@ export async function startDisplayList(player, { onStatus = () => {} } = {}) {
   }
   function arrange(container, children) {
     for (let i = 0; i < children.length; i++) {
-      if (container.children[i] !== children[i])
+      if (container.children[i] !== children[i]) {
+        visualDirty = true;
         container.addChildAt(children[i], i);
+      }
     }
-    while (container.children.length > children.length)
+    while (container.children.length > children.length) {
+      visualDirty = true;
       container.removeChildAt(children.length);
+    }
   }
   function nodeRecord(node) {
     let r = records.get(node);
@@ -332,6 +371,7 @@ export async function startDisplayList(player, { onStatus = () => {} } = {}) {
     path.add(node);
     const r = nodeRecord(node);
     r.epoch = stats.frames;
+    if (r.outer.visible !== (node.visible !== false)) visualDirty = true;
     r.outer.visible = node.visible !== false;
     stats.nodes++;
     if (!r.outer.visible) {
@@ -362,11 +402,16 @@ export async function startDisplayList(player, { onStatus = () => {} } = {}) {
     if (a[2] || a[6] || a[3] || a[7]) missing("3d-transform");
     const transform = [a[0], a[1], a[4], a[5], a[12], a[13]];
     if (!same(r.transform, transform)) {
+      visualDirty = true;
       r.matrix.set(...transform);
       r.outer.setFromMatrix(r.matrix);
       r.transform = transform;
     }
     combineColor(inherited, node.transform.colorTransform?._rawData, r.color);
+    if (!same(r.previousColor, r.color)) {
+      visualDirty = true;
+      r.previousColor = r.color.slice();
+    }
     const children = [];
     let shapeIndex = 0;
     if (entity?.assetType === "[asset Billboard]") {
@@ -374,12 +419,14 @@ export async function startDisplayList(player, { onStatus = () => {} } = {}) {
       const b = entity.billboardRect;
       const key = [entity.billboardWidth, entity.billboardHeight, b?.x, b?.y];
       if (!same(r.billboardKey, key)) {
+        visualDirty = true;
         r.billboard?.destroy();
         r.billboard = new Sprite();
         r.billboardKey = key;
       }
       const texture = imageTexture(entity.image, entity.style?.sampler);
       if (texture) {
+        if (r.billboard.texture !== texture) visualDirty = true;
         r.billboard.texture = texture;
         r.billboard.position.set(-(b?.x || 0), -(b?.y || 0));
         r.billboard.width = key[0];
@@ -411,6 +458,13 @@ export async function startDisplayList(player, { onStatus = () => {} } = {}) {
     }
     arrange(r.content, children);
     const scroll = node.scrollRect;
+    const scrollState = scroll
+      ? [scroll.x, scroll.y, scroll.width, scroll.height]
+      : [];
+    if (!same(r.scrollState, scrollState)) {
+      visualDirty = true;
+      r.scrollState = scrollState;
+    }
     r.content.position.set(scroll ? -scroll.x : 0, scroll ? -scroll.y : 0);
     if (scroll) {
       r.scrollMask ||= new Graphics();
@@ -430,10 +484,12 @@ export async function startDisplayList(player, { onStatus = () => {} } = {}) {
     }
     // Multiple timeline masks intersect by nesting containers. Script masks can
     // refer to a different branch of the display list; resolve after the walk.
-    r.maskNodes = [
+    const maskNodes = [
       ...(node._timelineMasks || []),
       ...(node.mask ? [node.mask] : []),
     ];
+    if (!same(r.maskNodes, maskNodes)) visualDirty = true;
+    r.maskNodes = maskNodes;
     r.node = node;
     const blend = node.blendMode || "normal";
     const filters = node.filters || [];
@@ -452,6 +508,7 @@ export async function startDisplayList(player, { onStatus = () => {} } = {}) {
       missing("blend-group:" + blend);
     const key = JSON.stringify([blend, descriptions]);
     if (r.filterKey !== key) {
+      visualDirty = true;
       r.content.filters = null;
       for (const f of r.filters) destroyFilter(f);
       r.filters = descriptions.map(createFilter);
@@ -469,8 +526,11 @@ export async function startDisplayList(player, { onStatus = () => {} } = {}) {
             "difference",
           ].includes(mapped)
         ) {
-          const isolate = new AlphaFilter({ alpha: 1 });
-          isolate.blendMode = mapped;
+          const AdvancedBlend = advancedBlends[mapped];
+          const isolate = AdvancedBlend
+            ? new AdvancedBlend()
+            : new AlphaFilter({ alpha: 1 });
+          if (!AdvancedBlend) isolate.blendMode = mapped;
           r.filters.push(isolate);
         } else missing("blend:" + blend);
       }
@@ -507,6 +567,7 @@ export async function startDisplayList(player, { onStatus = () => {} } = {}) {
   }
   function destroyRecord(r) {
     for (const w of r.wrappers) w.mask = null;
+    visualDirty = true;
     r.content.mask = null;
     r.content.filters = null;
     // Descendants have their own records; do not destroy them twice.
@@ -557,8 +618,10 @@ export async function startDisplayList(player, { onStatus = () => {} } = {}) {
       canvas.style.top = rect.top + "px";
       canvas.style.width = rect.width + "px";
       canvas.style.height = rect.height + "px";
-      if (renderer.width !== width || renderer.height !== height)
+      if (renderer.width !== width || renderer.height !== height) {
+        visualDirty = true;
         renderer.resize(width, height);
+      }
       stats.renderSize[0] = width;
       stats.renderSize[1] = height;
       const p = player._view.viewMatrix3D._rawData,
@@ -573,6 +636,16 @@ export async function startDisplayList(player, { onStatus = () => {} } = {}) {
         width * 0.5 * (p[12] / w + 1),
         height * 0.5 * (1 - p[13] / w),
       );
+      const projectionKey = [
+        projection.a,
+        projection.b,
+        projection.c,
+        projection.d,
+        projection.tx,
+        projection.ty,
+      ];
+      if (!same(previousProjection, projectionKey)) visualDirty = true;
+      previousProjection = projectionKey;
       scene.setFromMatrix(projection);
       const root = visit(player.root, IDENTITY_COLOR, new Set(), projection);
       if (root.parent !== scene) scene.addChild(root);
@@ -584,8 +657,24 @@ export async function startDisplayList(player, { onStatus = () => {} } = {}) {
         }
       stats.syncMs = performance.now() - start;
       const draw = performance.now();
-      renderer.render({ container: scene, clear: true });
-      stats.pixiMs = performance.now() - draw;
+      // Reuse the completed canvas only when every observable drawing input
+      // stayed unchanged. Timelines and input still run, and we still synchronize
+      // the display list so mutations trigger a new draw immediately.
+      if (
+        visualDirty ||
+        previousBuilds !== stats.geometryBuilds ||
+        previousUploads !== stats.textureUploads
+      ) {
+        renderer.render({ container: scene, clear: true });
+        stats.drawnFrames++;
+        stats.pixiMs = performance.now() - draw;
+      } else {
+        stats.reusedFrames++;
+        stats.pixiMs = 0;
+      }
+      visualDirty = false;
+      previousBuilds = stats.geometryBuilds;
+      previousUploads = stats.textureUploads;
       // Retirement happens after render instructions release last frame's textures.
       for (const [image, r] of textures)
         if (r.epoch < stats.frames - 2) {

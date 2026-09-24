@@ -4,7 +4,7 @@ import "pixi.js/advanced-blend-modes";
 // Both input textures are premultiplied. Evaluate hard-light using straight
 // colors, then combine source/backdrop coverage into a premultiplied result.
 // This is the same compositing equation used by Ruffle's hardlight shader.
-class FlashHardLightBlend extends BlendModeFilter {
+export class FlashHardLightBlend extends BlendModeFilter {
   constructor() {
     super({
       gl: {

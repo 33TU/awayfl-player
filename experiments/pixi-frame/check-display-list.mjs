@@ -89,6 +89,14 @@ try {
   assert.ok(report.login.stats.meshes > 100);
   assert.equal(report.login.geometryReused, true);
   assert.equal(report.login.texturesReused, true);
+  assert.ok(
+    report.login.stats.reusedFrames >= 8,
+    "unchanged login frames reuse the canvas",
+  );
+  assert.ok(
+    report.login.stats.drawnFrames <= 2,
+    "unchanged login avoids full-scene draws",
+  );
   await evaluate("pixiLiveControls.player.isPaused=false");
   const point = await evaluate(
     `(()=>{const c=pixiLiveControls.player._view.stage.context._gl.canvas.getBoundingClientRect(),f=document.getElementById('player').getBoundingClientRect();return{x:f.x+c.x+c.width*480/960,y:f.y+c.y+c.height*220/550}})()`,
@@ -139,8 +147,17 @@ try {
     const values=profile(),peak=Math.max(...values),center=values.indexOf(peak);
     let reversal=0;for(let i=1;i<values.length;i++)reversal=Math.max(reversal,i<=center?values[i-1]-values[i]:values[i]-values[i-1]);
     const stable=JSON.stringify(values)===JSON.stringify(profile());
-    g.$BgremoveChild(avatar);g.$BgremoveChild(bg);for(const [n,v] of visibility)n.visible=v;
-    return {peak,reversal,stable};
+    g.$BgremoveChild(avatar);
+    const thin=s.flash.display.Sprite.axClass.axConstruct([]);g.$BgaddChild(thin);
+    thin.$Bgx=450;thin.$Bgy=300;
+    thin.$Bggraphics.$BgbeginFill(0);thin.$Bggraphics.$BgdrawRect(-50,-3,100,6);thin.$Bggraphics.$BgendFill();
+    thin.$Bgfilters=s.createArray([new s.flash.filters.DropShadowFilter(0,0,0,1,100,100,1,1,false,false,true)]);
+    const broad=profile(),broadPeak=Math.max(...broad),broadCenter=broad.indexOf(broadPeak);
+    let broadReversal=0;for(let i=1;i<broad.length;i++)broadReversal=Math.max(broadReversal,i<=broadCenter?broad[i-1]-broad[i]:broad[i]-broad[i-1]);
+    thin.$Bgfilters=s.createArray([new s.flash.filters.DropShadowFilter(0,0,0,1,100,100,1,1,false,false,false)]);
+    const sharpPeak=Math.max(...profile());
+    g.$BgremoveChild(thin);g.$BgremoveChild(bg);for(const [n,v] of visibility)n.visible=v;
+    return {peak,reversal,stable,broadPeak,broadReversal,sharpPeak};
   })()`);
   assert.ok(report.avatarShadow.peak > 20, "avatar shadow is visible");
   assert.ok(
@@ -151,6 +168,15 @@ try {
     report.avatarShadow.stable,
     true,
     "unchanged frames do not accumulate shadows",
+  );
+  assert.ok(report.avatarShadow.broadPeak > 5, "broad shadow remains visible");
+  assert.ok(
+    report.avatarShadow.broadReversal <= 2,
+    "broad drop shadow has no separated copies",
+  );
+  assert.ok(
+    report.avatarShadow.sharpPeak >= 250,
+    "shadow downsampling preserves the sharp original",
   );
   report.pixels = await evaluate(`(()=>{
     const p=pixiLiveControls.player,g=p.root._children.find(n=>n.name==='scene').adapter,s=g.sec;
@@ -195,6 +221,11 @@ try {
     const bevelPixels=effect();
     box.$Bgfilters=s.createArray([new s.flash.filters.BlurFilter(8,8,1)]);const blurPixels=effect();
     box.$Bgfilters=s.createArray([]);const clearedGlow=effect();
+    const backdrop=s.flash.display.Sprite.axClass.axConstruct([]);g.$BgaddChildAt(backdrop,0);
+    backdrop.$Bggraphics.$BgbeginFill(0x800000);backdrop.$Bggraphics.$BgdrawRect(210,100,90,40);backdrop.$Bggraphics.$BgendFill();
+    box.$Bggraphics.$Bgclear();box.$Bggraphics.$BgbeginFill(0xffffff);box.$Bggraphics.$BgdrawRect(0,0,60,40);box.$Bggraphics.$BgendFill();
+    box.$BgblendMode='overlay';const overlayPixels=effect();box.$BgblendMode='normal';g.$BgremoveChild(backdrop);
+    box.$Bggraphics.$Bgclear();box.$Bggraphics.$BgbeginFill(0x00ff00);box.$Bggraphics.$BgdrawRect(0,0,60,40);box.$Bggraphics.$BgendFill();p._renderer.render();
     const sharedBefore={...pixiLive.stats},copies=[];
     for(let i=0;i<8;i++){
       const copy=s.flash.display.Sprite.axClass.axConstruct([]);
@@ -230,11 +261,16 @@ try {
     const gpuBitmap=sample(),gpuReported=pixiLive.stats.unsupported['gpu-bitmap'];
     data.adaptee.syncData=noReadback;data.adaptee._imageDataDirty=false;
     window.testDisplayObjects={g,parent,box,mask};
-    return {shared,red,moved,transformReused,green,hidden,clipped,masked,unmasked,removed,readded,glowPixels,strongerGlow,qualityGlow,knockoutGlow,innerGlow,shadowPixels,matrixPixels,changedMatrix,bevelPixels,blurPixels,clearedGlow,bitmapBlue,bitmapGreen,bitmapRed,gpuBitmap,gpuReported,stats:structuredClone(pixiLive.stats)};
+    return {overlayPixels,shared,red,moved,transformReused,green,hidden,clipped,masked,unmasked,removed,readded,glowPixels,strongerGlow,qualityGlow,knockoutGlow,innerGlow,shadowPixels,matrixPixels,changedMatrix,bevelPixels,blurPixels,clearedGlow,bitmapBlue,bitmapGreen,bitmapRed,gpuBitmap,gpuReported,stats:structuredClone(pixiLive.stats)};
   })()`);
   const black = [0, 0, 0, 255],
     red = [255, 0, 0, 255],
     green = [0, 255, 0, 255];
+  assert.deepEqual(
+    report.pixels.overlayPixels.inside,
+    red,
+    "overlay uses the backdrop instead of normal blending",
+  );
   assert.equal(
     report.pixels.shared.buildsAfter,
     report.pixels.shared.buildsBefore,

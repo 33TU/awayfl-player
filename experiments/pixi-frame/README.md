@@ -120,14 +120,14 @@ timeline masks, and scroll rectangles have initial implementations. Bitmap edits
 are observed without clearing AwayFL's pending upload flags, allowing a clean
 switch back. The overlay passes mouse input through to the original player.
 
-The direct backend uses stock Pixi filters (`pixi-filters` 6.1.5), with no custom
+The direct backend uses Pixi filter shaders (`pixi-filters` 6.1.5), with no custom
 Flash glow/shadow shaders:
 
 | Flash effect | Pixi equivalent |
 | --- | --- |
 | Strong narrow outer glow, or strong narrow zero-offset shadow (AQW names/chat) | `OutlineFilter` |
 | Other glows | `GlowFilter` |
-| Drop shadow | `DropShadowFilter` |
+| Drop shadow | `DropShadowFilter` tint/composite with native Gaussian `BlurFilter` |
 | Inner shadow | Inner `GlowFilter` approximation |
 | Blur | `BlurFilter` |
 | Bevel | `BevelFilter` |
@@ -140,16 +140,21 @@ become crisp outlines. Glow radii are circular, inner shadows lose their directi
 shadow knockout uses Pixi's shadow-only mode, and bevel type/knockout/blur have no
 exact mapping. Filter sizes follow display scale. Broad Gaussian blurs use a
 nine-sample kernel on a smaller target, with scene-space padding; their sample
-spacing is derived from the blur width to avoid repeated silhouettes. Other
-filter sizes use quarter-pixel rounding.
+spacing is derived from the blur width to avoid repeated silhouettes. Drop shadows
+use the same Gaussian approach on a separate smaller target; the original image
+is composited at full resolution to keep logos and text sharp. Other filter sizes
+use quarter-pixel rounding. Overlay, darken, lighten and difference groups use
+Pixi advanced blend filters; hard-light uses the existing Flash blend filter.
 Unchanged parameters reuse filters. A changed glow radius recreates the filter,
 because Pixi compiles its WebGL sampling radius into the shader.
 
 Geometry is already shared and retained across frames (`geometryEntries`,
 `geometryUsers`, and `geometryBuilds` in `pixiLive.stats`). The direct backend does
-not yet flatten display groups with `cacheAsTexture`; filters and child draws
-still run every frame. Adding that requires subtree invalidation for text,
-geometry, bitmap pixels, colors, masks, child order, and filter changes.
+not yet flatten display groups with `cacheAsTexture`. It synchronizes the display
+list each tick, but reuses the completed canvas when drawing inputs are unchanged.
+Text/geometry, bitmap pixels, transforms, colors, masks, child order, filters and
+resizing invalidate that frame. This saves idle-screen rendering; an animated
+scene still draws the full scene. Subtree texture caching remains separate work.
 `pixiLive.inspectText("name")` is a read-only diagnostic of matching non-input
 text fields, their colors, textures and ancestor filters.
 
@@ -162,6 +167,8 @@ Do not compare FPS with the working bridge or Ruffle as though output were equiv
 
 `pixiLive.stats` reports `mode: "display-list"`, `syncMs`, `pixiMs`, mesh counts,
 cumulative `geometryBuilds`/`textureUploads`, and per-frame `unsupported` counts.
+`drawnFrames` and `reusedFrames` distinguish actual Pixi draws from unchanged ticks;
+`pixiMs` is zero for reused frames.
 `geometryEntries` counts retained unique geometry objects, `geometryUsers` counts
 the retained meshes using them, and cumulative `geometryShares` counts acquisitions
 that reused geometry already held by another mesh. Retention includes briefly

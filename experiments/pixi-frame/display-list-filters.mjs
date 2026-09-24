@@ -1,4 +1,4 @@
-import { BlurFilter, ColorMatrixFilter } from "pixi.js";
+import { BlurFilter, ColorMatrixFilter, TexturePool } from "pixi.js";
 import { GlowFilter } from "pixi-filters/glow";
 import { OutlineFilter } from "pixi-filters/outline";
 import { DropShadowFilter } from "pixi-filters/drop-shadow";
@@ -6,6 +6,35 @@ import { BevelFilter } from "pixi-filters/bevel";
 
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 const quarter = (v) => Math.round(v * 4) / 4;
+
+// Keep Pixi's shadow tint/offset and original-image composite, but blur only
+// the shadow at reduced resolution. Sparse Kawase taps stamp copies of broad
+// silhouettes; reducing the whole filter resolution also damages sharp text.
+class SmoothDropShadowFilter extends DropShadowFilter {
+  constructor(d) {
+    super(d.options);
+    this._blurFilter.destroy();
+    this._blurFilter = new BlurFilter(d.blur);
+    this.shadowResolution = d.blur.resolution;
+    this.padding = d.padding;
+  }
+
+  apply(manager, input, output, clearMode) {
+    const shadow = TexturePool.getOptimalTexture({
+      width: input.frame.width,
+      height: input.frame.height,
+      resolution: Math.min(input.source.resolution, this.shadowResolution),
+    });
+    try {
+      manager.applyFilter(this, input, shadow, true);
+      this._blurFilter.apply(manager, shadow, output, clearMode);
+      if (!this.shadowOnly)
+        manager.applyFilter(this._basePass, input, output, false);
+    } finally {
+      TexturePool.returnTexture(shadow);
+    }
+  }
+}
 
 // Visual equivalents, intentionally not Flash shader emulation. Descriptors are
 // also cache keys: stable effects retain their filter objects across frames.
@@ -87,6 +116,19 @@ export function describeFilter(f, sx = 1, sy = 1) {
       const angle = ((f.angle ?? 45) * Math.PI) / 180;
       return {
         kind: "shadow",
+        blur: {
+          strengthX: (blurX * sx) / 8,
+          strengthY: (blurY * sy) / 8,
+          resolution: Math.min(
+            1,
+            2 ** Math.floor(Math.log2(8 / Math.max(8, radius * 2))),
+          ),
+          kernelSize: 9,
+          quality,
+        },
+        padding: Math.ceil(
+          radius * 1.5 + Math.abs(f.distance ?? 4) * Math.max(sx, sy),
+        ),
         options: {
           offset: {
             x: quarter(Math.cos(angle) * (f.distance ?? 4) * sx),
@@ -156,7 +198,7 @@ export function createFilter(d) {
     case "glow":
       return new GlowFilter(d.options);
     case "shadow":
-      return new DropShadowFilter(d.options);
+      return new SmoothDropShadowFilter(d);
     case "bevel":
       return new BevelFilter(d.options);
     case "blur": {
@@ -176,7 +218,7 @@ export function destroyFilter(filter) {
   // These composite filters do not currently destroy their child filters.
   // pixi-filters is pinned so its owned passes can be released here as well.
   if (filter instanceof DropShadowFilter) {
-    filter._blurFilter.destroy();
+    destroyFilter(filter._blurFilter);
     filter._basePass.destroy();
   } else if (filter instanceof BlurFilter) {
     filter.blurXFilter.destroy();
