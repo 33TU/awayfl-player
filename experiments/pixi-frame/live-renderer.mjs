@@ -13,7 +13,7 @@ import {
   Sprite,
   Rectangle,
 } from "pixi.js";
-import "pixi.js/advanced-blend-modes";
+import "./flash-blends.mjs";
 
 const types = {
   5126: "f32",
@@ -414,7 +414,18 @@ void main(){awayMain();vec2 p=gl_Position.xy/gl_Position.w;p=p*vec2(0.5,${g.offs
       gl.stencilMask(0xff);
       gl.clearStencil(0);
       gl.disable(gl.STENCIL_TEST);
-      renderer.render({ container: scene });
+      try {
+        renderer.render({ container: scene });
+      } finally {
+        // Advanced blends borrow pooled filter targets. The global bind group
+        // outlives those targets, so release its inputs after composition.
+        const bindings = renderer.filter._globalFilterBindGroup;
+        if (bindings.resources[1]) {
+          bindings.setResource(Texture.EMPTY.source, 1);
+          bindings.setResource(Texture.EMPTY.source.style, 2);
+          bindings.setResource(Texture.EMPTY.source, 3);
+        }
+      }
     },
     stats() {
       return {
@@ -435,6 +446,7 @@ void main(){awayMain();vec2 p=gl_Position.xy/gl_Position.w;p=p*vec2(0.5,${g.offs
       for (const sampler of Object.values(renderer.texture._glSamplers))
         gl.deleteSampler(sampler);
       // Release renderer-owned batch bind groups before their borrowed sources.
+      renderer.filter._globalFilterBindGroup.destroy();
       renderer.destroy(false);
       for (const t of borrowed.values()) t.texture.destroy(true);
       borrowed.clear();

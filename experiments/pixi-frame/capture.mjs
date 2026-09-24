@@ -737,7 +737,9 @@ export function captureFrame(player, options = {}) {
       if (entry.masks.length) stats.masks++;
       if (cache) {
         const b = cache.getPaddedBounds();
-        const blend = cache.node.container.blendMode || "normal";
+        const flashBlend = cache.node.container.blendMode || "normal";
+        // Flash/AwayFL uses "hardlight"; Pixi registers "hard-light".
+        const blend = flashBlend === "hardlight" ? "hard-light" : flashBlend;
         const pixels = cache.useNonNativeBlend
           ? sources.get(cache) ||
             options.transport?.sourceFor(cache) ||

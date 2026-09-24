@@ -42,6 +42,7 @@ export async function startLive(
     frames = 0,
     lastStatus = 0;
   const stats = {
+    active: true,
     mode: direct
       ? "direct-scene"
       : prepareOnly
@@ -59,6 +60,7 @@ export async function startLive(
   function stop() {
     if (stopped) return;
     stopped = true;
+    stats.active = false;
     root.render = original;
     const restore = saveGL(gl);
     try {

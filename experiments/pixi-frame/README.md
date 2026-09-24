@@ -285,3 +285,26 @@ await pixiLiveControls.enable({ cachedLayers: false });
 
 Stopping and enabling without options restores Pixi source drawing. The normal
 AwayFL loader is unchanged.
+
+## Blend failures and timing snapshots
+
+Flash's `hardlight` name maps to Pixi's `hard-light`. Its blend shader evaluates
+straight RGB values from premultiplied inputs, then composites source and
+backdrop coverage. The browser check exercises the actual ActionScript setter
+with opaque and translucent fills, comparing pixels against the hard-light
+formula (within one 8-bit channel value). It also checks that stopping the
+renderer releases the advanced-filter texture bindings without warnings.
+
+There is a separate known upstream discrepancy: a sprite with object `alpha`
+0.5 can already have alpha 0.25 in AwayFL's isolated source texture, even with
+Pixi disabled. This adapter does not compensate for that source-rendering issue.
+
+`pixiLive.stats.active` becomes false on stop or fallback. In that case the frame
+timings remain the last successful Pixi frame, and `lastError` reports why it
+stopped. They do not measure the renderer currently displaying the game.
+
+The reported Battleon frame (1440 × 825) had 156.5 ms preparation and 52.1 ms
+Pixi composition before a hardlight fallback. Its cumulative geometry cache hit
+rate was about 98%; 8,486 prepared meshes and 288 filter passes in that frame
+remain substantial work. Fixing the fallback does not establish a speedup or
+24 FPS. Reducing per-mesh preparation and draw submissions remains necessary.

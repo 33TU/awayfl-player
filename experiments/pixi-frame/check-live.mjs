@@ -357,6 +357,20 @@ try {
     assert.equal(mask.clear, 7);
     assert.equal(mask.test, true);
   }
+  report.flashBlends = await evaluate(
+    `import('./check-filter-browser.js?v='+Date.now()).then(m=>m.checkFlashBlend(pixiLiveControls.player))`,
+  );
+  assert.equal(report.flashBlends.glError, 0);
+  for (const result of report.flashBlends.results) {
+    assert.equal(result.active, true);
+    assert.equal(result.lastError, null);
+    assert.ok(result.overlays > 0);
+    for (let i = 0; i < 4; i++)
+      assert.ok(
+        Math.abs(result.expected[i] - result.actual[i]) <= 1,
+        JSON.stringify(result),
+      );
+  }
   report.destroyedTextureWarnings = destroyedTextureWarnings;
   assert.deepEqual(destroyedTextureWarnings, []);
   console.log(JSON.stringify(report, null, 2));

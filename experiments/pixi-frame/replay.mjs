@@ -13,7 +13,7 @@ import {
   Sprite,
   Rectangle,
 } from "pixi.js";
-import "pixi.js/advanced-blend-modes";
+import "./flash-blends.mjs";
 const uniformTypes = {
   5126: "f32",
   5124: "i32",

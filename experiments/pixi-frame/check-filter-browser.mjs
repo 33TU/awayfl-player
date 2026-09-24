@@ -4,6 +4,7 @@ import { createLiveRenderer } from "./live-renderer.mjs";
 import { createFilterPasses } from "./filter-passes.mjs";
 import { saveGL, mirrorGL, createTransport } from "./shared-gl.mjs";
 export { checkRenderer } from "./check-renderer-browser.mjs";
+export { checkFlashBlend } from "./check-blend-browser.mjs";
 
 export async function checkFilters(player) {
   const stage = player._view.stage,
