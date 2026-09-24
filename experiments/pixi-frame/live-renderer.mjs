@@ -126,7 +126,10 @@ void main(){awayMain();vec2 p=gl_Position.xy/gl_Position.w;p=p*vec2(0.5,${g.offs
       values[name] = {
         type: types[u.type],
         size: u.size,
-        value: Array.isArray(u.value) ? new Float32Array(u.value) : u.value,
+        value:
+          Array.isArray(u.value) || ArrayBuffer.isView(u.value)
+            ? new Float32Array(u.value)
+            : u.value,
       };
     }
     const group = new UniformGroup(values),
@@ -149,10 +152,13 @@ void main(){awayMain();vec2 p=gl_Position.xy/gl_Position.w;p=p*vec2(0.5,${g.offs
         let changed = false;
         function updateUniform(name, value) {
           const previous = group.uniforms[name];
-          if (Array.isArray(value)) {
-            if (value.some((v, i) => previous[i] !== Math.fround(v))) {
-              previous.set(value);
-              changed = true;
+          if (Array.isArray(value) || ArrayBuffer.isView(value)) {
+            for (let i = 0; i < value.length; i++) {
+              if (previous[i] !== Math.fround(value[i])) {
+                previous.set(value);
+                changed = true;
+                break;
+              }
             }
           } else if (previous !== value) {
             group.uniforms[name] = value;

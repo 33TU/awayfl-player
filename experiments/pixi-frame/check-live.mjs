@@ -332,6 +332,11 @@ try {
     `import('./check-filter-browser.js?v='+Date.now()).then(m=>m.checkRenderer(pixiLiveControls.player))`,
   );
   assert.equal(report.renderer.glError, 0);
+  assert.deepEqual(report.renderer.uniformPixels, [
+    [255, 0, 0, 255],
+    [0, 255, 0, 255],
+    [0, 0, 255, 255],
+  ]);
   assert.deepEqual(report.renderer.scopedState, {
     switches: 3,
     active: true,

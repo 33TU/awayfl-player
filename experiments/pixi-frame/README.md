@@ -308,3 +308,21 @@ Pixi composition before a hardlight fallback. Its cumulative geometry cache hit
 rate was about 98%; 8,486 prepared meshes and 288 filter passes in that frame
 remain substantial work. Fixing the fallback does not establish a speedup or
 24 FPS. Reducing per-mesh preparation and draw submissions remains necessary.
+
+## Uniform preparation cost
+
+Direct recipes now snapshot shader constants into `Float32Array`s. Previously,
+all meshes converted those floats into JavaScript arrays, followed by conversion
+back into floats in Pixi. The snapshots still own their data: subsequent draws
+may reuse and mutate the same AwayFL shader. The retained mesh updater supports
+both typed snapshots and ordinary arrays from the compatibility capture path.
+Recipe objects also use a fixed set of fields instead of spreading geometry and
+then adding fields for every draw.
+
+The same paused Battleon fixture, measured old/new/new/old against `dc031c3`,
+reduced median render time from 99.4 ms to 72.45 ms. Median preparation went from
+65.45 ms to 53.65 ms and Pixi composition from 26.0 ms to 19.1 ms. All four runs
+produced identical pixels. See `uniform-preparation-profile.json` for samples.
+This uses headless Chrome/SwiftShader at 641 × 367 with about 2,500 scene meshes;
+it is not the user's Brave/GPU scene or a claim of 24 FPS. There is still one
+mesh submission per recipe, so draw batching remains outstanding.

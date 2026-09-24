@@ -95,7 +95,10 @@ export async function buildReplay(frame, canvas) {
       if (!type) throw Error("Unsupported shader uniform type " + u.type);
       values[name] = {
         type,
-        value: Array.isArray(u.value) ? new Float32Array(u.value) : u.value,
+        value:
+          Array.isArray(u.value) || ArrayBuffer.isView(u.value)
+            ? new Float32Array(u.value)
+            : u.value,
         size: u.size,
       };
     }

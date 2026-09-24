@@ -415,7 +415,9 @@ export function createDirectScene() {
           uniforms[u.name] = {
             type: u.type,
             size: u.size,
-            value: Array.from(data.subarray(0, u.size * 4)),
+            // Keep shader constants in their native float representation. These
+            // are independent snapshots: later meshes reuse the same shader.
+            value: data.slice(0, u.size * 4),
           };
         } else {
           const slot = Number(u.name.slice(2));
@@ -430,7 +432,8 @@ export function createDirectScene() {
       }
       return {
         kind: "mesh",
-        ...mesh,
+        attributes: mesh.attributes,
+        count: mesh.count,
         blend,
         vertex: meta.vertex,
         fragment: meta.fragment,

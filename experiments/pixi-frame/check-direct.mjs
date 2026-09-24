@@ -79,7 +79,10 @@ const item = {
 const reasons = [];
 const meta = {
   attributes: [{ name: "va0" }, { name: "va1" }],
-  uniforms: [],
+  uniforms: [
+    { name: "vc", type: 35666, size: 4 },
+    { name: "fc", type: 35666, size: 1 },
+  ],
   vertex: "",
   fragment: "",
 };
@@ -166,6 +169,16 @@ try {
   assert.equal(cached.raster.cull, null);
   assert.deepEqual(cached.raster.blendFactors, [2, 9]);
   assert.deepEqual([...shader.fragmentConstantData], before);
+  // Each draw must retain its own constants when a shared shader is reused.
+  const vertexSnapshot = [...cached.uniforms.vc.value];
+  const fragmentSnapshot = [...cached.uniforms.fc.value];
+  shader.vertexConstantData.fill(0.75);
+  shader.fragmentConstantData.fill(0.5);
+  const nextDraw = adapter.recipe(item, context);
+  assert.deepEqual([...cached.uniforms.vc.value], vertexSnapshot);
+  assert.deepEqual([...cached.uniforms.fc.value], fragmentSnapshot);
+  assert.deepEqual([...nextDraw.uniforms.vc.value], Array(16).fill(0.75));
+  assert.deepEqual([...nextDraw.uniforms.fc.value], Array(4).fill(0.5));
   item.entity.node.container.animator = {};
   assert.equal(adapter.recipe(item, context), null);
   assert.deepEqual(reasons, ["animator"]);

@@ -117,6 +117,18 @@ export async function checkRenderer(player) {
         test: gl.isEnabled(gl.STENCIL_TEST),
       });
     }
+    // Retained meshes must notice both typed-array and legacy array changes.
+    const uniformPixels = [];
+    const fill = frame.commands[3].geometry[0].uniforms.uFill;
+    for (const color of [
+      new Float32Array([1, 0, 0, 1]),
+      [0, 1, 0, 1],
+      new Float32Array([0, 0, 1, 1]),
+    ]) {
+      fill.value = color;
+      live.render(frame);
+      uniformPixels.push(sample(130, 30));
+    }
     handle = gl.createTexture();
     gl.bindTexture(gl.TEXTURE_2D, handle);
     gl.texImage2D(
@@ -207,6 +219,7 @@ export async function checkRenderer(player) {
     destroyed = true;
     return {
       masks,
+      uniformPixels,
       scopedState,
       retained,
       released,
