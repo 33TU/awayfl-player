@@ -1,3 +1,5 @@
+import { projectCacheBounds } from "./cache-bounds.mjs";
+
 /** Capture one AwayFL frame. All temporary hooks are restored synchronously. */
 export function captureFrame(player, options = {}) {
   const root = player._renderer,
@@ -769,7 +771,14 @@ export function captureFrame(player, options = {}) {
           ...entry,
           kind: "cache",
           pixels,
-          bounds: { x: b.x, y: b.y, width: b.width, height: b.height },
+          textureFrame: { width: b.width, height: b.height },
+          bounds: projectCacheBounds(
+            b,
+            cache.getBoundsScale(),
+            root.view.viewMatrix3D._rawData,
+            width,
+            height,
+          ),
           blend,
         };
       }

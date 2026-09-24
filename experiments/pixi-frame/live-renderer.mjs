@@ -231,10 +231,11 @@ void main(){awayMain();vec2 p=gl_Position.xy/gl_Position.w;p=p*vec2(0.5,${g.offs
     let sprite, crop;
     if (c.kind === "cache") {
       const t = texture(c.pixels);
+      const frame = c.textureFrame || c.bounds;
       crop = new Texture({
         dynamic: true,
         source: t.source,
-        frame: new Rectangle(0, 0, c.bounds.width, c.bounds.height),
+        frame: new Rectangle(0, 0, frame.width, frame.height),
       });
       sprite = new Sprite(crop);
       group.addChild(sprite);
@@ -267,17 +268,18 @@ void main(){awayMain();vec2 p=gl_Position.xy/gl_Position.w;p=p*vec2(0.5,${g.offs
       update(c) {
         if (sprite) {
           const t = texture(c.pixels);
+          const frame = c.textureFrame || c.bounds;
           if (
             crop.source !== t.source ||
-            crop.frame.width !== c.bounds.width ||
-            crop.frame.height !== c.bounds.height
+            crop.frame.width !== frame.width ||
+            crop.frame.height !== frame.height
           ) {
             crop.source = t.source;
             Object.assign(crop.frame, {
               x: 0,
               y: 0,
-              width: c.bounds.width,
-              height: c.bounds.height,
+              width: frame.width,
+              height: frame.height,
             });
             crop.orig.copyFrom(crop.frame);
             crop.update();

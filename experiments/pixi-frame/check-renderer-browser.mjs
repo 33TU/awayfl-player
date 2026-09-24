@@ -184,6 +184,23 @@ export async function checkRenderer(player) {
     };
     const texture = live.texture(descriptor),
       source = texture.source;
+    // Texture crop dimensions must stay independent from screen dimensions.
+    live.render({
+      width,
+      height,
+      commands: [
+        {
+          key: "scaled-cache",
+          kind: "cache",
+          pixels: descriptor,
+          textureFrame: { width: 1, height: 1 },
+          bounds: { x: 20, y: 20, width: 40, height: 20 },
+          blend: "normal",
+          masks: [],
+        },
+      ],
+    });
+    const scaledCachePixels = [sample(40, 30), sample(65, 30)];
     shader = new Shader({
       glProgram: GlProgram.from({
         vertex,
@@ -220,6 +237,7 @@ export async function checkRenderer(player) {
     return {
       masks,
       uniformPixels,
+      scaledCachePixels,
       scopedState,
       retained,
       released,

@@ -138,14 +138,10 @@ export async function buildReplay(frame, canvas) {
       const group = new Container();
       if (command.kind === "cache") {
         const full = texture(command.pixels);
+        const frame = command.textureFrame || command.bounds;
         const cropped = new Texture({
           source: full.source,
-          frame: new Rectangle(
-            0,
-            0,
-            command.bounds.width,
-            command.bounds.height,
-          ),
+          frame: new Rectangle(0, 0, frame.width, frame.height),
         });
         crops.push(cropped);
         const sprite = new Sprite(cropped);
