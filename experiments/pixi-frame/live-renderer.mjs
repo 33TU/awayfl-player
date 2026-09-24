@@ -392,11 +392,22 @@ void main(){awayMain();vec2 p=gl_Position.xy/gl_Position.w;p=p*vec2(0.5,${g.offs
           sourceRecords.delete(k);
         }
       for (const [k, t] of borrowed)
-        if (epoch - t.epoch > 120) {
+        if (epoch - t.epoch > 120 && !t.source.listenerCount("change")) {
+          // Pixi bind groups (including retained renderer batches) subscribe to
+          // source changes. A live binding owns the wrapper beyond its last draw.
+          // Retire it only after those owners release it; never invalidate a
+          // shader's resources merely because it has been idle for 120 frames.
           t.texture.destroy(true);
           borrowed.delete(k);
         }
       renderer.resetState();
+      // AwayFL tests masks with stencil writes disabled. Pixi's stencil pipe
+      // assumes the default write mask and clear value; resetState() does not
+      // restore either. Establish them before clearing or drawing Pixi masks.
+      // The caller restores AwayFL's GL state after this render.
+      gl.stencilMask(0xff);
+      gl.clearStencil(0);
+      gl.disable(gl.STENCIL_TEST);
       renderer.render({ container: scene });
     },
     stats() {
@@ -413,13 +424,14 @@ void main(){awayMain();vec2 p=gl_Position.xy/gl_Position.w;p=p*vec2(0.5,${g.offs
       for (const r of sourceRecords.values()) r.destroy();
       sourceRecords.clear();
       scene.destroy();
-      for (const t of borrowed.values()) t.texture.destroy(true);
-      borrowed.clear();
       // Pixi normally relies on losing its context to release these samplers.
       // This context stays alive for AwayFL, so release only Pixi's samplers.
       for (const sampler of Object.values(renderer.texture._glSamplers))
         gl.deleteSampler(sampler);
+      // Release renderer-owned batch bind groups before their borrowed sources.
       renderer.destroy(false);
+      for (const t of borrowed.values()) t.texture.destroy(true);
+      borrowed.clear();
     },
   };
 }

@@ -6,6 +6,7 @@ import {
   Shader,
   GlProgram,
   UniformGroup,
+  Texture,
 } from "pixi.js";
 import { saveGL } from "./shared-gl.mjs";
 
@@ -88,6 +89,7 @@ export function createFilterPasses(stage, live, transport) {
       }
       const restore = saveGL(gl);
       transport.suspend();
+      let pass;
       try {
         const input = native(task.source);
         input._renderTarget?.present();
@@ -95,7 +97,7 @@ export function createFilterPasses(stage, live, transport) {
         main?._renderTarget?.present();
         task.computeVertexData();
         const key = task.name;
-        let pass = passes.get(key);
+        pass = passes.get(key);
         if (!pass) passes.set(key, (pass = create(task, shadow)));
         const u = pass.uniforms.uniforms;
         if (shadow) {
@@ -137,6 +139,14 @@ export function createFilterPasses(stage, live, transport) {
         stats[shadow ? "shadow" : "blur"]++;
         return true;
       } finally {
+        // Passes persist across rooms, but their inputs are only borrowed for
+        // this draw. Release them before the live texture cache can retire them.
+        if (pass) {
+          if (shadow) {
+            pass.shader.resources.uBlur = Texture.EMPTY.source;
+            pass.shader.resources.uSource = Texture.EMPTY.source;
+          } else pass.shader.resources.fs0 = Texture.EMPTY.source;
+        }
         restore();
         transport.resume();
       }

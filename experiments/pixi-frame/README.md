@@ -50,6 +50,13 @@ are disabled. WebGL state and hooks are restored when switching back or after a
 capture failure, including unbinding an interrupted AwayFL vertex array before
 fallback. Stopping Pixi does not destroy AwayFL's graphics context.
 
+Before final scene rendering, the bridge restores stencil writes and the zero
+clear value that Pixi expects. AwayFL leaves stencil writes disabled after mask
+tests; carrying that state into Pixi hides masked portraits, bars and lists.
+Reusable filter shaders release their borrowed inputs after each pass. Texture
+cleanup waits for remaining Pixi bind groups to release their sources, and
+shutdown releases those bindings before destroying the borrowed wrappers.
+
 This uses private APIs from both engines. Fractional-size alignment differences
 remain in the shared adapter: the 835×478 Battleon fixture had about 16.6% of
 pixels differing over 3/255 (mean RGB error about 4.15), also reproduced with the
@@ -131,6 +138,10 @@ forces cached layers to rebuild, injects both capture and source-draw failures,
 checks restoration of hooks, then restarts Pixi. It also
 compares 17 isolated filter fixtures, including cropped rectangles and in-place
 filtering, and resumes the live renderer afterwards.
+It also checks nested masks with stencil writes deliberately disabled, GL state
+restoration, filter reuse after 125 idle frames, and texture cleanup with a live
+shader binding. Destruction warnings fail the check; native texture ownership
+must survive renderer shutdown.
 It never submits login or game chat. The local test uses SwiftShader; timing
 figures from it are not representative of hardware rendering in Brave.
 

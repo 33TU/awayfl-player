@@ -3,6 +3,7 @@
 import { createLiveRenderer } from "./live-renderer.mjs";
 import { createFilterPasses } from "./filter-passes.mjs";
 import { saveGL, mirrorGL, createTransport } from "./shared-gl.mjs";
+export { checkRenderer } from "./check-renderer-browser.mjs";
 
 export async function checkFilters(player) {
   const stage = player._view.stage,
@@ -115,6 +116,22 @@ export async function checkFilters(player) {
       native(source).uploadFromArray(data, 0, true);
       manager.applyFilters(source, target, inputRect, destRect, options);
       const actual = pixels(target);
+      if (name === "outer glow") {
+        // Keep reusable filter shaders alive while their inputs age past the
+        // borrowed texture sweep, then run the same pass again.
+        const restoreIdle = saveGL(gl);
+        for (let i = 0; i < 125; i++)
+          live.render({
+            width: gl.drawingBufferWidth,
+            height: gl.drawingBufferHeight,
+            commands: [],
+          });
+        restoreIdle();
+        manager.applyFilters(source, target, inputRect, destRect, options);
+        const resumed = pixels(target);
+        if (resumed.some((v, i) => v !== actual[i]))
+          throw Error("Filter changed after idle texture cleanup");
+      }
       let max = 0,
         sum = 0,
         changed = 0;

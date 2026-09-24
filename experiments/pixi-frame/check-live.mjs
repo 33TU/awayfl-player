@@ -12,8 +12,16 @@ await new Promise((resolve, reject) => {
 });
 let next = 0;
 const pending = new Map();
+const destroyedTextureWarnings = [];
 ws.onmessage = ({ data }) => {
   const m = JSON.parse(data);
+  if (m.method === "Runtime.consoleAPICalled") {
+    const message = m.params.args
+      .map((a) => a.value ?? a.description)
+      .join(" ");
+    if (message.includes("textureSource") && message.includes("destroyed"))
+      destroyedTextureWarnings.push(message);
+  }
   if (m.id) {
     const p = pending.get(m.id);
     if (p) {
@@ -315,6 +323,31 @@ try {
     true,
   );
   await evaluate("pixiLiveControls.stop()");
+  report.renderer = await evaluate(
+    `import('./check-filter-browser.js?v='+Date.now()).then(m=>m.checkRenderer(pixiLiveControls.player))`,
+  );
+  assert.equal(report.renderer.glError, 0);
+  for (const key of [
+    "retained",
+    "released",
+    "destroyedOnStop",
+    "nativeTextureSurvives",
+  ])
+    assert.equal(report.renderer[key], true, key);
+  for (const mask of report.renderer.masks) {
+    assert.deepEqual(mask.pixels, [
+      [51, 51, 51, 255],
+      [255, 0, 0, 255],
+      [0, 255, 0, 255],
+      [0, 0, 255, 255],
+    ]);
+    assert.equal(mask.writeMask, 0);
+    assert.equal(mask.backWriteMask, 0);
+    assert.equal(mask.clear, 7);
+    assert.equal(mask.test, true);
+  }
+  report.destroyedTextureWarnings = destroyedTextureWarnings;
+  assert.deepEqual(destroyedTextureWarnings, []);
   console.log(JSON.stringify(report, null, 2));
 } catch (error) {
   console.error(JSON.stringify(report, null, 2));

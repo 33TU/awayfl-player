@@ -9,7 +9,7 @@
     "maxChannelError": 1,
     "meanChannelError": 0.004810712811215423,
     "reference": {
-      "medianMs": 13.900000000372529,
+      "medianMs": 8.899999998509884,
       "preparation": {
         "meshes": 130,
         "cachedImages": 11,
@@ -34,7 +34,7 @@
       }
     },
     "prepared": {
-      "medianMs": 7.199999999254942,
+      "medianMs": 11.699999999254942,
       "preparation": {
         "meshes": 130,
         "cachedImages": 11,
@@ -66,29 +66,29 @@
   },
   "fixture": {
     "mode": "direct-scene",
-    "frames": 62,
-    "captureMs": 159.10000000149012,
-    "pixiMs": 23.699999999254942,
+    "frames": 68,
+    "captureMs": 160.60000000149012,
+    "pixiMs": 30,
     "lastError": null,
     "transport": {
       "initialBufferReads": 0,
       "bufferUploads": 0,
-      "textureCopies": 67,
+      "textureCopies": 73,
       "pixelReadbacks": 1
     },
     "filters": {
-      "blur": 2792,
-      "shadow": 202,
+      "blur": 2972,
+      "shadow": 220,
       "unsupported": 0
     },
     "preparation": {
-      "meshes": 2485,
+      "meshes": 2484,
       "cachedImages": 546,
       "overlays": 140,
       "masks": 92,
-      "triangles": 447086,
+      "triangles": 447084,
       "unsupported": [],
-      "directMeshes": 2507,
+      "directMeshes": 2506,
       "directCaches": 653,
       "sourceMeshes": 1286,
       "sourceCacheQuads": 39,
@@ -104,7 +104,7 @@
       "skippedBackdropFlushes": 140
     },
     "scene": {
-      "commands": 3031,
+      "commands": 3030,
       "sourceMeshes": 1621,
       "textures": 825,
       "programs": 9
@@ -119,13 +119,13 @@
     "maxChannelError": 0,
     "meanChannelError": 0,
     "reference": {
-      "medianMs": 79,
+      "medianMs": 98.39999999850988,
       "preparation": {
-        "meshes": 2490,
+        "meshes": 2491,
         "cachedImages": 546,
         "overlays": 140,
         "masks": 92,
-        "triangles": 448536,
+        "triangles": 448538,
         "unsupported": [],
         "directMeshes": 0,
         "directCaches": 0,
@@ -137,22 +137,22 @@
         "directFallbacks": {},
         "awayDraws": 1051,
         "pixiFilterPasses": 0,
-        "skippedSceneDraws": 3165,
+        "skippedSceneDraws": 3166,
         "skippedSceneClears": 122,
         "skippedComposites": 140,
         "skippedBackdropFlushes": 140
       }
     },
     "prepared": {
-      "medianMs": 74.90000000037253,
+      "medianMs": 79,
       "preparation": {
-        "meshes": 2490,
+        "meshes": 2491,
         "cachedImages": 546,
         "overlays": 140,
         "masks": 92,
-        "triangles": 448536,
+        "triangles": 448538,
         "unsupported": [],
-        "directMeshes": 2512,
+        "directMeshes": 2513,
         "directCaches": 653,
         "sourceMeshes": 1014,
         "sourceCacheQuads": 1,
@@ -183,15 +183,15 @@
     "maxChannelError": 0,
     "meanChannelError": 0,
     "reference": {
-      "medianMs": 115.29999999888241,
+      "medianMs": 200.60000000149012,
       "preparation": {
-        "meshes": 2491,
+        "meshes": 2490,
         "cachedImages": 546,
         "overlays": 140,
         "masks": 92,
-        "triangles": 449198,
+        "triangles": 449196,
         "unsupported": [],
-        "directMeshes": 2513,
+        "directMeshes": 2512,
         "directCaches": 653,
         "sourceMeshes": 0,
         "sourceCacheQuads": 0,
@@ -208,15 +208,15 @@
       }
     },
     "prepared": {
-      "medianMs": 221.09999999962747,
+      "medianMs": 240.10000000149012,
       "preparation": {
-        "meshes": 2491,
+        "meshes": 2490,
         "cachedImages": 546,
         "overlays": 140,
         "masks": 92,
-        "triangles": 449198,
+        "triangles": 449196,
         "unsupported": [],
-        "directMeshes": 2513,
+        "directMeshes": 2512,
         "directCaches": 653,
         "sourceMeshes": 1932,
         "sourceCacheQuads": 40,
@@ -266,13 +266,13 @@
     "maxChannelError": 1,
     "meanChannelError": 3.0021834061135373e-05,
     "reference": {
-      "medianMs": 78.10000000149012,
+      "medianMs": 77.39999999850988,
       "preparation": {
-        "meshes": 2506,
+        "meshes": 2505,
         "cachedImages": 546,
         "overlays": 140,
         "masks": 92,
-        "triangles": 458504,
+        "triangles": 458502,
         "unsupported": [],
         "directMeshes": 0,
         "directCaches": 0,
@@ -284,22 +284,22 @@
         "directFallbacks": {},
         "awayDraws": 1064,
         "pixiFilterPasses": 0,
-        "skippedSceneDraws": 3181,
+        "skippedSceneDraws": 3180,
         "skippedSceneClears": 122,
         "skippedComposites": 140,
         "skippedBackdropFlushes": 140
       }
     },
     "prepared": {
-      "medianMs": 80.5,
+      "medianMs": 74.60000000149012,
       "preparation": {
-        "meshes": 2506,
+        "meshes": 2505,
         "cachedImages": 546,
         "overlays": 140,
         "masks": 92,
-        "triangles": 458504,
+        "triangles": 458502,
         "unsupported": [],
-        "directMeshes": 2528,
+        "directMeshes": 2527,
         "directCaches": 653,
         "sourceMeshes": 1021,
         "sourceCacheQuads": 2,
@@ -450,11 +450,85 @@
       }
     ],
     "stats": {
-      "blur": 174,
-      "shadow": 17,
+      "blur": 184,
+      "shadow": 18,
       "unsupported": 0
     },
     "fallback": 0,
     "glError": 0
-  }
+  },
+  "renderer": {
+    "masks": [
+      {
+        "pixels": [
+          [
+            51,
+            51,
+            51,
+            255
+          ],
+          [
+            255,
+            0,
+            0,
+            255
+          ],
+          [
+            0,
+            255,
+            0,
+            255
+          ],
+          [
+            0,
+            0,
+            255,
+            255
+          ]
+        ],
+        "writeMask": 0,
+        "backWriteMask": 0,
+        "clear": 7,
+        "test": true
+      },
+      {
+        "pixels": [
+          [
+            51,
+            51,
+            51,
+            255
+          ],
+          [
+            255,
+            0,
+            0,
+            255
+          ],
+          [
+            0,
+            255,
+            0,
+            255
+          ],
+          [
+            0,
+            0,
+            255,
+            255
+          ]
+        ],
+        "writeMask": 0,
+        "backWriteMask": 0,
+        "clear": 7,
+        "test": true
+      }
+    ],
+    "retained": true,
+    "released": true,
+    "destroyedOnStop": true,
+    "nativeTextureSurvives": true,
+    "glError": 0
+  },
+  "destroyedTextureWarnings": []
 }
