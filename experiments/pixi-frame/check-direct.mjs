@@ -105,6 +105,26 @@ try {
     [...adapter.recipe(item, context).attributes.va0.data],
     [10, 0, 10, 10, 0, 10],
   );
+  // Cached layer quads sample their own texture and must not overwrite an
+  // unrelated diffuse constant or double-blend a precomposited backdrop.
+  material.material.assetType = "[renderer CacheRenderer]";
+  material.material.useNonNativeBlend = true;
+  material._passes[0]._texture = {};
+  shader.fragmentConstantData.set([0.2, 0.4, 0.6, 0.8]);
+  const before = [...shader.fragmentConstantData];
+  Object.assign(shader, {
+    writeDepth: true,
+    usesBlending: false,
+    depthCompareMode: 5,
+    _blendFactor: [2, 9],
+    _blendEquation: [0, 0],
+  });
+  const cached = adapter.recipe(item, { ...context, nativeProjection: true });
+  assert.equal(cached.blend, "none");
+  assert.equal(cached.raster.depthWrite, false);
+  assert.equal(cached.raster.cull, null);
+  assert.deepEqual(cached.raster.blendFactors, [2, 9]);
+  assert.deepEqual([...shader.fragmentConstantData], before);
   item.entity.node.container.animator = {};
   assert.equal(adapter.recipe(item, context), null);
   assert.deepEqual(reasons, ["animator"]);
@@ -113,5 +133,5 @@ try {
 }
 assert.equal(Buffer.prototype.invalidate, prototypeInvalidate);
 console.log(
-  "Direct geometry: indexed ranges, UVs, reuse, vertex/index edits, fallback and cleanup passed.",
+  "Direct geometry: indexed ranges, UVs, reuse, vertex/index edits, cached quads, fallback and cleanup passed.",
 );

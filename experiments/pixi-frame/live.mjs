@@ -11,6 +11,7 @@ export async function startLive(
     prepareOnly = true,
     directScene = true,
     pixiFilters = true,
+    cachedLayers = true,
   } = {},
 ) {
   const root = player._renderer,
@@ -82,6 +83,19 @@ export async function startLive(
         prepareOnly,
         direct,
         filters,
+        drawSources:
+          cachedLayers && direct
+            ? (entries) => {
+                const restore = saveGL(gl);
+                transport.suspend();
+                try {
+                  live.drawSources(entries);
+                } finally {
+                  restore();
+                  transport.resume();
+                }
+              }
+            : null,
         render: () => original.apply(this, args),
       });
       stats.preparation = frame.stats;

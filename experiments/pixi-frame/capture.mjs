@@ -27,6 +27,11 @@ export function captureFrame(player, options = {}) {
     unsupported: [],
     directMeshes: 0,
     directCaches: 0,
+    sourceMeshes: 0,
+    sourceCacheQuads: 0,
+    sourceMaskMeshes: 0,
+    sourceBatches: 0,
+    sourceFallbacks: {},
     directFallbacks: {},
     awayDraws: 0,
     pixiFilterPasses: 0,
@@ -40,7 +45,7 @@ export function captureFrame(player, options = {}) {
     recorded = 0,
     scenePass = false,
     backdropPass = false,
-    pixiFilterPass = false;
+    pixiPass = false;
   const prepareOnly = !!options.prepareOnly;
   function hook(object, key, replacement) {
     const descriptor = Object.getOwnPropertyDescriptor(object, key);
@@ -343,8 +348,8 @@ export function captureFrame(player, options = {}) {
   }
   try {
     if (prepareOnly) {
-      // Keep material activation and geometry uploads for capture, but only
-      // offscreen source/filter passes should submit AwayFL GPU draws.
+      // Preserve traversal/projection setup. The root is collected for Pixi;
+      // supported offscreen source batches and filters render via Pixi too.
       hook(
         base,
         "executeRender",
@@ -485,7 +490,23 @@ export function captureFrame(player, options = {}) {
               );
             }
           }
-          if (options.direct && scenePass) {
+          if (
+            options.direct &&
+            (scenePass || (options.drawSources && this.view.target))
+          ) {
+            const sourcePass = !scenePass;
+            let sourceBatch = [];
+            const flushSources = () => {
+              if (!sourceBatch.length) return;
+              pixiPass = true;
+              try {
+                options.drawSources(sourceBatch);
+              } finally {
+                pixiPass = false;
+              }
+              stats.sourceBatches++;
+              sourceBatch = [];
+            };
             for (const item of items) {
               // Mask geometry is still collected using the existing traversal.
               // Its meshes take this same direct path when supported.
@@ -493,6 +514,7 @@ export function captureFrame(player, options = {}) {
                 this._activeMasksDirty ||
                 this._checkMaskOwners(item.entity.maskOwners)
               ) {
+                flushSources();
                 this._activeMaskOwners = item.entity.maskOwners;
                 if (this._activeMaskOwners)
                   this._renderMasks(this._activeMaskOwners);
@@ -507,26 +529,48 @@ export function captureFrame(player, options = {}) {
                 continue;
               }
               const target = this.view.target;
-              const viewport = target
-                ? targets.get(target)
-                : { x: 0, y: 0, width, height };
+              const viewport = sourcePass
+                ? { x: 0, y: 0, width: target.width, height: target.height }
+                : target
+                  ? targets.get(target)
+                  : { x: 0, y: 0, width, height };
               if (!viewport) throw Error("Missing direct projection bounds");
-              const b = root.getBlendBatchBounds([item]);
+              // Native projection already maps to this framebuffer. Source
+              // encoder draws do not need a second bounds/projection calculation.
+              const b = sourcePass
+                ? viewport
+                : root.getBlendBatchBounds([item]);
               const recipe = options.direct.recipe(item, {
                 metadata,
                 transport: options.transport,
                 viewport: { ...viewport },
                 offscreen: !!target,
+                nativeProjection: sourcePass,
                 bounds: { x: b.x, y: b.y, width: b.width, height: b.height },
-                fallback: (reason) =>
-                  (stats.directFallbacks[reason] =
-                    (stats.directFallbacks[reason] || 0) + 1),
+                fallback: (reason) => {
+                  const counts = sourcePass
+                    ? stats.sourceFallbacks
+                    : stats.directFallbacks;
+                  counts[reason] = (counts[reason] || 0) + 1;
+                },
               });
               if (recipe) {
-                draws.set(item, [recipe]);
-                stats.directMeshes++;
-              } else old.call(this, [item]);
+                if (sourcePass) {
+                  sourceBatch.push({ key: item, recipe });
+                  stats.sourceMeshes++;
+                  if (this._maskConfig) stats.sourceMaskMeshes++;
+                  if (item.renderable.assetType === "[renderer CacheRenderer]")
+                    stats.sourceCacheQuads++;
+                } else {
+                  draws.set(item, [recipe]);
+                  stats.directMeshes++;
+                }
+              } else {
+                flushSources();
+                old.call(this, [item]);
+              }
             }
+            flushSources();
             return;
           }
           return old.apply(this, arguments);
@@ -540,11 +584,11 @@ export function captureFrame(player, options = {}) {
         (old) =>
           function (task) {
             let handled;
-            pixiFilterPass = true;
+            pixiPass = true;
             try {
               handled = options.filters.draw(task);
             } finally {
-              pixiFilterPass = false;
+              pixiPass = false;
             }
             if (!handled) return old.apply(this, arguments);
             stats.pixiFilterPasses++;
@@ -615,7 +659,7 @@ export function captureFrame(player, options = {}) {
         "clear",
         (old) =>
           function () {
-            if (scenePass && !pixiFilterPass) {
+            if (scenePass && !pixiPass) {
               stats.skippedSceneClears++;
               return;
             }
@@ -645,7 +689,7 @@ export function captureFrame(player, options = {}) {
       "drawArrays",
       (old) =>
         function (mode, first, count) {
-          if (pixiFilterPass) return old.apply(this, arguments);
+          if (pixiPass) return old.apply(this, arguments);
           record(mode, first, count);
           if (prepareOnly && scenePass) {
             stats.skippedSceneDraws++;
@@ -660,7 +704,7 @@ export function captureFrame(player, options = {}) {
       "drawElements",
       (old) =>
         function (mode, count, type, offset) {
-          if (pixiFilterPass) return old.apply(this, arguments);
+          if (pixiPass) return old.apply(this, arguments);
           record(mode, 0, count, type, offset);
           if (prepareOnly && scenePass) {
             stats.skippedSceneDraws++;

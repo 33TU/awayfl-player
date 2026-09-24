@@ -159,16 +159,27 @@ export function createDirectScene() {
   return {
     recipe(
       item,
-      { metadata, transport, viewport, offscreen, bounds, fallback },
+      {
+        metadata,
+        transport,
+        viewport,
+        offscreen,
+        bounds,
+        fallback,
+        nativeProjection = false,
+      },
     ) {
       const reject = (reason) => {
         fallback(reason);
         return null;
       };
       const material = item.renderMaterial;
+      const cacheMaterial =
+        material.material.assetType === "[renderer CacheRenderer]";
       const methodMaterial =
         material.material.assetType === "[materials MethodMaterial]";
       if (
+        !cacheMaterial &&
         !methodMaterial &&
         material.material.assetType !== "[materials BasicMaterial]"
       )
@@ -223,13 +234,15 @@ export function createDirectScene() {
       if (!mesh) return reject("attributes");
       const mode = material.material.blendMode || "normal";
       const blend =
-        mode === "normal"
-          ? material.requiresBlending
-            ? "normal"
-            : "none"
-          : mode === "layer"
-            ? "normal"
-            : mode;
+        cacheMaterial && material.material.useNonNativeBlend
+          ? "none"
+          : mode === "normal"
+            ? material.requiresBlending
+              ? "normal"
+              : "none"
+            : mode === "layer"
+              ? "normal"
+              : mode;
       if (
         !["none", "normal", "add", "multiply", "screen", "erase"].includes(
           blend,
@@ -272,7 +285,11 @@ export function createDirectScene() {
         matrix.append(shader.view.viewMatrix3D);
         shader.viewMatrix.copyFrom(matrix, true);
       }
-      const texture = ambient ? ambient._texture : pass._shaderTexture;
+      const texture = ambient
+        ? ambient._texture
+        : cacheMaterial
+          ? pass._texture
+          : pass._shaderTexture;
       const colorIndex = ambient
         ? ambient._colorIndex
         : pass._fragmentConstantsIndex;
@@ -298,7 +315,7 @@ export function createDirectScene() {
           ],
           colorIndex,
         );
-      } else
+      } else if (!cacheMaterial)
         shader.fragmentConstantData.set(
           [pass._diffuseR, pass._diffuseG, pass._diffuseB, pass._diffuseA],
           colorIndex,
@@ -338,6 +355,25 @@ export function createDirectScene() {
         viewport,
         offscreen,
         bounds,
+        nativeProjection,
+        raster: nativeProjection
+          ? {
+              // The source adapter preserves the target's stencil/depth enable and
+              // colour mask, but must reproduce this material's raster state.
+              depthWrite:
+                !cacheMaterial && shader.writeDepth && !shader.usesBlending,
+              depthCompare: shader.depthCompareMode,
+              cull:
+                cacheMaterial || shader.useBothSides
+                  ? null
+                  : shader._stage.context.translateTriangleFace(
+                      shader._defaultCulling,
+                      shader.view.projection.coordinateSystem,
+                    ),
+              blendFactors: Array.from(shader._blendFactor),
+              blendEquations: Array.from(shader._blendEquation),
+            }
+          : null,
       };
     },
     destroy() {

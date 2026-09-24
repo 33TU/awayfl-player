@@ -49,15 +49,27 @@ async function until(expression) {
   }
   throw Error("Timed out: " + expression);
 }
-async function compareComposition() {
+async function compareComposition({
+  sourceOnly = false,
+  rebuild = false,
+} = {}) {
   const result = await evaluate(`(async () => {
     const p = pixiLiveControls.player;
     const g = p._view.stage.context._gl;
     const paused = p.isPaused;
     p.isPaused = true;
+    function invalidateCaches() {
+      function walk(n) {
+        for (const r of Object.values(n._renderObjects || {}))
+          if (r.assetType === '[renderer CacheRenderer]') r.onInvalidate();
+        for (const c of n._children || []) walk(c);
+      }
+      walk(p.root);
+    }
     function sample() {
       const timings = [];
       for (let i = 0; i < 5; i++) {
+        if (${rebuild}) invalidateCaches();
         const start = performance.now();
         p._renderer.render();
         g.finish();
@@ -74,7 +86,7 @@ async function compareComposition() {
     }
     try {
       pixiLiveControls.stop();
-      await pixiLiveControls.enable({prepareOnly: true, directScene: false, pixiFilters: false});
+      await pixiLiveControls.enable(${JSON.stringify(sourceOnly ? { cachedLayers: false } : { prepareOnly: true, directScene: false, pixiFilters: false })});
       const reference = sample();
       pixiLiveControls.stop();
       await pixiLiveControls.enable();
@@ -104,9 +116,12 @@ async function compareComposition() {
   })()`);
   assert.ok(
     result.maxChannelError <= 1,
-    "Pixi geometry/filter migration changed output: " + JSON.stringify(result),
+    "Pixi geometry/filter/source migration changed output: " +
+      JSON.stringify(result),
   );
   assert.ok(result.prepared.preparation.directMeshes > 0);
+  assert.ok(result.prepared.preparation.sourceMeshes > 0);
+  assert.deepEqual(result.prepared.preparation.sourceFallbacks, {});
   assert.ok(result.prepared.preparation.pixiFilterPasses > 0);
   assert.ok(result.prepared.preparation.skippedComposites > 0);
   assert.equal(result.prepared.preparation.skippedSceneDraws, 0);
@@ -180,6 +195,12 @@ try {
   assert.equal(await evaluate("pixiLive.active"), true);
   report.fixture = await evaluate("JSON.parse(JSON.stringify(pixiLive.stats))");
   report.composition = await compareComposition();
+  assert.ok(report.composition.prepared.preparation.sourceMaskMeshes > 0);
+  assert.ok(report.composition.prepared.preparation.sourceCacheQuads > 0);
+  report.rebuiltSources = await compareComposition({
+    sourceOnly: true,
+    rebuild: true,
+  });
   report.liveReadbacks = await evaluate(
     `(()=>{const g=testGL,old=g.readPixels;let count=0;g.readPixels=function(){count++;return old.apply(this,arguments)};try{for(let i=0;i<3;i++)pixiLiveControls.player._renderer.render();return count;}finally{g.readPixels=old;}})()`,
   );
@@ -243,6 +264,41 @@ try {
     await evaluate("JSON.stringify(pixiLive.stats)"),
   );
   report.restart = "passed";
+  // Interrupt an actual Pixi source draw, identified by its unadapted material
+  // shader, and verify that native rendering can resume on the same target.
+  report.sourceFailureRecovery = await evaluate(`(()=>{
+    const p=pixiLiveControls.player, g=testGL, draw=g.drawArrays, paused=p.isPaused;
+    p.isPaused=true;
+    let injected=false;
+    g.drawArrays=function(){
+      if(!injected) {
+        const program=g.getParameter(g.CURRENT_PROGRAM);
+        const vertex=g.getAttachedShaders(program).find(s=>g.getShaderParameter(s,g.SHADER_TYPE)===g.VERTEX_SHADER);
+        const text=g.getShaderSource(vertex);
+        if (/uniform\\s+vec4\\s+vc\\[/.test(text) && !text.includes('uAwayViewport')) {
+          injected=true;throw Error('injected source draw failure');
+        }
+      }
+      return draw.apply(this,arguments);
+    };
+    try {p._renderer.render();}
+    finally {g.drawArrays=draw;p.isPaused=paused;}
+    return {injected,active:pixiLive.active,message:pixiLive.stats.lastError,
+      restored:p._renderer.render===testOriginal.render,
+      hooks:Object.entries(testHooks).every(([k,v])=>g[k]===v),error:g.getError()};
+  })()`);
+  assert.equal(report.sourceFailureRecovery.injected, true);
+  assert.equal(report.sourceFailureRecovery.active, false);
+  assert.equal(
+    report.sourceFailureRecovery.message,
+    "injected source draw failure",
+  );
+  assert.equal(report.sourceFailureRecovery.restored, true);
+  assert.equal(report.sourceFailureRecovery.hooks, true);
+  assert.equal(report.sourceFailureRecovery.error, 0);
+  await evaluate("pixiLiveControls.enable()");
+  await until("pixiLive.stats.frames>=3 || !!pixiLive.stats.lastError");
+  assert.equal(await evaluate("pixiLive.active"), true);
   await evaluate("pixiLiveControls.stop()");
   report.filters = await evaluate(
     `import('./check-filter-browser.js?v='+Date.now()).then(m=>m.checkFilters(pixiLiveControls.player))`,

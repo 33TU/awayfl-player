@@ -23,12 +23,15 @@ parameters are forwarded. `?autostart=0` waits for an explicit button click.
 Pixi now owns the final scene drawing and top-level blend composition. The
 preparation pass suppresses AwayFL's scene draw calls, scene clears, backdrop
 copies and top-level composites. It preserves their projection setup so the
-captured geometry does not shift. Blur, glow and drop-shadow GPU passes now render through Pixi. Cached source
-images, other filters and nested blend composition still render through AwayFL.
+captured geometry does not shift. Blur, glow and drop-shadow GPU passes render through Pixi. Supported cached-layer
+source meshes, nested cache quads and offscreen mask geometry now also draw
+through Pixi's WebGL encoder. AwayFL still allocates targets and handles clears,
+stencil setup, other filters and nested blend composition.
 
 The live bridge now reads ordinary triangle meshes and strokes directly from
 AwayFL's CPU geometry, including embedded text geometry, UVs, color transforms,
-mask geometry and indexed draw ranges. These meshes skip AwayFL material
+mask geometry and indexed draw ranges. The same adapter now supports cached
+layer materials and their texture quads. These meshes skip AwayFL material
 activation, vertex uploads and draw-call capture. CPU buffer invalidation updates
 cached geometry; unchanged uniforms and cached sprite frames are retained.
 
@@ -120,10 +123,12 @@ vector batching are future work.
 With a disposable Chrome running on debugging port 9234, run `npm run check:live`
 (Node 22+). `CDP_URL` overrides the debugger URL. The script creates and closes
 its own page, types a probe into the username field, loads the no-login Battleon
-fixture, compares direct geometry and Pixi filter passes against the previous capture-based
-Pixi output with AwayFL filters at login and in Battleon (also after resizing), checks direct coverage, resizes twice,
+fixture, compares direct geometry, Pixi filter passes and cached-source drawing against
+the previous capture-based Pixi output with AwayFL filters at login and in
+Battleon (also after resizing), checks direct coverage, resizes twice,
 checks zero live pixel readbacks, switches renderers,
-injects a capture failure, checks restoration of hooks, then restarts Pixi. It also
+forces cached layers to rebuild, injects both capture and source-draw failures,
+checks restoration of hooks, then restarts Pixi. It also
 compares 17 isolated filter fixtures, including cropped rectangles and in-place
 filtering, and resumes the live renderer afterwards.
 It never submits login or game chat. The local test uses SwiftShader; timing
@@ -150,7 +155,8 @@ hook cleanup. Run `npm run check:live` for the browser integration checks.
 
 The original direct-adapter check matched the previous preparation/capture bridge
 exactly at login, in Battleon and after resizing. The current
-`live-smoke-result.json` expands that check to include Pixi filter passes: Battleon
+`live-smoke-result.json` expands that check to include Pixi filters and cached
+source drawing: Battleon
 still matched exactly, with at most 1/255 RGB channel differences at login and
 after resizing. The warm Battleon frame used about 2,500 direct mesh submissions
 (including masks), no compatibility mesh fallbacks and no captured scene draws.
@@ -168,9 +174,9 @@ Calling `enable()` after stopping selects the direct adapter again.
 
 Median completion timings include preparation, Pixi submission and `gl.finish()`
 for a paused, warmed scene on SwiftShader. They are not live gameplay FPS or a
-hardware GPU speedup claim. Renderer independence still requires moving source
-cache rendering, filter scheduling and nested blend composition to Pixi and removing the remaining AwayFL traversal
-and shared-context machinery.
+hardware GPU speedup claim. Renderer independence still requires moving target allocation, clears, stencil
+setup, filter scheduling and nested blend composition to Pixi, and removing the
+remaining AwayFL traversal and shared-context machinery.
 
 ## Pixi filter passes
 
@@ -200,3 +206,42 @@ await pixiLiveControls.enable({ pixiFilters: false });
 ```
 
 Stop and call `enable()` with no options to restore Pixi filtering.
+
+## Cached source drawing
+
+The source adapter submits cached-layer triangles, strokes, text and mask
+geometry through Pixi, along with nested cache texture quads. It keeps the
+original clip-space projection and draws into the currently bound target,
+including its multisampled colour/depth/stencil buffers. Texture allocation,
+clears and stencil configuration still belong to AwayFL at this stage; these
+are shared targets, not yet independently owned Pixi render textures.
+
+Contiguous supported draws are submitted together, with WebGL state restored
+between batches. Mask changes and unsupported materials flush the pending batch
+before native processing continues. Shader/geometry resources persist across
+frames and unused source meshes expire after 120 frames. No source pixels are
+copied to the CPU. Unsupported or cold materials retain the native draw path.
+
+The local Battleon check matched the previous output exactly both when warm and
+when forcing cache rebuilds. A warm frame moved 1,014 source mesh submissions
+(including 291 mask meshes) to Pixi, leaving four AwayFL GPU draws. The forced
+rebuild moved 1,932 submissions, including 40 nested cache quads; copy/composite
+passes still accounted for 556 native draws. These figures describe the fixture,
+not every game scene. Render-only SwiftShader timings are not hardware FPS.
+In the recorded run, forcing every cache to rebuild took a median 221.1 ms with
+Pixi source drawing versus 115.3 ms with native source drawing (both using Pixi
+scene rendering and filters). Warm-frame results were mixed. This migration
+preserves output but does not establish a speedup; per-batch shared-context work
+remains an optimization target.
+
+`pixiLive.stats.preparation` now includes `sourceMeshes`, `sourceCacheQuads`,
+`sourceMaskMeshes`, `sourceBatches`, and `sourceFallbacks`. To compare with the
+previous source path while retaining Pixi scene drawing and filters:
+
+```js
+pixiLiveControls.stop();
+await pixiLiveControls.enable({ cachedLayers: false });
+```
+
+Stopping and enabling without options restores Pixi source drawing. The normal
+AwayFL loader is unchanged.

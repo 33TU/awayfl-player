@@ -49,6 +49,7 @@ export async function createLiveRenderer(gl) {
   renderer.texture._useSeparateSamplers = true;
   const scene = new Container(),
     records = new Map(),
+    sourceRecords = new Map(),
     borrowed = new Map(),
     programs = new Map();
   let nextId = 0,
@@ -94,6 +95,7 @@ export async function createLiveRenderer(gl) {
     return record.texture;
   }
   function vertex(g) {
+    if (g.nativeProjection) return g.vertex;
     return (
       g.vertex.replace(/void\s+main\s*\(/, "void awayMain(") +
       `
@@ -185,7 +187,7 @@ void main(){awayMain();vec2 p=gl_Position.xy/gl_Position.w;p=p*vec2(0.5,${g.offs
   }
   const shaderIds = new Map();
   const geometrySignature = (g) => {
-    const key = g.vertex + g.fragment + g.offscreen;
+    const key = g.vertex + g.fragment + g.offscreen + !!g.nativeProjection;
     if (!shaderIds.has(key)) shaderIds.set(key, ++nextId);
     return [
       Object.entries(g.attributes)
@@ -280,6 +282,85 @@ void main(){awayMain();vec2 p=gl_Position.xy/gl_Position.w;p=p*vec2(0.5,${g.offs
     renderer,
     scene,
     texture,
+    drawSources(entries) {
+      // Only reset Pixi's binding caches. A full renderer.resetState() would
+      // replace the caller's stencil/depth state and multisampled framebuffer.
+      renderer.shader.resetState();
+      renderer.geometry.resetState();
+      renderer.texture.resetState();
+      const factors = [
+        gl.DST_ALPHA,
+        gl.DST_COLOR,
+        gl.ONE,
+        gl.ONE_MINUS_DST_ALPHA,
+        gl.ONE_MINUS_DST_COLOR,
+        gl.ONE_MINUS_SRC_ALPHA,
+        gl.ONE_MINUS_SRC_COLOR,
+        gl.SRC_ALPHA,
+        gl.SRC_COLOR,
+        gl.ZERO,
+      ];
+      const equations = [
+        gl.FUNC_ADD,
+        gl.FUNC_SUBTRACT,
+        gl.FUNC_REVERSE_SUBTRACT,
+        gl.MIN,
+        gl.MAX,
+      ];
+      const comparisons = [
+        gl.ALWAYS,
+        gl.EQUAL,
+        gl.GREATER,
+        gl.GEQUAL,
+        gl.LESS,
+        gl.LEQUAL,
+        gl.NEVER,
+        gl.NOTEQUAL,
+      ];
+      for (const { key, recipe: g } of entries) {
+        const sig = geometrySignature(g);
+        let r = sourceRecords.get(key);
+        if (!r || r.signature !== sig) {
+          r?.destroy();
+          const resources = [],
+            m = mesh(g, resources);
+          r = {
+            ...m,
+            signature: sig,
+            destroy() {
+              m.object.destroy();
+              resources.forEach((f) => f());
+            },
+          };
+          sourceRecords.set(key, r);
+        }
+        r.epoch = epoch;
+        r.update(g);
+        const state = g.raster,
+          f = state.blendFactors;
+        gl.enable(gl.BLEND);
+        gl.blendEquationSeparate(
+          ...state.blendEquations.map((i) => equations[i]),
+        );
+        gl.blendFuncSeparate(
+          factors[f[0]],
+          factors[f[1]],
+          factors[f[2] ?? f[0]],
+          factors[f[3] ?? f[1]],
+        );
+        gl.depthMask(state.depthWrite);
+        gl.depthFunc(comparisons[state.depthCompare]);
+        if (state.cull === null) gl.disable(gl.CULL_FACE);
+        else {
+          gl.enable(gl.CULL_FACE);
+          gl.cullFace(state.cull);
+        }
+        renderer.encoder.draw({
+          geometry: r.object.geometry,
+          shader: r.object.shader,
+        });
+      }
+    },
     render(frame) {
       epoch++;
       if (renderer.width !== frame.width || renderer.height !== frame.height)
@@ -305,6 +386,11 @@ void main(){awayMain();vec2 p=gl_Position.xy/gl_Position.w;p=p*vec2(0.5,${g.offs
           r.destroy();
           records.delete(k);
         }
+      for (const [k, r] of sourceRecords)
+        if (epoch - r.epoch > 120) {
+          r.destroy();
+          sourceRecords.delete(k);
+        }
       for (const [k, t] of borrowed)
         if (epoch - t.epoch > 120) {
           t.texture.destroy(true);
@@ -316,6 +402,7 @@ void main(){awayMain();vec2 p=gl_Position.xy/gl_Position.w;p=p*vec2(0.5,${g.offs
     stats() {
       return {
         commands: records.size,
+        sourceMeshes: sourceRecords.size,
         textures: borrowed.size,
         programs: programs.size,
       };
@@ -323,6 +410,8 @@ void main(){awayMain();vec2 p=gl_Position.xy/gl_Position.w;p=p*vec2(0.5,${g.offs
     destroy() {
       for (const r of records.values()) r.destroy();
       records.clear();
+      for (const r of sourceRecords.values()) r.destroy();
+      sourceRecords.clear();
       scene.destroy();
       for (const t of borrowed.values()) t.texture.destroy(true);
       borrowed.clear();
