@@ -2,6 +2,9 @@
 let nextTracker = 0;
 export function createAssetTracker() {
   const entries = new Map();
+  // A reattached tracker must not reuse an old revision after a hidden asset
+  // was swept. Retained geometry may still hold that earlier revision.
+  let nextRevision = 0;
   const id = "pixi-display-list-" + ++nextTracker;
   const release = (asset, r) => {
     asset.removeAbstraction(r);
@@ -18,12 +21,12 @@ export function createAssetTracker() {
       if (!r) {
         r = {
           id,
-          revision: 0,
+          revision: nextRevision++,
           onInvalidate() {
-            this.revision++;
+            this.revision = nextRevision++;
           },
           onClear() {
-            this.revision++;
+            this.revision = nextRevision++;
           },
         };
         asset.addAbstraction(r);
@@ -33,7 +36,7 @@ export function createAssetTracker() {
         const descriptor = Object.getOwnPropertyDescriptor(asset, method);
         const original = asset[method];
         const wrapper = function (...args) {
-          r.revision++;
+          r.revision = nextRevision++;
           return original.apply(this, args);
         };
         asset[method] = wrapper;

@@ -3,7 +3,6 @@ import {
   Container,
   Matrix,
   Mesh,
-  MeshGeometry,
   Texture,
   BufferImageSource,
   Sprite,
@@ -14,17 +13,13 @@ import {
   AlphaFilter,
 } from "pixi.js";
 import "./flash-blends.mjs";
+import { createGeometryCache } from "./display-list-geometry.mjs";
 import {
   describeFilter,
   createFilter,
   destroyFilter,
 } from "./display-list-filters.mjs";
-import {
-  createAssetTracker,
-  triangleData,
-  combineColor,
-  readAttribute,
-} from "./display-list-data.mjs";
+import { createAssetTracker, combineColor } from "./display-list-data.mjs";
 
 const IDENTITY_COLOR = new Float32Array([1, 1, 1, 1, 0, 0, 0, 0]);
 const vertex = `
@@ -111,6 +106,7 @@ export async function startDisplayList(player, { onStatus = () => {} } = {}) {
     unsupported: {},
     lastError: null,
   };
+  const geometryCache = createGeometryCache(tracker, stats);
   let stopped = false,
     statusTime = performance.now(),
     statusFrames = 0;
@@ -188,7 +184,7 @@ export async function startDisplayList(player, { onStatus = () => {} } = {}) {
     r.mesh.removeFromParent();
     r.mesh.destroy();
     r.shader?.destroy();
-    r.geometry.destroy();
+    geometryCache.release(r.geometryEntry);
   }
   function shapeMesh(shape, node, record, index, color) {
     const e = shape.elements;
@@ -232,15 +228,20 @@ export async function startDisplayList(player, { onStatus = () => {} } = {}) {
       radial ||
       (!solid && color.some((c, i) => (i < 4 ? c < 0 || c > 1 : c !== 0)));
     let r = record.meshes[index];
-    if (r && (r.shape !== shape || r.custom !== custom)) {
+    if (r && r.custom !== custom) {
       disposeMesh(r);
       r = null;
     }
+    const geometryEntry = geometryCache.sync(
+      r?.geometryEntry,
+      shape,
+      uv,
+      custom,
+    );
+    const geometry = geometryEntry.geometry;
     if (!r) {
-      const geometry = new MeshGeometry();
-      geometry.batchMode = custom ? "no-batch" : "batch";
       const mesh = new Mesh({ geometry, texture });
-      r = record.meshes[index] = { shape, mesh, geometry, custom };
+      r = record.meshes[index] = { shape, mesh, geometryEntry, custom };
       if (custom) {
         program ||= GlProgram.from({
           vertex,
@@ -260,53 +261,9 @@ export async function startDisplayList(player, { onStatus = () => {} } = {}) {
         mesh.shader = r.shader;
       }
     }
-    const views = [e.positions, e.indices, e.uvs, e.thickness, curves].filter(
-      Boolean,
-    );
-    const signature = [
-      e,
-      e.numVertices,
-      shape.count,
-      shape.offset,
-      uv?.a,
-      uv?.b,
-      uv?.c,
-      uv?.d,
-      uv?.tx,
-      uv?.ty,
-    ];
-    for (const v of views) {
-      const b = v.attributesBuffer;
-      signature.push(
-        v,
-        tracker.version(b),
-        b.buffer,
-        b.stride,
-        v.offset,
-        v.dimensions,
-        v.size,
-      );
-    }
-    if (!same(r.signature, signature)) {
-      const data = triangleData(shape, uv);
-      r.geometry.positions = data.positions;
-      r.geometry.uvs = data.uvs;
-      r.geometry.indices = data.indices;
-      if (custom) {
-        const curveData = curves
-          ? readAttribute(curves, 3)
-          : new Float32Array((data.positions.length / 2) * 3);
-        if (r.geometry.attributes.aCurve)
-          r.geometry.attributes.aCurve.buffer.data = curveData;
-        else
-          r.geometry.addAttribute("aCurve", {
-            buffer: curveData,
-            format: "float32x3",
-          });
-      }
-      r.signature = signature;
-      stats.geometryBuilds++;
-    }
+    r.shape = shape;
+    r.geometryEntry = geometryEntry;
+    r.mesh.geometry = geometry;
     const mesh = r.mesh;
     mesh.texture = texture;
     mesh.visible = true;
@@ -595,6 +552,7 @@ export async function startDisplayList(player, { onStatus = () => {} } = {}) {
     for (const r of records.values()) for (const w of r.wrappers) w.mask = null;
     for (const r of records.values()) destroyRecord(r);
     records.clear();
+    geometryCache.destroy();
     for (const r of textures.values())
       for (const t of r.variants.values()) t.destroy(true);
     textures.clear();
@@ -654,6 +612,7 @@ export async function startDisplayList(player, { onStatus = () => {} } = {}) {
           for (const t of r.variants.values()) t.destroy(true);
           textures.delete(image);
         }
+      geometryCache.sweep();
       tracker.sweep();
       stats.frames++;
       if (performance.now() - statusTime > 1000) {

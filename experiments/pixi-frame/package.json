@@ -9,7 +9,8 @@
     "check:batches": "node check-batches.mjs",
     "check:caches": "node check-cache-bounds.mjs",
     "check:display-data": "node check-display-data.mjs",
-    "check:display-list": "node check-display-list.mjs"
+    "check:display-list": "node check-display-list.mjs",
+    "check:display-geometry": "node check-display-geometry.mjs"
   },
   "dependencies": {
     "pixi-filters": "6.1.5",

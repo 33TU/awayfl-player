@@ -107,8 +107,14 @@ loading, tessellation, text layout, ActionScript, timelines and input still use
 AwayFL. Runtime operations such as `BitmapData.draw()` still use native offscreen
 renderers; this is not complete removal of AwayFL's graphics implementation.
 
-Ordinary triangle meshes batch through Pixi. Geometry and CPU bitmap uploads are
-cached by asset revisions; movement reuses meshes. Embedded text, UV transforms,
+Ordinary triangle meshes batch through Pixi. Repeated instances share a retained
+`MeshGeometry` when their source elements, drawing range, UV mapping and shader
+layout match. Transforms, colors and textures remain per-instance; moving,
+rotating or scaling a shape does not rebuild its geometry. A source edit updates
+shared geometry once, while a new drawing on one instance gets separate geometry.
+Reference counts keep surviving copies valid when another instance is removed;
+unused geometry is freed after rendering. CPU bitmap uploads are also cached by
+asset revisions. This is mesh sharing, not a conversion to `GraphicsContext`. Embedded text, UV transforms,
 linear/radial gradient atlases, color transforms, display-list changes, script and
 timeline masks, and scroll rectangles have initial implementations. Bitmap edits
 are observed without clearing AwayFL's pending upload flags, allowing a clean
@@ -145,6 +151,10 @@ Do not compare FPS with the working bridge or Ruffle as though output were equiv
 
 `pixiLive.stats` reports `mode: "display-list"`, `syncMs`, `pixiMs`, mesh counts,
 cumulative `geometryBuilds`/`textureUploads`, and per-frame `unsupported` counts.
+`geometryEntries` counts retained unique geometry objects, `geometryUsers` counts
+the retained meshes using them, and cumulative `geometryShares` counts acquisitions
+that reused geometry already held by another mesh. Retention includes briefly
+retired and hidden records, so users need not equal the current visible mesh count.
 Timings are CPU synchronization/submission times, not GPU completion times. The
 header shows the measured frame rate. Omit `backend=display-list` to use the
 existing bridge, or click **Use AwayFL** to switch to the native renderer.
@@ -153,12 +163,16 @@ Validation:
 
 ```sh
 npm run check:display-data
+npm run check:display-geometry
 npm run check:display-list
 ```
 
 The browser check needs disposable Chrome on CDP port 9234. It opens its own tab,
 never logs in, and checks input, retained resources, pixel output after movement,
-redrawing, visibility, masks, bitmap edits, resize and stop/restart. It also checks
+redrawing, visibility, masks, bitmap edits, resize and stop/restart. Copies are
+checked for geometry sharing, transform reuse, independent edits and removal.
+The geometry unit check covers ranges, UV/layout variants, in-place source edits,
+tracker retirement and last-user cleanup. The browser check also checks
 glow/shadow effects, bevel, blur, color-matrix edits and embedded text outlines
 after text changes and resize,
 and rejects shader-link errors and destroyed-texture warnings. It replaces

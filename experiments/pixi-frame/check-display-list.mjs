@@ -163,6 +163,28 @@ try {
     const bevelPixels=effect();
     box.$Bgfilters=s.createArray([new s.flash.filters.BlurFilter(8,8,1)]);const blurPixels=effect();
     box.$Bgfilters=s.createArray([]);const clearedGlow=effect();
+    const sharedBefore={...pixiLive.stats},copies=[];
+    for(let i=0;i<8;i++){
+      const copy=s.flash.display.Sprite.axClass.axConstruct([]);
+      copy.$Bggraphics.$BgcopyFrom(box.$Bggraphics);
+      copy.$Bgx=i===0?400:50*i;copy.$Bgy=i===0?100:230;
+      g.$BgaddChild(copy);copies.push(copy);
+    }
+    p._renderer.render();
+    const shared={buildsBefore:sharedBefore.geometryBuilds,buildsAfter:pixiLive.stats.geometryBuilds,
+      shares:pixiLive.stats.geometryShares-sharedBefore.geometryShares,first:pixel(420,120)};
+    copies[0].$Bgx=450;copies[0].$BgscaleX=1.5;
+    p._renderer.render();shared.moved= pixel(470,120);shared.old= pixel(420,120);
+    copies[0].$Bgrotation=10;p._renderer.render();
+    shared.transformBuilds=pixiLive.stats.geometryBuilds;
+    copies[0].$Bgrotation=0;
+    copies[0].$Bggraphics.$Bgclear();copies[0].$Bggraphics.$BgbeginFill(0xff0000);
+    copies[0].$Bggraphics.$BgdrawRect(0,0,60,40);copies[0].$Bggraphics.$BgendFill();
+    p._renderer.render();shared.edited=pixel(470,120);shared.original=pixel(240,120);
+    for(let i=0;i<7;i++)g.$BgremoveChild(copies[i]);
+    for(let i=0;i<4;i++)p._renderer.render();shared.survivor=pixel(370,250);
+    g.$BgremoveChild(copies[7]);
+    for(let i=0;i<4;i++)p._renderer.render();
     window.outlinePixel=pixel;window.readOutlineFrame=readFrame;
     // Exercise CPU-backed bitmap updates while native needUpload stays true.
     parent.$BgremoveChild(box);
@@ -176,11 +198,28 @@ try {
     const gpuBitmap=sample(),gpuReported=pixiLive.stats.unsupported['gpu-bitmap'];
     data.adaptee.syncData=noReadback;data.adaptee._imageDataDirty=false;
     window.testDisplayObjects={g,parent,box,mask};
-    return {red,moved,transformReused,green,hidden,clipped,masked,unmasked,removed,readded,glowPixels,strongerGlow,qualityGlow,knockoutGlow,innerGlow,shadowPixels,matrixPixels,changedMatrix,bevelPixels,blurPixels,clearedGlow,bitmapBlue,bitmapGreen,bitmapRed,gpuBitmap,gpuReported,stats:structuredClone(pixiLive.stats)};
+    return {shared,red,moved,transformReused,green,hidden,clipped,masked,unmasked,removed,readded,glowPixels,strongerGlow,qualityGlow,knockoutGlow,innerGlow,shadowPixels,matrixPixels,changedMatrix,bevelPixels,blurPixels,clearedGlow,bitmapBlue,bitmapGreen,bitmapRed,gpuBitmap,gpuReported,stats:structuredClone(pixiLive.stats)};
   })()`);
   const black = [0, 0, 0, 255],
     red = [255, 0, 0, 255],
     green = [0, 255, 0, 255];
+  assert.equal(
+    report.pixels.shared.buildsAfter,
+    report.pixels.shared.buildsBefore,
+    "copies share existing geometry",
+  );
+  assert.equal(
+    report.pixels.shared.transformBuilds,
+    report.pixels.shared.buildsBefore,
+    "movement, scale and rotation do not rebuild geometry",
+  );
+  assert.ok(report.pixels.shared.shares >= 8);
+  assert.deepEqual(report.pixels.shared.first, green);
+  assert.deepEqual(report.pixels.shared.moved, green);
+  assert.deepEqual(report.pixels.shared.old, black);
+  assert.deepEqual(report.pixels.shared.edited, red);
+  assert.deepEqual(report.pixels.shared.original, green);
+  assert.deepEqual(report.pixels.shared.survivor, green);
   assert.deepEqual(report.pixels.red, [red, black]);
   assert.deepEqual(report.pixels.moved, [black, red]);
   assert.equal(report.pixels.transformReused, true);
