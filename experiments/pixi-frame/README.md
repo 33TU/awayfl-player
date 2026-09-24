@@ -145,6 +145,9 @@ use the same Gaussian approach on a separate smaller target; the original image
 is composited at full resolution to keep logos and text sharp. Other filter sizes
 use quarter-pixel rounding. Overlay, darken, lighten and difference groups use
 Pixi advanced blend filters; hard-light uses the existing Flash blend filter.
+Text-bearing filter groups preserve multisampling on their source targets. Narrow
+text borders use a smaller outline radius than the blur-width approximation for
+other graphics, avoiding heavy borders and aliased glyph interiors.
 Unchanged parameters reuse filters. A changed glow radius recreates the filter,
 because Pixi compiles its WebGL sampling radius into the shader.
 
@@ -164,6 +167,12 @@ retention until stable, avoiding an extra texture copy on animated frames.
 Retained effect textures are bounded to 64 MiB total
 and 32 MiB per group; Pixi's temporary texture pool is separate. Source meshes still
 draw into filter inputs, so this is not full subtree texture caching.
+Unfiltered, unmasked groups containing a single draw use GPU add/multiply/screen
+blending directly. Groups with multiple draws remain isolated, preserving the
+composite of overlapping children. `directBlendGroups` and `isolatedBlendGroups`
+report these paths per frame. Unchanged mesh paint and colors retain their shader
+uniforms (`uniformUpdates` counts updates); retained geometry avoids repeating the
+serialized layout lookup while still checking source buffer revisions.
 `pixiLive.inspectText("name")` is a read-only diagnostic of matching non-input
 text fields, their colors, textures and ancestor filters.
 

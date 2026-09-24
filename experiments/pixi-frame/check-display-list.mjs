@@ -79,9 +79,9 @@ try {
     p._renderer.render=()=>{throw Error('AwayFL root renderer called by direct display list')};
     await pixiLiveControls.enable();
     for(let i=0;i<5;i++)p._renderer.render();
-    const builds=pixiLive.stats.geometryBuilds,uploads=pixiLive.stats.textureUploads;
+    const builds=pixiLive.stats.geometryBuilds,uploads=pixiLive.stats.textureUploads,uniforms=pixiLive.stats.uniformUpdates;
     for(let i=0;i<5;i++)p._renderer.render();
-    return {stats:structuredClone(pixiLive.stats),geometryReused:builds===pixiLive.stats.geometryBuilds,texturesReused:uploads===pixiLive.stats.textureUploads};
+    return {stats:structuredClone(pixiLive.stats),geometryReused:builds===pixiLive.stats.geometryBuilds,texturesReused:uploads===pixiLive.stats.textureUploads,uniformsReused:uniforms===pixiLive.stats.uniformUpdates};
   })()`);
   assert.equal(report.login.stats.active, true);
   assert.equal(report.login.stats.lastError, null);
@@ -89,6 +89,7 @@ try {
   assert.ok(report.login.stats.meshes > 100);
   assert.equal(report.login.geometryReused, true);
   assert.equal(report.login.texturesReused, true);
+  assert.equal(report.login.uniformsReused, true);
   assert.ok(
     report.login.stats.reusedFrames >= 8,
     "unchanged login frames reuse the canvas",
@@ -224,8 +225,18 @@ try {
     const backdrop=s.flash.display.Sprite.axClass.axConstruct([]);g.$BgaddChildAt(backdrop,0);
     backdrop.$Bggraphics.$BgbeginFill(0x800000);backdrop.$Bggraphics.$BgdrawRect(210,100,90,40);backdrop.$Bggraphics.$BgendFill();
     box.$Bggraphics.$Bgclear();box.$Bggraphics.$BgbeginFill(0xffffff);box.$Bggraphics.$BgdrawRect(0,0,60,40);box.$Bggraphics.$BgendFill();
-    box.$BgblendMode='overlay';const overlayPixels=effect();box.$BgblendMode='normal';g.$BgremoveChild(backdrop);
+    box.$BgblendMode='overlay';const overlayPixels=effect();box.$BgblendMode='normal';
+    box.$Bggraphics.$Bgclear();box.$Bggraphics.$BgbeginFill(0x80ffff,.5);box.$Bggraphics.$BgdrawRect(0,0,60,40);box.$Bggraphics.$BgendFill();
+    parent.$BgblendMode='multiply';const directBlendPixels=effect(),directGroups=pixiLive.stats.directBlendGroups;
+    const overlap=s.flash.display.Sprite.axClass.axConstruct([]);overlap.$Bggraphics.$BgcopyFrom(box.$Bggraphics);parent.$BgaddChild(overlap);
+    const isolatedBlendPixels=effect(),isolatedGroups=pixiLive.stats.isolatedBlendGroups;
+    parent.$BgremoveChild(overlap);parent.$BgblendMode='normal';g.$BgremoveChild(backdrop);
     box.$Bggraphics.$Bgclear();box.$Bggraphics.$BgbeginFill(0x00ff00);box.$Bggraphics.$BgdrawRect(0,0,60,40);box.$Bggraphics.$BgendFill();p._renderer.render();
+    box.$Bgtransform.$BgcolorTransform=new s.flash.geom.ColorTransform(1,1,1,1,128,0,0,0);
+    const customColor=effect();
+    box.$Bgtransform.$BgcolorTransform=new s.flash.geom.ColorTransform(1,1,1,1,64,0,0,0);
+    const changedCustomColor=effect();
+    box.$Bgtransform.$BgcolorTransform=new s.flash.geom.ColorTransform();p._renderer.render();
     const sharedBefore={...pixiLive.stats},copies=[];
     for(let i=0;i<8;i++){
       const copy=s.flash.display.Sprite.axClass.axConstruct([]);
@@ -261,7 +272,7 @@ try {
     const gpuBitmap=sample(),gpuReported=pixiLive.stats.unsupported['gpu-bitmap'];
     data.adaptee.syncData=noReadback;data.adaptee._imageDataDirty=false;
     window.testDisplayObjects={g,parent,box,mask};
-    return {overlayPixels,shared,red,moved,transformReused,green,hidden,clipped,masked,unmasked,removed,readded,glowPixels,strongerGlow,qualityGlow,knockoutGlow,innerGlow,shadowPixels,matrixPixels,changedMatrix,bevelPixels,blurPixels,clearedGlow,bitmapBlue,bitmapGreen,bitmapRed,gpuBitmap,gpuReported,stats:structuredClone(pixiLive.stats)};
+    return {customColor,changedCustomColor,directBlendPixels,directGroups,isolatedBlendPixels,isolatedGroups,overlayPixels,shared,red,moved,transformReused,green,hidden,clipped,masked,unmasked,removed,readded,glowPixels,strongerGlow,qualityGlow,knockoutGlow,innerGlow,shadowPixels,matrixPixels,changedMatrix,bevelPixels,blurPixels,clearedGlow,bitmapBlue,bitmapGreen,bitmapRed,gpuBitmap,gpuReported,stats:structuredClone(pixiLive.stats)};
   })()`);
   const black = [0, 0, 0, 255],
     red = [255, 0, 0, 255],
@@ -271,6 +282,22 @@ try {
     red,
     "overlay uses the backdrop instead of normal blending",
   );
+  assert.ok(Math.abs(report.pixels.directBlendPixels.inside[0] - 96) <= 1);
+  assert.deepEqual(
+    report.pixels.directBlendPixels.inside.slice(1),
+    [0, 0, 255],
+  );
+  assert.ok(
+    report.pixels.directGroups > 0,
+    "single-draw multiply skips the offscreen group",
+  );
+  assert.ok(Math.abs(report.pixels.isolatedBlendPixels.inside[0] - 80) <= 1);
+  assert.ok(
+    report.pixels.isolatedGroups > 0,
+    "overlapping multiply children remain isolated",
+  );
+  assert.deepEqual(report.pixels.customColor.inside, [128, 255, 0, 255]);
+  assert.deepEqual(report.pixels.changedCustomColor.inside, [64, 255, 0, 255]);
   assert.equal(
     report.pixels.shared.buildsAfter,
     report.pixels.shared.buildsBefore,
@@ -336,9 +363,9 @@ try {
     const text=s.flash.text.TextField.axClass.axConstruct([]);
     text.$BgdefaultTextFormat=new s.flash.text.TextFormat('Mini 7_10pt_st',16,0xffffff);
     text.$BgembedFonts=true;text.$Bgwidth=250;text.$Bgheight=40;text.$Bgtext='OUTLINE';parent.$BgaddChild(text);
-    function count(){p._renderer.render();const frame=readOutlineFrame();let red=0,white=0;
-      for(let y=94;y<145;y++)for(let x=200;x<450;x++){const v=outlinePixel(x,y,frame);if(v[0]>40&&v[1]<10&&v[2]<10)red++;if(v[0]>240&&v[1]>240&&v[2]>240)white++;}
-      return {red,white};}
+    function count(){p._renderer.render();const frame=readOutlineFrame();let red=0,white=0,fringe=0;
+      for(let y=94;y<145;y++)for(let x=200;x<450;x++){const v=outlinePixel(x,y,frame);if(v[0]>40&&v[1]<10&&v[2]<10)red++;if(v[0]>240&&v[1]>240&&v[2]>240)white++;if(v[1]>10&&v[1]<240)fringe++;}
+      return {red,white,fringe};}
     const plain=count();
     // Shape.getShape reuses objects without clearing originalFillStyle. Text
     // paints through its current material; the old graphic's hint must not win.
@@ -362,6 +389,14 @@ try {
   );
   assert.ok(report.textOutline.outlined.red > 10);
   assert.ok(report.textOutline.outlined.white > 10);
+  assert.ok(
+    report.textOutline.plain.fringe > 0,
+    "unfiltered glyphs have antialiased edges",
+  );
+  assert.ok(
+    report.textOutline.outlined.fringe >= report.textOutline.plain.fringe * 0.9,
+    "filter input preserves glyph antialiasing",
+  );
   assert.ok(report.textOutline.changed.red > 10);
   assert.ok(report.textOutline.changed.white > 10);
   assert.deepEqual(

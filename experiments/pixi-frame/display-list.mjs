@@ -117,8 +117,11 @@ export async function startDisplayList(
     meshes: 0,
     batchedMeshes: 0,
     customMeshes: 0,
+    directBlendGroups: 0,
+    isolatedBlendGroups: 0,
     geometryBuilds: 0,
     textureUploads: 0,
+    uniformUpdates: 0,
     effectCacheHits: 0,
     effectCacheBuilds: 0,
     effectCachePixels: 0,
@@ -313,7 +316,8 @@ export async function startDisplayList(
       material?.style?.color,
       material?.ambientMethod?.alpha,
     ];
-    if (!same(r.paintKey, paintKey)) {
+    const paintChanged = !same(r.paintKey, paintKey);
+    if (paintChanged) {
       dirty(record);
       r.paintKey = paintKey;
     }
@@ -324,26 +328,31 @@ export async function startDisplayList(
     mesh.texture = texture;
     mesh.visible = true;
     if (custom) {
-      r.shader.resources.uTexture = texture.source;
-      const u = r.uniforms.uniforms;
-      u.uMultiply.set(color.subarray(0, 4));
-      for (let i = 0; i < 4; i++) u.uOffset[i] = color[i + 4] / 255;
-      u.uRadial = +radial;
-      const rect = sampler?.imageRect;
-      u.uRect.set(
-        rect ? [rect.width, rect.height, rect.x, rect.y] : [1, 1, 0, 0],
-      );
-      r.uniforms.update();
+      if (paintChanged || record.colorChanged) {
+        r.shader.resources.uTexture = texture.source;
+        const u = r.uniforms.uniforms;
+        u.uMultiply.set(color.subarray(0, 4));
+        for (let i = 0; i < 4; i++) u.uOffset[i] = color[i + 4] / 255;
+        u.uRadial = +radial;
+        const rect = sampler?.imageRect;
+        u.uRect.set(
+          rect ? [rect.width, rect.height, rect.x, rect.y] : [1, 1, 0, 0],
+        );
+        r.uniforms.update();
+        stats.uniformUpdates++;
+      }
       stats.customMeshes++;
     } else {
-      const base = !tex ? (material?.style?.color ?? 0xffffff) : 0xffffff;
-      const alpha = !tex ? (material?.ambientMethod?.alpha ?? 1) : 1;
-      const rgb = [(base >> 16) & 255, (base >> 8) & 255, base & 255].map(
-        (c, i) =>
-          Math.round(clamp((c / 255) * color[i] + color[i + 4] / 255) * 255),
-      );
-      mesh.tint = (rgb[0] << 16) | (rgb[1] << 8) | rgb[2];
-      mesh.alpha = clamp(alpha * color[3] + color[7] / 255);
+      if (paintChanged || record.colorChanged) {
+        const base = !tex ? (material?.style?.color ?? 0xffffff) : 0xffffff;
+        const alpha = !tex ? (material?.ambientMethod?.alpha ?? 1) : 1;
+        const rgb = [(base >> 16) & 255, (base >> 8) & 255, base & 255].map(
+          (c, i) =>
+            Math.round(clamp((c / 255) * color[i] + color[i + 4] / 255) * 255),
+        );
+        mesh.tint = (rgb[0] << 16) | (rgb[1] << 8) | rgb[2];
+        mesh.alpha = clamp(alpha * color[3] + color[7] / 255);
+      }
       stats.batchedMeshes++;
     }
     stats.meshes++;
@@ -436,7 +445,8 @@ export async function startDisplayList(
       r.transformRevision || 0,
     );
     combineColor(inherited, node.transform.colorTransform?._rawData, r.color);
-    if (!same(r.previousColor, r.color)) {
+    r.colorChanged = !same(r.previousColor, r.color);
+    if (r.colorChanged) {
       dirty(r);
       r.previousColor = r.color.slice();
     }
@@ -483,13 +493,19 @@ export async function startDisplayList(
       const old = r.meshes.pop();
       if (old) disposeMesh(old);
     }
+    r.hasText = typeof node.text === "string";
     let cacheSafe = true;
+    let singleDraws = children.length;
     for (const child of node._children || []) {
       const object = visit(child, r.color, path, world, transformRevision);
       if (object) {
         children.push(object);
         const childRecord = records.get(child);
         r.revision = Math.max(r.revision, childRecord.revision);
+        if (childRecord.outer.visible) {
+          singleDraws += childRecord.singleDraws ?? 2;
+          r.hasText ||= childRecord.hasText;
+        }
         if (childRecord.outer.visible && !childRecord.cacheSafe)
           cacheSafe = false;
       }
@@ -535,7 +551,7 @@ export async function startDisplayList(
       sy = Math.hypot(world.c, world.d);
     const descriptions = filters
       .map((f) => {
-        const d = describeFilter(f, sx, sy);
+        const d = describeFilter(f, sx, sy, r.hasText);
         if (!d) missing("filter:" + f.filterName);
         else if (f.filterName !== "colorMatrix")
           missing("approximate-filter:" + f.filterName);
@@ -546,7 +562,25 @@ export async function startDisplayList(
       missing("blend-group:" + blend);
     r.cacheSafe =
       cacheSafe && !maskNodes.length && ["normal", "layer", ""].includes(blend);
-    const key = JSON.stringify([blend, descriptions, r.cacheSafe]);
+    // An unfiltered, unmasked single draw needs no offscreen group for fixed
+    // blend modes. Keep multi-draw groups isolated so overlapping children are
+    // composited together before blending against the backdrop.
+    const simple = !filters.length && !maskNodes.length && !scroll;
+    const directBlend =
+      simple &&
+      singleDraws === 1 &&
+      ["add", "multiply", "screen"].includes(blend);
+    r.singleDraws = simple && ["normal", ""].includes(blend) ? singleDraws : 2;
+    if (directBlend) stats.directBlendGroups++;
+    else if (!["normal", "layer", ""].includes(blend))
+      stats.isolatedBlendGroups++;
+    const key = JSON.stringify([
+      blend,
+      descriptions,
+      r.cacheSafe,
+      directBlend,
+      r.hasText,
+    ]);
     if (r.filterKey !== key) {
       dirty(r);
       r.content.filters = null;
@@ -554,7 +588,8 @@ export async function startDisplayList(
       r.effectCache = null;
       for (const f of r.filters) destroyFilter(f);
       r.filters = descriptions.map(createFilter);
-      if (!["normal", "layer", ""].includes(blend)) {
+      r.content.blendMode = directBlend ? blend : "inherit";
+      if (!directBlend && !["normal", "layer", ""].includes(blend)) {
         const mapped = blend === "hardlight" ? "hard-light" : blend;
         if (
           [
@@ -576,6 +611,9 @@ export async function startDisplayList(
           r.filters.push(isolate);
         } else missing("blend:" + blend);
       }
+      // Text must be antialiased before sampling it into an effect texture.
+      // Pixi filters default to non-MSAA inputs, unlike the main canvas.
+      if (r.hasText) for (const f of r.filters) f.antialias = "on";
       if (cacheEffects && r.cacheSafe && r.filters.length)
         r.effectCache = new RetainedEffects(r.filters, stats);
       r.content.filters = r.effectCache
@@ -660,6 +698,7 @@ export async function startDisplayList(
     try {
       const start = performance.now();
       stats.nodes = stats.meshes = stats.batchedMeshes = stats.customMeshes = 0;
+      stats.directBlendGroups = stats.isolatedBlendGroups = 0;
       stats.unsupported = {};
       tracker.epoch = stats.frames;
       const width = sourceCanvas.width,

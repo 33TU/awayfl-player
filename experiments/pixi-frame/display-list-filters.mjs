@@ -38,7 +38,7 @@ class SmoothDropShadowFilter extends DropShadowFilter {
 
 // Visual equivalents, intentionally not Flash shader emulation. Descriptors are
 // also cache keys: stable effects retain their filter objects across frames.
-export function describeFilter(f, sx = 1, sy = 1) {
+export function describeFilter(f, sx = 1, sy = 1, text = false) {
   const blurX = Math.max(0, f.blurX ?? 4);
   const blurY = Math.max(0, f.blurY ?? 4);
   const radius = Math.max(blurX * sx, blurY * sy) / 2;
@@ -54,7 +54,7 @@ export function describeFilter(f, sx = 1, sy = 1) {
         return {
           kind: "outline",
           options: {
-            thickness: Math.max(0.5, quarter(radius)),
+            thickness: Math.max(0.5, quarter(radius * (text ? 0.5 : 1))),
             color,
             alpha,
             quality: 0.1,
@@ -89,7 +89,7 @@ export function describeFilter(f, sx = 1, sy = 1) {
         return {
           kind: "outline",
           options: {
-            thickness: Math.max(0.5, quarter(radius)),
+            thickness: Math.max(0.5, quarter(radius * (text ? 0.5 : 1))),
             color,
             alpha,
             quality: 0.1,

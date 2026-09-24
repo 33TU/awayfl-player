@@ -7,6 +7,7 @@ export class RetainedEffects extends AlphaFilter {
   constructor(filters, stats) {
     super({
       alpha: 1,
+      antialias: filters.every((f) => f.antialias === "on"),
       padding: filters.reduce((n, f) => n + f.padding, 0),
       resolution: filters.reduce(
         (n, f) => (f.resolution === "inherit" ? n : Math.min(n, f.resolution)),

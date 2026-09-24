@@ -17,7 +17,7 @@ export function createGeometryCache(tracker, stats) {
     sync(current, shape, uv, custom) {
       const e = shape.elements;
       const curves = e.getCustomAtributes?.("curves");
-      const key = JSON.stringify([
+      const variant = [
         custom,
         shape.count || 0,
         shape.offset || 0,
@@ -27,16 +27,25 @@ export function createGeometryCache(tracker, stats) {
         uv?.d,
         uv?.tx,
         uv?.ty,
-      ]);
-      let variants = sources.get(e);
-      if (!variants) sources.set(e, (variants = new Map()));
-      let entry = variants.get(key);
+      ];
+      // Most retained meshes keep the same source/range/UV layout. Check that
+      // tuple directly instead of serializing and looking it up every frame.
+      let entry =
+        current?.source === e && same(current.variant, variant)
+          ? current
+          : null;
       if (!entry) {
-        const geometry = new MeshGeometry();
-        geometry.batchMode = custom ? "no-batch" : "batch";
-        entry = { geometry, users: 0, signature: null };
-        variants.set(key, entry);
-        stats.geometryEntries++;
+        const key = JSON.stringify(variant);
+        let variants = sources.get(e);
+        if (!variants) sources.set(e, (variants = new Map()));
+        entry = variants.get(key);
+        if (!entry) {
+          const geometry = new MeshGeometry();
+          geometry.batchMode = custom ? "no-batch" : "batch";
+          entry = { geometry, users: 0, signature: null, source: e, variant };
+          variants.set(key, entry);
+          stats.geometryEntries++;
+        }
       }
       const signature = [e.numVertices, e.dimension];
       for (const view of [e.positions, e.indices, e.uvs, e.thickness, curves]) {
