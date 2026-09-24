@@ -303,16 +303,36 @@ try {
     function count(){p._renderer.render();const frame=readOutlineFrame();let red=0,white=0;
       for(let y=94;y<145;y++)for(let x=200;x<450;x++){const v=outlinePixel(x,y,frame);if(v[0]>40&&v[1]<10&&v[2]<10)red++;if(v[0]>240&&v[1]>240&&v[2]>240)white++;}
       return {red,white};}
-    const plain=count();parent.$Bgfilters=s.createArray([new s.flash.filters.GlowFilter(0xff0000,1,3,3,64,1)]);
+    const plain=count();
+    // Shape.getShape reuses objects without clearing originalFillStyle. Text
+    // paints through its current material; the old graphic's hint must not win.
+    text.adaptee.getEntity()._acceptTraverser({applyTraversable(shape){
+      shape.originalFillStyle={data_type:'[graphicsdata SolidFillStyle]',color:0x010101,alpha:1};
+    }});
+    const pooledFill=count();
+    parent.$Bgfilters=s.createArray([new s.flash.filters.GlowFilter(0xff0000,1,3,3,64,1)]);
     const outlined=count();text.$Bgtext='CHANGED';const changed=count();
-    window.countOutline=count;return {plain,outlined,changed};
+    parent.$Bgfilters=s.createArray([new s.flash.filters.DropShadowFilter(0,45,0xff0000,1,3,3,5,1,false,false,false)]);
+    const chatBorder=count();
+    parent.$Bgfilters=s.createArray([new s.flash.filters.GlowFilter(0xff0000,1,3,3,64,1)]);
+    window.countOutline=count;return {plain,pooledFill,outlined,changed,chatBorder};
   })()`);
   assert.equal(report.textOutline.plain.red, 0);
   assert.ok(report.textOutline.plain.white > 10);
+  assert.deepEqual(
+    report.textOutline.pooledFill,
+    report.textOutline.plain,
+    "recycled fill metadata cannot recolor live text",
+  );
   assert.ok(report.textOutline.outlined.red > 10);
   assert.ok(report.textOutline.outlined.white > 10);
   assert.ok(report.textOutline.changed.red > 10);
   assert.ok(report.textOutline.changed.white > 10);
+  assert.deepEqual(
+    report.textOutline.chatBorder,
+    report.textOutline.changed,
+    "strong zero-offset chat shadows use the same crisp border as name glows",
+  );
   await send("Emulation.setDeviceMetricsOverride", {
     width: 1800,
     height: 1000,

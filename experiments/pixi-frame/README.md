@@ -125,7 +125,7 @@ Flash glow/shadow shaders:
 
 | Flash effect | Pixi equivalent |
 | --- | --- |
-| Strong narrow outer glow (including AQW name outlines) | `OutlineFilter` |
+| Strong narrow outer glow, or strong narrow zero-offset shadow (AQW names/chat) | `OutlineFilter` |
 | Other glows | `GlowFilter` |
 | Drop shadow | `DropShadowFilter` |
 | Inner shadow | Inner `GlowFilter` approximation |
@@ -144,6 +144,14 @@ spacing is derived from the blur width to avoid repeated silhouettes. Other
 filter sizes use quarter-pixel rounding.
 Unchanged parameters reuse filters. A changed glow radius recreates the filter,
 because Pixi compiles its WebGL sampling radius into the shader.
+
+Geometry is already shared and retained across frames (`geometryEntries`,
+`geometryUsers`, and `geometryBuilds` in `pixiLive.stats`). The direct backend does
+not yet flatten display groups with `cacheAsTexture`; filters and child draws
+still run every frame. Adding that requires subtree invalidation for text,
+geometry, bitmap pixels, colors, masks, child order, and filter changes.
+`pixiLive.inspectText("name")` is a read-only diagnostic of matching non-input
+text fields, their colors, textures and ancestor filters.
 
 **Compatibility is incomplete.** GPU-only `BitmapData` images are skipped and
 reported as `gpu-bitmap`; some game backgrounds therefore disappear. Other filter

@@ -214,19 +214,19 @@ export async function startDisplayList(player, { onStatus = () => {} } = {}) {
         node.style?.getSamplerAt?.(tex) ||
         material?.style?.getSamplerAt?.(tex) ||
         tex?.getSamplerAt?.(0));
-    const fill = shape.originalFillStyle;
-    const solid = fill?.data_type === "[graphicsdata SolidFillStyle]";
-    const texture =
-      solid || !tex ? Texture.WHITE : imageTexture(image, sampler);
+    // originalFillStyle survives Shape pooling and may describe a previous
+    // object (notably text constructed after graphics are retired). The active
+    // material, image and UV mapping are the authoritative paint source.
+    const texture = tex ? imageTexture(image, sampler) : Texture.WHITE;
     if (!texture) return null;
     const uv =
       style?.uvMatrix || node.style?.uvMatrix || material?.style?.uvMatrix;
     const curves = e.getCustomAtributes?.("curves");
-    const radial = !solid && tex?.mappingMode === 1;
+    const radial = tex?.mappingMode === 1;
     const custom =
       !!curves ||
       radial ||
-      (!solid && color.some((c, i) => (i < 4 ? c < 0 || c > 1 : c !== 0)));
+      color.some((c, i) => (i < 4 ? c < 0 || c > 1 : c !== 0));
     let r = record.meshes[index];
     if (r && r.custom !== custom) {
       disposeMesh(r);
@@ -272,18 +272,6 @@ export async function startDisplayList(player, { onStatus = () => {} } = {}) {
       const u = r.uniforms.uniforms;
       u.uMultiply.set(color.subarray(0, 4));
       for (let i = 0; i < 4; i++) u.uOffset[i] = color[i + 4] / 255;
-      if (solid) {
-        const base = [
-          ((fill.color >> 16) & 255) / 255,
-          ((fill.color >> 8) & 255) / 255,
-          (fill.color & 255) / 255,
-          fill.alpha,
-        ];
-        for (let i = 0; i < 4; i++) {
-          u.uMultiply[i] = clamp(base[i] * color[i] + color[i + 4] / 255);
-          u.uOffset[i] = 0;
-        }
-      }
       u.uRadial = +radial;
       const rect = sampler?.imageRect;
       u.uRect.set(
@@ -292,16 +280,8 @@ export async function startDisplayList(player, { onStatus = () => {} } = {}) {
       r.uniforms.update();
       stats.customMeshes++;
     } else {
-      const base = solid
-        ? fill.color
-        : !tex
-          ? (material?.style?.color ?? 0xffffff)
-          : 0xffffff;
-      const alpha = solid
-        ? fill.alpha
-        : !tex
-          ? (material?.ambientMethod?.alpha ?? 1)
-          : 1;
+      const base = !tex ? (material?.style?.color ?? 0xffffff) : 0xffffff;
+      const alpha = !tex ? (material?.ambientMethod?.alpha ?? 1) : 1;
       const rgb = [(base >> 16) & 255, (base >> 8) & 255, base & 255].map(
         (c, i) =>
           Math.round(clamp((c / 255) * color[i] + color[i + 4] / 255) * 255),
@@ -648,6 +628,48 @@ export async function startDisplayList(player, { onStatus = () => {} } = {}) {
   return {
     stop,
     stats,
+    inspectText(search) {
+      const result = [];
+      for (const [node, r] of records) {
+        if (
+          node.type === "input" ||
+          typeof node.text !== "string" ||
+          !node.text.toLowerCase().includes(String(search).toLowerCase())
+        )
+          continue;
+        const chain = [];
+        for (let n = node; n; n = n.parent) {
+          const rec = records.get(n);
+          chain.push({
+            name: n.name,
+            color: Array.from(rec?.color || []),
+            filters: rec?.filterKey,
+            scale: rec?.world && [
+              rec.world.a,
+              rec.world.b,
+              rec.world.c,
+              rec.world.d,
+            ],
+          });
+        }
+        result.push({
+          name: node.name,
+          text: node.text,
+          chain,
+          meshes: r.meshes.filter(Boolean).map((m) => ({
+            custom: m.custom,
+            tint: m.mesh.tint,
+            alpha: m.mesh.alpha,
+            multiply: m.uniforms && Array.from(m.uniforms.uniforms.uMultiply),
+            offset: m.uniforms && Array.from(m.uniforms.uniforms.uOffset),
+            fill: m.shape.originalFillStyle,
+            uv: m.shape.style?.uvMatrix,
+            texture: [m.mesh.texture.width, m.mesh.texture.height],
+          })),
+        });
+      }
+      return result;
+    },
     get active() {
       return !stopped;
     },

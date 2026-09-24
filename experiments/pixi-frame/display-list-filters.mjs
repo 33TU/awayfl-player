@@ -47,6 +47,26 @@ export function describeFilter(f, sx = 1, sy = 1) {
         },
       };
     case "dropShadow": {
+      // A strong, narrow zero-offset shadow is a text border. Kawase's sparse
+      // diagonal taps become visible as shifted glyph copies when scaled up.
+      if (
+        !f.inner &&
+        !f.hideObject &&
+        !f.knockout &&
+        (f.distance ?? 4) === 0 &&
+        strength >= 4 &&
+        Math.max(blurX, blurY) <= 6
+      )
+        return {
+          kind: "outline",
+          options: {
+            thickness: Math.max(0.5, quarter(radius)),
+            color,
+            alpha,
+            quality: 0.1,
+            knockout: false,
+          },
+        };
       // Pixi has no directional inner shadow. Use an inner glow approximation.
       if (f.inner)
         return describeFilter(
