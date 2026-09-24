@@ -8,6 +8,8 @@ const params = new URLSearchParams(location.search);
 if (!params.has("renderScale")) params.set("renderScale", "1.5");
 if (!params.has("fps")) params.set("fps", "1");
 const backend = params.get("backend") || "bridge";
+const pixelLine = params.get("pixelLine") === "1";
+params.delete("pixelLine");
 params.delete("backend");
 params.delete("autostart");
 iframe.src = "/game/gamefiles/loader-awayfl.html?" + params;
@@ -31,7 +33,7 @@ async function enable(options = {}) {
       (options.backend || backend) === "display-list"
         ? startDisplayList
         : startLive;
-    const created = await start(target, { ...options, onStatus });
+    const created = await start(target, { pixelLine, ...options, onStatus });
     if (player !== target) {
       created.stop();
       return;

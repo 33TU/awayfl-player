@@ -13,6 +13,7 @@ import {
   AlphaFilter,
 } from "pixi.js";
 import "./flash-blends.mjs";
+import { createPixelLineCache } from "./display-list-lines.mjs";
 import { createGeometryCache } from "./display-list-geometry.mjs";
 import {
   describeFilter,
@@ -56,7 +57,10 @@ const clamp = (v) => Math.max(0, Math.min(1, v));
 
 // Experimental backend: walks display objects, never invokes AwayFL's root
 // renderer. Own canvas/context/textures; no render-command capture or GPU readback.
-export async function startDisplayList(player, { onStatus = () => {} } = {}) {
+export async function startDisplayList(
+  player,
+  { onStatus = () => {}, pixelLine = false } = {},
+) {
   const native = player._renderer;
   const original = native.render;
   const sourceCanvas = player._view.stage.context._gl.canvas;
@@ -92,6 +96,8 @@ export async function startDisplayList(player, { onStatus = () => {} } = {}) {
   const stats = {
     active: true,
     mode: "display-list",
+    pixelLine: !!pixelLine,
+    pixelLineShapes: 0,
     frames: 0,
     fps: 0,
     syncMs: 0,
@@ -107,6 +113,7 @@ export async function startDisplayList(player, { onStatus = () => {} } = {}) {
     lastError: null,
   };
   const geometryCache = createGeometryCache(tracker, stats);
+  const lineCache = createPixelLineCache(tracker, stats);
   let stopped = false,
     statusTime = performance.now(),
     statusFrames = 0;
@@ -185,6 +192,7 @@ export async function startDisplayList(player, { onStatus = () => {} } = {}) {
     r.mesh.destroy();
     r.shader?.destroy();
     geometryCache.release(r.geometryEntry);
+    lineCache.release(r.lineEntry);
   }
   function shapeMesh(shape, node, record, index, color) {
     const e = shape.elements;
@@ -198,7 +206,6 @@ export async function startDisplayList(player, { onStatus = () => {} } = {}) {
       return null;
     }
     if (node.animator || shape.particleCollection) missing("animator");
-    if (e.assetType === "[asset LineElements]") missing("stroke-extrusion");
     const material = shape.material || node.material;
     const style = shape.style || node.style;
     const tex = material?.getTextureAt?.(0);
@@ -221,6 +228,72 @@ export async function startDisplayList(player, { onStatus = () => {} } = {}) {
     if (!texture) return null;
     const uv =
       style?.uvMatrix || node.style?.uvMatrix || material?.style?.uvMatrix;
+    // Solid SWF strokes can use a constant UV into Away's color atlas.
+    if (pixelLine && e.assetType === "[asset LineElements]") {
+      let lineBase = solid
+        ? [
+            ((fill.color >> 16) & 255) / 255,
+            ((fill.color >> 8) & 255) / 255,
+            (fill.color & 255) / 255,
+            fill.alpha,
+          ]
+        : null;
+      if (!lineBase && !tex) {
+        const c = material?.style?.color ?? 0xffffff;
+        lineBase = [
+          ((c >> 16) & 255) / 255,
+          ((c >> 8) & 255) / 255,
+          (c & 255) / 255,
+          material?.ambientMethod?.alpha ?? 1,
+        ];
+      }
+      if (
+        !lineBase &&
+        uv &&
+        uv.a === 0 &&
+        uv.b === 0 &&
+        uv.c === 0 &&
+        uv.d === 0 &&
+        tex?.mappingMode !== 1
+      ) {
+        const data = texture.source.resource;
+        const x = Math.floor(uv.tx * image.width),
+          y = Math.floor(uv.ty * image.height);
+        if (data && x >= 0 && y >= 0 && x < image.width && y < image.height) {
+          const at = (y * image.width + x) * 4,
+            a = data[at + 3];
+          lineBase = [
+            a ? data[at] / a : 0,
+            a ? data[at + 1] / a : 0,
+            a ? data[at + 2] / a : 0,
+            a / 255,
+          ];
+        }
+      }
+      let r = record.meshes[index];
+      const entry = lineBase && lineCache.sync(r?.lineEntry, shape);
+      if (entry) {
+        if (r && !r.lineEntry) {
+          disposeMesh(r);
+          r = null;
+        }
+        if (!r)
+          r = record.meshes[index] = { mesh: new Graphics(entry.context) };
+        r.lineEntry = entry;
+        r.mesh.context = entry.context;
+        const rgb = lineBase
+          .slice(0, 3)
+          .map((v, i) =>
+            Math.round(clamp(v * color[i] + color[i + 4] / 255) * 255),
+          );
+        r.mesh.tint = (rgb[0] << 16) | (rgb[1] << 8) | rgb[2];
+        r.mesh.alpha = clamp(lineBase[3] * color[3] + color[7] / 255);
+        stats.pixelLineShapes++;
+        stats.meshes++;
+        return r.mesh;
+      }
+    }
+    if (e.assetType === "[asset LineElements]") missing("stroke-extrusion");
     const curves = e.getCustomAtributes?.("curves");
     const radial = !solid && tex?.mappingMode === 1;
     const custom =
@@ -228,7 +301,7 @@ export async function startDisplayList(player, { onStatus = () => {} } = {}) {
       radial ||
       (!solid && color.some((c, i) => (i < 4 ? c < 0 || c > 1 : c !== 0)));
     let r = record.meshes[index];
-    if (r && r.custom !== custom) {
+    if (r && (r.lineEntry || r.custom !== custom)) {
       disposeMesh(r);
       r = null;
     }
@@ -553,6 +626,7 @@ export async function startDisplayList(player, { onStatus = () => {} } = {}) {
     for (const r of records.values()) destroyRecord(r);
     records.clear();
     geometryCache.destroy();
+    lineCache.destroy();
     for (const r of textures.values())
       for (const t of r.variants.values()) t.destroy(true);
     textures.clear();
@@ -568,6 +642,7 @@ export async function startDisplayList(player, { onStatus = () => {} } = {}) {
     try {
       const start = performance.now();
       stats.nodes = stats.meshes = stats.batchedMeshes = stats.customMeshes = 0;
+      stats.pixelLineShapes = 0;
       stats.unsupported = {};
       tracker.epoch = stats.frames;
       const width = sourceCanvas.width,
@@ -613,6 +688,7 @@ export async function startDisplayList(player, { onStatus = () => {} } = {}) {
           textures.delete(image);
         }
       geometryCache.sweep();
+      lineCache.sweep();
       tracker.sweep();
       stats.frames++;
       if (performance.now() - statusTime > 1000) {

@@ -10,7 +10,8 @@
     "check:caches": "node check-cache-bounds.mjs",
     "check:display-data": "node check-display-data.mjs",
     "check:display-list": "node check-display-list.mjs",
-    "check:display-geometry": "node check-display-geometry.mjs"
+    "check:display-geometry": "node check-display-geometry.mjs",
+    "check:display-lines": "node check-display-lines.mjs"
   },
   "dependencies": {
     "pixi-filters": "6.1.5",
