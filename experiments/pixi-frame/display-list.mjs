@@ -26,6 +26,7 @@ const advancedBlends = {
   lighten: LightenBlend,
   difference: DifferenceBlend,
 };
+import { RetainedEffects } from "./display-list-effect-cache.mjs";
 import { createGeometryCache } from "./display-list-geometry.mjs";
 import {
   describeFilter,
@@ -69,7 +70,10 @@ const clamp = (v) => Math.max(0, Math.min(1, v));
 
 // Experimental backend: walks display objects, never invokes AwayFL's root
 // renderer. Own canvas/context/textures; no render-command capture or GPU readback.
-export async function startDisplayList(player, { onStatus = () => {} } = {}) {
+export async function startDisplayList(
+  player,
+  { onStatus = () => {}, cacheEffects = true } = {},
+) {
   const native = player._renderer;
   const original = native.render;
   const sourceCanvas = player._view.stage.context._gl.canvas;
@@ -115,6 +119,10 @@ export async function startDisplayList(player, { onStatus = () => {} } = {}) {
     customMeshes: 0,
     geometryBuilds: 0,
     textureUploads: 0,
+    effectCacheHits: 0,
+    effectCacheBuilds: 0,
+    effectCachePixels: 0,
+    effectPasses: 0,
     drawnFrames: 0,
     reusedFrames: 0,
     renderSize: [0, 0],
@@ -122,6 +130,11 @@ export async function startDisplayList(player, { onStatus = () => {} } = {}) {
     lastError: null,
   };
   const geometryCache = createGeometryCache(tracker, stats);
+  let revision = 0;
+  function dirty(r) {
+    visualDirty = true;
+    if (r) r.revision = ++revision;
+  }
   let visualDirty = true,
     previousProjection,
     previousBuilds = -1,
@@ -200,7 +213,7 @@ export async function startDisplayList(player, { onStatus = () => {} } = {}) {
     return t;
   }
   function disposeMesh(r) {
-    visualDirty = true;
+    dirty(r.owner);
     r.mesh.removeFromParent();
     r.mesh.destroy();
     r.shader?.destroy();
@@ -261,7 +274,13 @@ export async function startDisplayList(player, { onStatus = () => {} } = {}) {
     const geometry = geometryEntry.geometry;
     if (!r) {
       const mesh = new Mesh({ geometry, texture });
-      r = record.meshes[index] = { shape, mesh, geometryEntry, custom };
+      r = record.meshes[index] = {
+        shape,
+        mesh,
+        geometryEntry,
+        custom,
+        owner: record,
+      };
       if (custom) {
         program ||= GlProgram.from({
           vertex,
@@ -283,7 +302,9 @@ export async function startDisplayList(player, { onStatus = () => {} } = {}) {
     }
     const paintKey = [
       geometry,
+      geometryEntry.revision,
       texture,
+      image ? tracker.version(image) : 0,
       radial,
       sampler?.imageRect?.width,
       sampler?.imageRect?.height,
@@ -293,7 +314,7 @@ export async function startDisplayList(player, { onStatus = () => {} } = {}) {
       material?.ambientMethod?.alpha,
     ];
     if (!same(r.paintKey, paintKey)) {
-      visualDirty = true;
+      dirty(record);
       r.paintKey = paintKey;
     }
     r.shape = shape;
@@ -328,15 +349,15 @@ export async function startDisplayList(player, { onStatus = () => {} } = {}) {
     stats.meshes++;
     return mesh;
   }
-  function arrange(container, children) {
+  function arrange(container, children, record) {
     for (let i = 0; i < children.length; i++) {
       if (container.children[i] !== children[i]) {
-        visualDirty = true;
+        dirty(record);
         container.addChildAt(children[i], i);
       }
     }
     while (container.children.length > children.length) {
-      visualDirty = true;
+      dirty(record);
       container.removeChildAt(children.length);
     }
   }
@@ -352,6 +373,7 @@ export async function startDisplayList(player, { onStatus = () => {} } = {}) {
         wrappers: [],
         filterKey: null,
         filters: [],
+        revision: ++revision,
       };
       r.outer.addChild(r.content);
       records.set(node, r);
@@ -363,6 +385,7 @@ export async function startDisplayList(player, { onStatus = () => {} } = {}) {
     inherited,
     path = new Set(),
     parentMatrix = scene.localTransform,
+    parentTransformRevision = 0,
   ) {
     if (path.has(node)) {
       missing("cyclic-display-list");
@@ -371,7 +394,7 @@ export async function startDisplayList(player, { onStatus = () => {} } = {}) {
     path.add(node);
     const r = nodeRecord(node);
     r.epoch = stats.frames;
-    if (r.outer.visible !== (node.visible !== false)) visualDirty = true;
+    if (r.outer.visible !== (node.visible !== false)) dirty(r);
     r.outer.visible = node.visible !== false;
     stats.nodes++;
     if (!r.outer.visible) {
@@ -402,14 +425,19 @@ export async function startDisplayList(player, { onStatus = () => {} } = {}) {
     if (a[2] || a[6] || a[3] || a[7]) missing("3d-transform");
     const transform = [a[0], a[1], a[4], a[5], a[12], a[13]];
     if (!same(r.transform, transform)) {
-      visualDirty = true;
+      dirty(r);
+      r.transformRevision = r.revision;
       r.matrix.set(...transform);
       r.outer.setFromMatrix(r.matrix);
       r.transform = transform;
     }
+    const transformRevision = Math.max(
+      parentTransformRevision,
+      r.transformRevision || 0,
+    );
     combineColor(inherited, node.transform.colorTransform?._rawData, r.color);
     if (!same(r.previousColor, r.color)) {
-      visualDirty = true;
+      dirty(r);
       r.previousColor = r.color.slice();
     }
     const children = [];
@@ -419,14 +447,17 @@ export async function startDisplayList(player, { onStatus = () => {} } = {}) {
       const b = entity.billboardRect;
       const key = [entity.billboardWidth, entity.billboardHeight, b?.x, b?.y];
       if (!same(r.billboardKey, key)) {
-        visualDirty = true;
+        dirty(r);
         r.billboard?.destroy();
         r.billboard = new Sprite();
         r.billboardKey = key;
       }
       const texture = imageTexture(entity.image, entity.style?.sampler);
       if (texture) {
-        if (r.billboard.texture !== texture) visualDirty = true;
+        if (r.billboard.texture !== texture) dirty(r);
+        const imageRevision = tracker.version(entity.image);
+        if (r.imageRevision !== imageRevision) dirty(r);
+        r.imageRevision = imageRevision;
         r.billboard.texture = texture;
         r.billboard.position.set(-(b?.x || 0), -(b?.y || 0));
         r.billboard.width = key[0];
@@ -452,17 +483,24 @@ export async function startDisplayList(player, { onStatus = () => {} } = {}) {
       const old = r.meshes.pop();
       if (old) disposeMesh(old);
     }
+    let cacheSafe = true;
     for (const child of node._children || []) {
-      const object = visit(child, r.color, path, world);
-      if (object) children.push(object);
+      const object = visit(child, r.color, path, world, transformRevision);
+      if (object) {
+        children.push(object);
+        const childRecord = records.get(child);
+        r.revision = Math.max(r.revision, childRecord.revision);
+        if (childRecord.outer.visible && !childRecord.cacheSafe)
+          cacheSafe = false;
+      }
     }
-    arrange(r.content, children);
+    arrange(r.content, children, r);
     const scroll = node.scrollRect;
     const scrollState = scroll
       ? [scroll.x, scroll.y, scroll.width, scroll.height]
       : [];
     if (!same(r.scrollState, scrollState)) {
-      visualDirty = true;
+      dirty(r);
       r.scrollState = scrollState;
     }
     r.content.position.set(scroll ? -scroll.x : 0, scroll ? -scroll.y : 0);
@@ -488,7 +526,7 @@ export async function startDisplayList(player, { onStatus = () => {} } = {}) {
       ...(node._timelineMasks || []),
       ...(node.mask ? [node.mask] : []),
     ];
-    if (!same(r.maskNodes, maskNodes)) visualDirty = true;
+    if (!same(r.maskNodes, maskNodes)) dirty(r);
     r.maskNodes = maskNodes;
     r.node = node;
     const blend = node.blendMode || "normal";
@@ -506,10 +544,14 @@ export async function startDisplayList(player, { onStatus = () => {} } = {}) {
       .filter(Boolean);
     if (!["normal", "layer", ""].includes(blend))
       missing("blend-group:" + blend);
-    const key = JSON.stringify([blend, descriptions]);
+    r.cacheSafe =
+      cacheSafe && !maskNodes.length && ["normal", "layer", ""].includes(blend);
+    const key = JSON.stringify([blend, descriptions, r.cacheSafe]);
     if (r.filterKey !== key) {
-      visualDirty = true;
+      dirty(r);
       r.content.filters = null;
+      r.effectCache?.destroy();
+      r.effectCache = null;
       for (const f of r.filters) destroyFilter(f);
       r.filters = descriptions.map(createFilter);
       if (!["normal", "layer", ""].includes(blend)) {
@@ -534,9 +576,17 @@ export async function startDisplayList(player, { onStatus = () => {} } = {}) {
           r.filters.push(isolate);
         } else missing("blend:" + blend);
       }
-      r.content.filters = r.filters.length ? r.filters : null;
+      if (cacheEffects && r.cacheSafe && r.filters.length)
+        r.effectCache = new RetainedEffects(r.filters, stats);
+      r.content.filters = r.effectCache
+        ? [r.effectCache]
+        : r.filters.length
+          ? r.filters
+          : null;
       r.filterKey = key;
     }
+    if (r.effectCache)
+      r.effectCache.revision = Math.max(r.revision, transformRevision);
     path.delete(node);
     return r.outer;
   }
@@ -574,6 +624,7 @@ export async function startDisplayList(player, { onStatus = () => {} } = {}) {
     r.content.removeChildren();
     r.outer.removeChildren();
     for (const m of r.meshes) if (m) disposeMesh(m);
+    r.effectCache?.destroy();
     for (const f of r.filters) destroyFilter(f);
     for (const w of r.wrappers) {
       w.removeChildren();
@@ -644,7 +695,10 @@ export async function startDisplayList(player, { onStatus = () => {} } = {}) {
         projection.tx,
         projection.ty,
       ];
-      if (!same(previousProjection, projectionKey)) visualDirty = true;
+      if (!same(previousProjection, projectionKey)) {
+        visualDirty = true;
+        for (const r of records.values()) dirty(r);
+      }
       previousProjection = projectionKey;
       scene.setFromMatrix(projection);
       const root = visit(player.root, IDENTITY_COLOR, new Set(), projection);

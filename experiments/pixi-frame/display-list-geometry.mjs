@@ -72,6 +72,7 @@ export function createGeometryCache(tracker, stats) {
             });
         }
         entry.signature = signature;
+        entry.revision = (entry.revision || 0) + 1;
         stats.geometryBuilds++;
       }
       if (current !== entry) {

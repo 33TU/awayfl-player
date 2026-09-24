@@ -154,7 +154,16 @@ not yet flatten display groups with `cacheAsTexture`. It synchronizes the displa
 list each tick, but reuses the completed canvas when drawing inputs are unchanged.
 Text/geometry, bitmap pixels, transforms, colors, masks, child order, filters and
 resizing invalidate that frame. This saves idle-screen rendering; an animated
-scene still draws the full scene. Subtree texture caching remains separate work.
+scene still draws the full scene. Normal filter groups additionally retain their
+completed effect texture: an unrelated hover or animation does not rerun a static
+title's glow/shadow chain. Subtree revisions invalidate these textures for source
+edits, inherited colors, transforms (including fractional ancestor movement),
+child order, filters and viewport changes. Advanced blends and subtrees containing
+external masks stay uncached. Continuously changing effect groups also bypass
+retention until stable, avoiding an extra texture copy on animated frames.
+Retained effect textures are bounded to 64 MiB total
+and 32 MiB per group; Pixi's temporary texture pool is separate. Source meshes still
+draw into filter inputs, so this is not full subtree texture caching.
 `pixiLive.inspectText("name")` is a read-only diagnostic of matching non-input
 text fields, their colors, textures and ancestor filters.
 
@@ -168,7 +177,11 @@ Do not compare FPS with the working bridge or Ruffle as though output were equiv
 `pixiLive.stats` reports `mode: "display-list"`, `syncMs`, `pixiMs`, mesh counts,
 cumulative `geometryBuilds`/`textureUploads`, and per-frame `unsupported` counts.
 `drawnFrames` and `reusedFrames` distinguish actual Pixi draws from unchanged ticks;
-`pixiMs` is zero for reused frames.
+`pixiMs` is zero for reused frames. `effectCacheHits` counts reused effect outputs,
+`effectCacheBuilds` counts retained outputs built, `effectPasses` counts stages run by cache-eligible groups
+(a blur can have multiple internal GPU passes), and `effectCachePixels` counts
+currently retained RGBA pixels. For a comparison without effect retention, stop
+Pixi and call `pixiLiveControls.enable({cacheEffects: false})`; the default is true.
 `geometryEntries` counts retained unique geometry objects, `geometryUsers` counts
 the retained meshes using them, and cumulative `geometryShares` counts acquisitions
 that reused geometry already held by another mesh. Retention includes briefly

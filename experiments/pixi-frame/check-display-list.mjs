@@ -369,6 +369,46 @@ try {
     report.textOutline.changed,
     "strong zero-offset chat shadows use the same crisp border as name glows",
   );
+  report.effectCache = await evaluate(`(()=>{
+    const p=pixiLiveControls.player,{g,parent}=testDisplayObjects,s=g.sec;
+    const marker=s.flash.display.Sprite.axClass.axConstruct([]);g.$BgaddChild(marker);
+    marker.$Bggraphics.$BgbeginFill(0xffffff);marker.$Bggraphics.$BgdrawRect(0,0,4,4);marker.$Bggraphics.$BgendFill();
+    const expected=countOutline(),before={...pixiLive.stats};let stable=true;
+    for(let i=0;i<6;i++){marker.$Bgx=i+1;stable &&= JSON.stringify(countOutline())===JSON.stringify(expected);}
+    const hits=pixiLive.stats.effectCacheHits-before.effectCacheHits,builds=pixiLive.stats.effectCacheBuilds-before.effectCacheBuilds;
+    parent.$Bgalpha=.5;const faded=countOutline();parent.$Bgalpha=1;const restored=countOutline();
+    // A fractional ancestor move can change rasterization without changing the
+    // rounded filter bounds. It must still invalidate the descendant effect.
+    const holder=s.flash.display.Sprite.axClass.axConstruct([]);g.$BgaddChild(holder);holder.$BgaddChild(parent);
+    countOutline();const transformBefore=pixiLive.stats.effectPasses;
+    holder.$Bgx=.1;countOutline();const transformBuilds=pixiLive.stats.effectPasses-transformBefore;
+    g.$BgaddChild(parent);g.$BgremoveChild(holder);g.$BgremoveChild(marker);countOutline();
+    return {stable,hits,builds,faded,restored,expected,transformBuilds,pixels:pixiLive.stats.effectCachePixels};
+  })()`);
+  assert.equal(report.effectCache.stable, true);
+  assert.ok(
+    report.effectCache.hits >= 6,
+    "unrelated changes reuse filter results",
+  );
+  assert.equal(
+    report.effectCache.builds,
+    0,
+    "unrelated changes do not rerun effects",
+  );
+  assert.equal(
+    report.effectCache.faded.white,
+    0,
+    "ancestor opacity invalidates cached text",
+  );
+  assert.deepEqual(report.effectCache.restored, report.effectCache.expected);
+  assert.ok(
+    report.effectCache.transformBuilds > 0,
+    "fractional ancestor movement invalidates effects",
+  );
+  assert.ok(
+    report.effectCache.pixels <= 16 * 1024 * 1024,
+    "retained effect memory is bounded",
+  );
   await send("Emulation.setDeviceMetricsOverride", {
     width: 1800,
     height: 1000,
@@ -386,10 +426,15 @@ try {
   report.stop =
     await evaluate(`(()=>{const p=pixiLiveControls.player;pixiLiveControls.stop();const restored=p._renderer.render!==originalRootRender;p._renderer.render=originalRootRender;
     const {g,parent,mask}=testDisplayObjects;g.$BgremoveChild(parent);g.$BgremoveChild(mask);for(const c of g.adaptee._children)c.visible=true;
-    p._renderer.render();return {canvasRemoved:!p._view.stage.context._gl.canvas.ownerDocument.querySelector('[data-pixi-display-list]'),restored,active:pixiLive.stats.active};})()`);
+    p._renderer.render();return {canvasRemoved:!p._view.stage.context._gl.canvas.ownerDocument.querySelector('[data-pixi-display-list]'),restored,active:pixiLive.stats.active,cachePixels:pixiLive.stats.effectCachePixels};})()`);
   assert.equal(report.stop.canvasRemoved, true);
   assert.equal(report.stop.active, false);
   assert.equal(report.stop.restored, true);
+  assert.equal(
+    report.stop.cachePixels,
+    0,
+    "stop releases retained filter textures",
+  );
   report.restart = await evaluate(
     `(async()=>{await pixiLiveControls.enable();const p=pixiLiveControls.player;for(let i=0;i<3;i++)p._renderer.render();return structuredClone(pixiLive.stats)})()`,
   );
