@@ -25,6 +25,8 @@ ws.onmessage = ({ data }) => {
       .join(" ");
     if (
       message.includes("[Pixi display list]") ||
+      message.includes("Could not initialize shader") ||
+      message.includes("gl.getProgramInfoLog") ||
       (message.includes("textureSource") && message.includes("destroyed"))
     )
       errors.push(message);
@@ -126,9 +128,11 @@ try {
     parent.$Bgx=100;parent.$Bgy=100;parent.$BgscaleX=1.5;
     box.$Bggraphics.$BgbeginFill(0xff0000);box.$Bggraphics.$BgdrawRect(0,0,60,40);box.$Bggraphics.$BgendFill();
     const canvas=p._view.stage.context._gl.canvas.ownerDocument.querySelector('[data-pixi-display-list]'),gl=canvas.getContext('webgl2');
-    function pixel(x,y){const pt=g.$BglocalToGlobal(new s.flash.geom.Point(x,y));const m=p._view.viewMatrix3D._rawData;
+    function readFrame(){const a=new Uint8Array(canvas.width*canvas.height*4);gl.readPixels(0,0,canvas.width,canvas.height,gl.RGBA,gl.UNSIGNED_BYTE,a);return a;}
+    function pixel(x,y,frame){const pt=g.$BglocalToGlobal(new s.flash.geom.Point(x,y));const m=p._view.viewMatrix3D._rawData;
       const px=Math.floor(canvas.width*.5*(1+(m[0]*pt.$Bgx+m[4]*pt.$Bgy+m[12])/m[15]));
       const py=Math.floor(canvas.height*.5*(1-(m[1]*pt.$Bgx+m[5]*pt.$Bgy+m[13])/m[15]));
+      if(frame){const i=((canvas.height-1-py)*canvas.width+px)*4;return frame.subarray(i,i+4);}
       const a=new Uint8Array(4);gl.readPixels(px,canvas.height-1-py,1,1,gl.RGBA,gl.UNSIGNED_BYTE,a);return [...a];}
     function sample(){p._renderer.render();return [pixel(130,120),pixel(240,120)];}
     const red=sample();const builds=pixiLive.stats.geometryBuilds;
@@ -140,6 +144,18 @@ try {
     mask.$Bggraphics.$BgbeginFill(0xffffff);mask.$Bggraphics.$BgdrawRect(0,0,10,40);mask.$Bggraphics.$BgendFill();
     box.$Bgmask=mask;const masked=sample();box.$Bgmask=null;const unmasked=sample();
     parent.$BgremoveChild(box);const removed=sample();parent.$BgaddChild(box);const readded=sample();
+    mask.$Bgvisible=false;
+    function effect(){p._renderer.render();return {inside:pixel(240,120),left:pixel(208,120),right:pixel(310,120),edge:pixel(211,120)};}
+    const glow=new s.flash.filters.GlowFilter(0xff0000,1,6,6,0.5,1,false,false);
+    box.$Bgfilters=s.createArray([glow]);const glowPixels=effect();
+    glow.$Bgstrength=16;box.$Bgfilters=s.createArray([glow]);const strongerGlow=effect();
+    glow.$Bgquality=3;box.$Bgfilters=s.createArray([glow]);const qualityGlow=effect();
+    glow.$Bgquality=1;glow.$Bgknockout=true;box.$Bgfilters=s.createArray([glow]);const knockoutGlow=effect();
+    glow.$Bgknockout=false;glow.$Bginner=true;box.$Bgfilters=s.createArray([glow]);const innerGlow=effect();
+    box.$Bgfilters=s.createArray([new s.flash.filters.DropShadowFilter(12,0,0xff0000,1,0,0,1,1,false,false,true)]);
+    const shadowPixels=effect();
+    box.$Bgfilters=s.createArray([]);const clearedGlow=effect();
+    window.outlinePixel=pixel;window.readOutlineFrame=readFrame;
     // Exercise CPU-backed bitmap updates while native needUpload stays true.
     parent.$BgremoveChild(box);
     const data=new s.flash.display.BitmapData(60,40,true,0xff0000ff);
@@ -152,7 +168,7 @@ try {
     const gpuBitmap=sample(),gpuReported=pixiLive.stats.unsupported['gpu-bitmap'];
     data.adaptee.syncData=noReadback;data.adaptee._imageDataDirty=false;
     window.testDisplayObjects={g,parent,box,mask};
-    return {red,moved,transformReused,green,hidden,clipped,masked,unmasked,removed,readded,bitmapBlue,bitmapGreen,bitmapRed,gpuBitmap,gpuReported,stats:structuredClone(pixiLive.stats)};
+    return {red,moved,transformReused,green,hidden,clipped,masked,unmasked,removed,readded,glowPixels,strongerGlow,qualityGlow,knockoutGlow,innerGlow,shadowPixels,clearedGlow,bitmapBlue,bitmapGreen,bitmapRed,gpuBitmap,gpuReported,stats:structuredClone(pixiLive.stats)};
   })()`);
   const black = [0, 0, 0, 255],
     red = [255, 0, 0, 255],
@@ -170,6 +186,45 @@ try {
   assert.deepEqual(report.pixels.bitmapRed, [black, red]);
   assert.deepEqual(report.pixels.gpuBitmap, [black, black]);
   assert.equal(report.pixels.gpuReported, 1);
+  assert.deepEqual(report.pixels.glowPixels.inside, green);
+  assert.ok(
+    report.pixels.glowPixels.left[0] > 0,
+    "glow extends outside the shape",
+  );
+  assert.ok(
+    report.pixels.strongerGlow.left[0] > report.pixels.glowPixels.left[0],
+    "strength",
+  );
+  assert.deepEqual(report.pixels.qualityGlow.inside, green);
+  assert.deepEqual(report.pixels.qualityGlow.edge, green);
+  assert.deepEqual(report.pixels.knockoutGlow.inside, black);
+  assert.deepEqual(report.pixels.innerGlow.left, black);
+  assert.deepEqual(report.pixels.innerGlow.inside, green);
+  assert.ok(report.pixels.innerGlow.edge[0] > 0, "inner edge");
+  assert.deepEqual(report.pixels.shadowPixels.right, red);
+  assert.deepEqual(report.pixels.shadowPixels.edge, black);
+  assert.deepEqual(report.pixels.clearedGlow.left, black);
+  assert.deepEqual(report.pixels.clearedGlow.inside, green);
+  report.textOutline = await evaluate(`(()=>{
+    const p=pixiLiveControls.player,{g,parent}=testDisplayObjects,s=g.sec;
+    while(parent.$BgnumChildren)parent.$BgremoveChildAt(0);
+    parent.$BgscaleX=1;
+    const text=s.flash.text.TextField.axClass.axConstruct([]);
+    text.$BgdefaultTextFormat=new s.flash.text.TextFormat('Mini 7_10pt_st',16,0xffffff);
+    text.$BgembedFonts=true;text.$Bgwidth=250;text.$Bgheight=40;text.$Bgtext='OUTLINE';parent.$BgaddChild(text);
+    function count(){p._renderer.render();const frame=readOutlineFrame();let red=0,white=0;
+      for(let y=94;y<145;y++)for(let x=200;x<450;x++){const v=outlinePixel(x,y,frame);if(v[0]>40&&v[1]<10&&v[2]<10)red++;if(v[0]>240&&v[1]>240&&v[2]>240)white++;}
+      return {red,white};}
+    const plain=count();parent.$Bgfilters=s.createArray([new s.flash.filters.GlowFilter(0xff0000,1,3,3,64,1)]);
+    const outlined=count();text.$Bgtext='CHANGED';const changed=count();
+    window.countOutline=count;return {plain,outlined,changed};
+  })()`);
+  assert.equal(report.textOutline.plain.red, 0);
+  assert.ok(report.textOutline.plain.white > 10);
+  assert.ok(report.textOutline.outlined.red > 10);
+  assert.ok(report.textOutline.outlined.white > 10);
+  assert.ok(report.textOutline.changed.red > 10);
+  assert.ok(report.textOutline.changed.white > 10);
   await send("Emulation.setDeviceMetricsOverride", {
     width: 1800,
     height: 1000,
@@ -178,10 +233,12 @@ try {
   });
   await new Promise((r) => setTimeout(r, 500));
   report.resize = await evaluate(
-    `(()=>{const p=pixiLiveControls.player;p._renderer.render();const canvas=p._view.stage.context._gl.canvas.ownerDocument.querySelector('[data-pixi-display-list]');return {size:[canvas.width,canvas.height],native:[p._view.stage.context._gl.canvas.width,p._view.stage.context._gl.canvas.height],stats:structuredClone(pixiLive.stats)}})()`,
+    `(()=>{const p=pixiLiveControls.player;p._renderer.render();const canvas=p._view.stage.context._gl.canvas.ownerDocument.querySelector('[data-pixi-display-list]');return {outline:countOutline(),size:[canvas.width,canvas.height],native:[p._view.stage.context._gl.canvas.width,p._view.stage.context._gl.canvas.height],stats:structuredClone(pixiLive.stats)}})()`,
   );
   assert.deepEqual(report.resize.size, report.resize.native);
   assert.equal(report.resize.stats.lastError, null);
+  assert.ok(report.resize.outline.red > 10);
+  assert.ok(report.resize.outline.white > 10);
   report.stop =
     await evaluate(`(()=>{const p=pixiLiveControls.player;pixiLiveControls.stop();const restored=p._renderer.render!==originalRootRender;p._renderer.render=originalRootRender;
     const {g,parent,mask}=testDisplayObjects;g.$BgremoveChild(parent);g.$BgremoveChild(mask);for(const c of g.adaptee._children)c.visible=true;

@@ -16,6 +16,10 @@ import {
 } from "pixi.js";
 import "./flash-blends.mjs";
 import {
+  DisplayListShadowFilter,
+  shadowOptions,
+} from "./display-list-shadow.mjs";
+import {
   createAssetTracker,
   triangleData,
   combineColor,
@@ -378,7 +382,12 @@ export async function startDisplayList(player, { onStatus = () => {} } = {}) {
     }
     return r;
   }
-  function visit(node, inherited, path = new Set()) {
+  function visit(
+    node,
+    inherited,
+    path = new Set(),
+    parentMatrix = scene.localTransform,
+  ) {
     if (path.has(node)) {
       missing("cyclic-display-list");
       return null;
@@ -404,6 +413,15 @@ export async function startDisplayList(player, { onStatus = () => {} } = {}) {
       }
     }
     const a = local._rawData;
+    const world = r.world || (r.world = new Matrix());
+    world.set(
+      parentMatrix.a * a[0] + parentMatrix.c * a[1],
+      parentMatrix.b * a[0] + parentMatrix.d * a[1],
+      parentMatrix.a * a[4] + parentMatrix.c * a[5],
+      parentMatrix.b * a[4] + parentMatrix.d * a[5],
+      0,
+      0,
+    );
     if (a[2] || a[6] || a[3] || a[7]) missing("3d-transform");
     const transform = [a[0], a[1], a[4], a[5], a[12], a[13]];
     if (!same(r.transform, transform)) {
@@ -451,7 +469,7 @@ export async function startDisplayList(player, { onStatus = () => {} } = {}) {
       if (old) disposeMesh(old);
     }
     for (const child of node._children || []) {
-      const object = visit(child, r.color, path);
+      const object = visit(child, r.color, path, world);
       if (object) children.push(object);
     }
     arrange(r.content, children);
@@ -484,18 +502,28 @@ export async function startDisplayList(player, { onStatus = () => {} } = {}) {
     const filters = node.filters || [];
     for (const f of filters)
       missing(
-        (f.filterName === "blur" ? "approximate-filter:" : "filter:") +
-          f.filterName,
+        (["blur", "glow", "dropShadow"].includes(f.filterName)
+          ? "approximate-filter:"
+          : "filter:") + f.filterName,
       );
     if (!["normal", "layer", ""].includes(blend))
       missing("blend-group:" + blend);
-    const key = JSON.stringify([blend, filters]);
+    const key = JSON.stringify([
+      blend,
+      filters.map((f) =>
+        ["glow", "dropShadow"].includes(f.filterName)
+          ? { filterName: f.filterName, ...shadowOptions(f) }
+          : f,
+      ),
+    ]);
     if (r.filterKey !== key) {
       r.content.filters = null;
       for (const f of r.filters) f.destroy();
       r.filters = [];
       for (const f of filters)
-        if (f.filterName === "blur")
+        if (["glow", "dropShadow"].includes(f.filterName))
+          r.filters.push(new DisplayListShadowFilter(shadowOptions(f)));
+        else if (f.filterName === "blur")
           r.filters.push(
             new BlurFilter({
               strengthX: f.blurX / 2,
@@ -525,6 +553,12 @@ export async function startDisplayList(player, { onStatus = () => {} } = {}) {
       r.content.filters = r.filters.length ? r.filters : null;
       r.filterKey = key;
     }
+    for (const f of r.filters)
+      if (f instanceof DisplayListShadowFilter)
+        f.updateScale(
+          Math.hypot(world.a, world.b),
+          Math.hypot(world.c, world.d),
+        );
     path.delete(node);
     return r.outer;
   }
@@ -621,7 +655,7 @@ export async function startDisplayList(player, { onStatus = () => {} } = {}) {
         height * 0.5 * (1 - p[13] / w),
       );
       scene.setFromMatrix(projection);
-      const root = visit(player.root, IDENTITY_COLOR);
+      const root = visit(player.root, IDENTITY_COLOR, new Set(), projection);
       if (root.parent !== scene) scene.addChild(root);
       resolveMasks();
       for (const [node, r] of records)

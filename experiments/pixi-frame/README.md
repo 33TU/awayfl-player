@@ -115,9 +115,12 @@ are observed without clearing AwayFL's pending upload flags, allowing a clean
 switch back. The overlay passes mouse input through to the original player.
 
 **Compatibility is incomplete.** GPU-only `BitmapData` images are skipped and
-reported as `gpu-bitmap`; some game backgrounds therefore disappear. Flash glow,
-shadow, bevel and color-matrix filters are not implemented. Strokes, blur and
-isolated blend groups are approximations and also reported. Detached masks,
+reported as `gpu-bitmap`; some game backgrounds therefore disappear. Flash bevel
+and color-matrix filters are not implemented. Glow and drop shadow use Pixi-owned
+GPU passes with Flash composition (strength, inner, knockout and hideObject),
+including the black glow used for AQW text outlines. Their Gaussian blur kernel
+is approximate; padding and offsets follow the display scale. Strokes, blur and
+isolated blend groups are also approximations and reported. Detached masks,
 3D transforms and animated materials need further work. Cache-as-bitmap hints do
 not yet create retained Pixi render textures. Do not compare FPS with the working
 bridge or Ruffle as though the output were equivalent.
@@ -137,7 +140,9 @@ npm run check:display-list
 
 The browser check needs disposable Chrome on CDP port 9234. It opens its own tab,
 never logs in, and checks input, retained resources, pixel output after movement,
-redrawing, visibility, masks, bitmap edits, resize and stop/restart. It replaces
+redrawing, visibility, masks, bitmap edits, resize and stop/restart. It also checks
+glow/shadow composition and embedded text outlines after text changes and resize,
+and rejects shader-link errors and destroyed-texture warnings. It replaces
 AwayFL's root render function with a throwing stub during the direct-path tests.
 It also loads the offline Battleon fixture and exposes its original vector
 background, since the fixture normally rasterizes that background using native
