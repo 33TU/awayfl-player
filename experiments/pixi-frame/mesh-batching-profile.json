@@ -1,0 +1,386 @@
+{
+  "baselineCommit": "57e8696",
+  "fixture": "Same paused Battleon fixture, old/new/new/old order; five warmup frames and twelve samples per run",
+  "environment": "Headless Chrome with ANGLE SwiftShader, WebGL2",
+  "renderSize": [
+    641,
+    367
+  ],
+  "measurement": "render() plus gl.finish(); no profiler/login/chat; not Brave hardware FPS",
+  "runs": [
+    {
+      "kind": "old",
+      "times": [
+        62.20000000298023,
+        62.400000002235174,
+        54.69999999925494,
+        85.90000000223517,
+        56.69999999925494,
+        54.399999998509884,
+        56.19999999925494,
+        56.900000002235174,
+        55.099999997764826,
+        59.69999999925494,
+        56.399999998509884,
+        68.09999999776483
+      ],
+      "capture": [
+        43.19999999925494,
+        43,
+        39.399999998509884,
+        42.899999998509884,
+        42.600000001490116,
+        39.399999998509884,
+        42.5,
+        39.30000000074506,
+        40.29999999701977,
+        44.100000001490116,
+        38.399999998509884,
+        39.599999997764826
+      ],
+      "draw": [
+        18.699999999254942,
+        19.300000000745058,
+        15.099999997764826,
+        42.900000002235174,
+        14.099999997764826,
+        15,
+        13.699999999254942,
+        17.600000001490116,
+        14.700000002980232,
+        15.5,
+        18,
+        28.5
+      ],
+      "max": 0,
+      "direct": {
+        "geometryHits": 62185,
+        "geometryMisses": 2364
+      },
+      "preparation": {
+        "meshes": 2489,
+        "cachedImages": 546,
+        "overlays": 140,
+        "masks": 92,
+        "triangles": 448214,
+        "unsupported": [],
+        "directMeshes": 2511,
+        "directCaches": 653,
+        "sourceMeshes": 1286,
+        "sourceCacheQuads": 32,
+        "sourceMaskMeshes": 291,
+        "sourceBatches": 48,
+        "sourceFallbacks": {},
+        "directFallbacks": {},
+        "awayDraws": 36,
+        "pixiFilterPasses": 38,
+        "skippedSceneDraws": 0,
+        "skippedSceneClears": 122,
+        "skippedComposites": 140,
+        "skippedBackdropFlushes": 140
+      },
+      "scene": {
+        "commands": 3035,
+        "sourceMeshes": 922,
+        "textures": 597,
+        "programs": 8
+      },
+      "drawCalls": 4786
+    },
+    {
+      "kind": "new",
+      "times": [
+        55.19999999925494,
+        53.69999999925494,
+        56.30000000074506,
+        50.5,
+        60.900000002235174,
+        52.100000001490116,
+        52.69999999925494,
+        51.100000001490116,
+        49.100000001490116,
+        48.69999999925494,
+        50.099999997764826,
+        51.400000002235174
+      ],
+      "capture": [
+        39.80000000074506,
+        37.79999999701977,
+        42.69999999925494,
+        36.69999999925494,
+        41.600000001490116,
+        39.30000000074506,
+        36.099999997764826,
+        38.5,
+        38,
+        37.900000002235174,
+        36.30000000074506,
+        38.5
+      ],
+      "draw": [
+        15.399999998509884,
+        15.800000000745058,
+        13.600000001490116,
+        13.600000001490116,
+        19.199999999254942,
+        12.800000000745058,
+        16.399999998509884,
+        12.5,
+        11,
+        10.699999999254942,
+        13.699999999254942,
+        12.800000000745058
+      ],
+      "max": 0,
+      "direct": {
+        "geometryHits": 62185,
+        "geometryMisses": 2364
+      },
+      "preparation": {
+        "meshes": 2489,
+        "cachedImages": 546,
+        "overlays": 140,
+        "masks": 92,
+        "triangles": 448214,
+        "unsupported": [],
+        "directMeshes": 2511,
+        "directCaches": 653,
+        "sourceMeshes": 1286,
+        "sourceCacheQuads": 32,
+        "sourceMaskMeshes": 291,
+        "sourceBatches": 48,
+        "sourceFallbacks": {},
+        "directFallbacks": {},
+        "awayDraws": 36,
+        "pixiFilterPasses": 38,
+        "skippedSceneDraws": 0,
+        "skippedSceneClears": 122,
+        "skippedComposites": 140,
+        "skippedBackdropFlushes": 140
+      },
+      "scene": {
+        "commands": 1543,
+        "timings": {
+          "batchMs": 2.100000001490116,
+          "updateMs": 3.699999999254942,
+          "submitMs": 6.900000002235174
+        },
+        "batching": {
+          "scene": {
+            "input": 2409,
+            "output": 917,
+            "batches": 550,
+            "merged": 1492,
+            "geometryBuilds": 550
+          },
+          "sources": {
+            "input": 1286,
+            "output": 207,
+            "batches": 119,
+            "merged": 1079,
+            "geometryBuilds": 94
+          }
+        },
+        "sourceMeshes": 167,
+        "textures": 597,
+        "programs": 19
+      },
+      "drawCalls": 2215
+    },
+    {
+      "kind": "new",
+      "times": [
+        54.599999997764826,
+        48.600000001490116,
+        59.100000001490116,
+        52.600000001490116,
+        48.900000002235174,
+        47.5,
+        51.69999999925494,
+        61.30000000074506,
+        47.19999999925494,
+        65.60000000149012,
+        51.599999997764826,
+        46.70000000298023
+      ],
+      "capture": [
+        41.69999999925494,
+        35.30000000074506,
+        39.19999999925494,
+        39.900000002235174,
+        35.600000001490116,
+        36.099999997764826,
+        38.899999998509884,
+        36.400000002235174,
+        35,
+        54.399999998509884,
+        36.79999999701977,
+        34.900000002235174
+      ],
+      "draw": [
+        12.600000001490116,
+        13.100000001490116,
+        19.800000000745058,
+        12.699999999254942,
+        13.300000000745058,
+        11.300000000745058,
+        12.700000002980232,
+        24.899999998509884,
+        12.199999999254942,
+        11,
+        14.600000001490116,
+        11.800000000745058
+      ],
+      "max": 0,
+      "direct": {
+        "geometryHits": 62185,
+        "geometryMisses": 2364
+      },
+      "preparation": {
+        "meshes": 2489,
+        "cachedImages": 546,
+        "overlays": 140,
+        "masks": 92,
+        "triangles": 448214,
+        "unsupported": [],
+        "directMeshes": 2511,
+        "directCaches": 653,
+        "sourceMeshes": 1286,
+        "sourceCacheQuads": 32,
+        "sourceMaskMeshes": 291,
+        "sourceBatches": 48,
+        "sourceFallbacks": {},
+        "directFallbacks": {},
+        "awayDraws": 36,
+        "pixiFilterPasses": 38,
+        "skippedSceneDraws": 0,
+        "skippedSceneClears": 122,
+        "skippedComposites": 140,
+        "skippedBackdropFlushes": 140
+      },
+      "scene": {
+        "commands": 1543,
+        "timings": {
+          "batchMs": 2.099999997764826,
+          "updateMs": 2.600000001490116,
+          "submitMs": 7
+        },
+        "batching": {
+          "scene": {
+            "input": 2409,
+            "output": 917,
+            "batches": 550,
+            "merged": 1492,
+            "geometryBuilds": 550
+          },
+          "sources": {
+            "input": 1286,
+            "output": 207,
+            "batches": 119,
+            "merged": 1079,
+            "geometryBuilds": 94
+          }
+        },
+        "sourceMeshes": 167,
+        "textures": 597,
+        "programs": 19
+      },
+      "drawCalls": 2215
+    },
+    {
+      "kind": "old",
+      "times": [
+        59.5,
+        58.69999999925494,
+        55.600000001490116,
+        58.099999997764826,
+        53.400000002235174,
+        60.899999998509884,
+        68,
+        58.899999998509884,
+        72.59999999776483,
+        60.30000000074506,
+        51.900000002235174,
+        56.600000001490116
+      ],
+      "capture": [
+        42.19999999925494,
+        40.69999999925494,
+        39.900000002235174,
+        41.80000000074506,
+        38.5,
+        43.099999997764826,
+        53.5,
+        43.19999999925494,
+        54.099999997764826,
+        44.100000001490116,
+        38.100000001490116,
+        43.100000001490116
+      ],
+      "draw": [
+        17.300000000745058,
+        17.899999998509884,
+        15.699999999254942,
+        16.199999999254942,
+        14.900000002235174,
+        17.700000002980232,
+        14.5,
+        15.699999999254942,
+        18.300000000745058,
+        16.100000001490116,
+        13.699999999254942,
+        13.5
+      ],
+      "max": 0,
+      "direct": {
+        "geometryHits": 62185,
+        "geometryMisses": 2364
+      },
+      "preparation": {
+        "meshes": 2489,
+        "cachedImages": 546,
+        "overlays": 140,
+        "masks": 92,
+        "triangles": 448214,
+        "unsupported": [],
+        "directMeshes": 2511,
+        "directCaches": 653,
+        "sourceMeshes": 1286,
+        "sourceCacheQuads": 32,
+        "sourceMaskMeshes": 291,
+        "sourceBatches": 48,
+        "sourceFallbacks": {},
+        "directFallbacks": {},
+        "awayDraws": 36,
+        "pixiFilterPasses": 38,
+        "skippedSceneDraws": 0,
+        "skippedSceneClears": 122,
+        "skippedComposites": 140,
+        "skippedBackdropFlushes": 140
+      },
+      "scene": {
+        "commands": 3035,
+        "sourceMeshes": 922,
+        "textures": 597,
+        "programs": 8
+      },
+      "drawCalls": 4786
+    }
+  ],
+  "summary": {
+    "old": {
+      "medianMs": 58.399999998509884,
+      "medianPreparationMs": 42.34999999962747,
+      "medianPixiMs": 15.900000000372529,
+      "drawCallsPerFrame": 4786.0,
+      "maxPixelError": 0
+    },
+    "new": {
+      "medianMs": 51.649999998509884,
+      "medianPreparationMs": 37.95000000111759,
+      "medianPixiMs": 12.950000001117587,
+      "drawCallsPerFrame": 2215.0,
+      "maxPixelError": 0
+    }
+  }
+}

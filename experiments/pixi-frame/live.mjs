@@ -13,6 +13,7 @@ export async function startLive(
     pixiFilters = true,
     cachedLayers = true,
     validateGL = false,
+    batching = true,
   } = {},
 ) {
   const root = player._renderer,
@@ -24,7 +25,7 @@ export async function startLive(
   const restore = saveGL(gl);
   let live;
   try {
-    live = await createLiveRenderer(gl);
+    live = await createLiveRenderer(gl, { batching });
   } finally {
     restore();
     player.isPaused = wasPaused;
@@ -79,8 +80,9 @@ export async function startLive(
     if (inFrame || stopped) return original.apply(this, args);
     inFrame = true;
     try {
-      transport.begin();
       const begin = performance.now();
+      transport.begin();
+      live.begin();
       const frame = captureFrame(player, {
         transport,
         programs,

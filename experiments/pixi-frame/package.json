@@ -5,7 +5,8 @@
   "scripts": {
     "build": "node build.mjs",
     "check:live": "node check-live.mjs",
-    "check:direct": "node check-direct.mjs"
+    "check:direct": "node check-direct.mjs",
+    "check:batches": "node check-batches.mjs"
   },
   "dependencies": {
     "pixi.js": "8.21.0"

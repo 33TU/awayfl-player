@@ -324,5 +324,43 @@ reduced median render time from 99.4 ms to 72.45 ms. Median preparation went fro
 65.45 ms to 53.65 ms and Pixi composition from 26.0 ms to 19.1 ms. All four runs
 produced identical pixels. See `uniform-preparation-profile.json` for samples.
 This uses headless Chrome/SwiftShader at 641 × 367 with about 2,500 scene meshes;
-it is not the user's Brave/GPU scene or a claim of 24 FPS. There is still one
-mesh submission per recipe, so draw batching remains outstanding.
+it is not the user's Brave/GPU scene or a claim of 24 FPS. At that point there was still one mesh submission per recipe; the batching
+work below addresses those submissions.
+
+## Mesh batching
+
+Live rendering now batches adjacent compatible meshes in both the scene and
+cached-layer source passes. Each vertex carries a draw index; the vertex shader
+selects that mesh's packed `vc` constants. Fragment shaders and their constants
+stay unchanged. Batches share shader, texture/sampler state, blend/raster state,
+viewport and non-vertex uniforms. This keeps transforms independent without
+introducing a per-pixel constant lookup. Geometry is concatenated once and reused
+until its members or vertex data change; uniforms are fresh snapshots per pass.
+
+Batches preserve order and stop at root masks, cached images, state changes and
+source-pass boundaries. They contain at most 16 meshes or 65,536 vertices, and
+respect the device's vertex uniform/attribute limits. Small batches use smaller
+uniform arrays. Unrecognized shaders retain individual draws. Masked root
+commands and filter passes are not combined by this batcher.
+
+The paused Battleon comparison against `57e8696` reduced total GL draws from
+4,786 to 2,215 per frame, with identical pixels. Median render time fell from
+58.4 ms to 51.65 ms; Pixi composition from 15.9 ms to 12.95 ms. These are
+render-only headless Chrome/SwiftShader results at 641 × 367, not hardware FPS
+for a logged-in Brave session. Raw samples are in `mesh-batching-profile.json`.
+The larger preparation cost remains; this does not establish 24 FPS.
+
+`pixiLive.stats.scene.batching` reports the scene/source mesh inputs, batch
+outputs and merged submissions for the latest frame. `geometryBuilds` is
+cumulative. `scene.timings` separates scene batch construction, retained-object
+updates and Pixi submission time. For an A/B comparison in the same room:
+
+```js
+pixiLiveControls.stop();
+await pixiLiveControls.enable({ batching: false });
+```
+
+Stop and enable with no options to restore batching. `npm run check:batches`
+checks limits, order/state boundaries, geometry edits and constant isolation.
+`npm run check:live` compares batched output against the unbatched renderer,
+including moved meshes, color changes, masks, resize and rebuilt cache sources.

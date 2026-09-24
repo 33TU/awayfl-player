@@ -14,6 +14,7 @@ import {
   Rectangle,
 } from "pixi.js";
 import "./flash-blends.mjs";
+import { createMeshBatcher } from "./mesh-batches.mjs";
 
 const types = {
   5126: "f32",
@@ -27,7 +28,7 @@ const types = {
 };
 
 // A persistent Pixi display list. AwayFL textures stay on the same GPU/context.
-export async function createLiveRenderer(gl) {
+export async function createLiveRenderer(gl, { batching = true } = {}) {
   const css = gl.canvas.style.cssText;
   const renderer = new WebGLRenderer();
   await renderer.init({
@@ -52,6 +53,13 @@ export async function createLiveRenderer(gl) {
     sourceRecords = new Map(),
     borrowed = new Map(),
     programs = new Map();
+  const batchLimits = {
+    vertexVectors: gl.getParameter(gl.MAX_VERTEX_UNIFORM_VECTORS),
+    attributes: gl.getParameter(gl.MAX_VERTEX_ATTRIBS),
+  };
+  const sceneBatcher = batching ? createMeshBatcher(batchLimits) : null;
+  const sourceBatcher = batching ? createMeshBatcher(batchLimits) : null;
+  const timings = { batchMs: 0, updateMs: 0, submitMs: 0 };
   let nextId = 0,
     epoch = 0;
   function texture(t) {
@@ -294,7 +302,11 @@ void main(){awayMain();vec2 p=gl_Position.xy/gl_Position.w;p=p*vec2(0.5,${g.offs
     renderer,
     scene,
     texture,
+    begin() {
+      sourceBatcher?.begin();
+    },
     drawSources(entries) {
+      if (sourceBatcher) entries = sourceBatcher.batch(entries);
       // Only reset Pixi's binding caches. A full renderer.resetState() would
       // replace the caller's stencil/depth state and multisampled framebuffer.
       renderer.shader.resetState();
@@ -379,7 +391,35 @@ void main(){awayMain();vec2 p=gl_Position.xy/gl_Position.w;p=p*vec2(0.5,${g.offs
         renderer.resize(frame.width, frame.height, 1);
       const used = new Set();
       let index = 0;
-      for (const c of frame.commands) {
+      const batchStart = performance.now();
+      let commands = frame.commands;
+      if (sceneBatcher) {
+        sceneBatcher.begin();
+        commands = [];
+        let pending = [];
+        const flush = () => {
+          for (const { key, recipe } of sceneBatcher.batch(pending))
+            commands.push({
+              key,
+              kind: "geometry",
+              geometry: [recipe],
+              masks: [],
+            });
+          pending = [];
+        };
+        for (const c of frame.commands) {
+          // Masks/cache composites are strict boundaries, including normal
+          // cached sprites: never move geometry across a display-list entry.
+          if (c.kind === "cache" || c.masks.length || c.geometry.length !== 1) {
+            flush();
+            commands.push(c);
+          } else pending.push({ key: c.key, recipe: c.geometry[0] });
+        }
+        flush();
+      }
+      timings.batchMs = performance.now() - batchStart;
+      const updateStart = performance.now();
+      for (const c of commands) {
         let r = records.get(c.key);
         const sig = signature(c);
         if (!r || r.signature !== sig) {
@@ -412,6 +452,8 @@ void main(){awayMain();vec2 p=gl_Position.xy/gl_Position.w;p=p*vec2(0.5,${g.offs
           t.texture.destroy(true);
           borrowed.delete(k);
         }
+      timings.updateMs = performance.now() - updateStart;
+      const submitStart = performance.now();
       renderer.resetState();
       // AwayFL tests masks with stencil writes disabled. Pixi's stencil pipe
       // assumes the default write mask and clear value; resetState() does not
@@ -423,6 +465,7 @@ void main(){awayMain();vec2 p=gl_Position.xy/gl_Position.w;p=p*vec2(0.5,${g.offs
       try {
         renderer.render({ container: scene });
       } finally {
+        timings.submitMs = performance.now() - submitStart;
         // Advanced blends borrow pooled filter targets. The global bind group
         // outlives those targets, so release its inputs after composition.
         const bindings = renderer.filter._globalFilterBindGroup;
@@ -436,12 +479,21 @@ void main(){awayMain();vec2 p=gl_Position.xy/gl_Position.w;p=p*vec2(0.5,${g.offs
     stats() {
       return {
         commands: records.size,
+        timings: { ...timings },
+        batching: sceneBatcher
+          ? {
+              scene: { ...sceneBatcher.stats },
+              sources: { ...sourceBatcher.stats },
+            }
+          : null,
         sourceMeshes: sourceRecords.size,
         textures: borrowed.size,
         programs: programs.size,
       };
     },
     destroy() {
+      sceneBatcher?.destroy();
+      sourceBatcher?.destroy();
       for (const r of records.values()) r.destroy();
       records.clear();
       for (const r of sourceRecords.values()) r.destroy();

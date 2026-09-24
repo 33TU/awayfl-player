@@ -164,3 +164,5 @@ export async function checkFilters(player) {
     player.isPaused = paused;
   }
 }
+
+export { checkBatchRendering } from "./check-batch-browser.mjs";

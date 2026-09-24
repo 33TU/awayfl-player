@@ -94,7 +94,7 @@ async function compareComposition({
     }
     try {
       pixiLiveControls.stop();
-      await pixiLiveControls.enable(${JSON.stringify(sourceOnly ? { cachedLayers: false } : { prepareOnly: true, directScene: false, pixiFilters: false })});
+      await pixiLiveControls.enable(${JSON.stringify(sourceOnly ? { cachedLayers: false, batching: false } : { prepareOnly: true, directScene: false, pixiFilters: false, batching: false })});
       const reference = sample();
       pixiLiveControls.stop();
       await pixiLiveControls.enable();
@@ -203,6 +203,10 @@ try {
   assert.equal(await evaluate("pixiLive.active"), true);
   report.fixture = await evaluate("JSON.parse(JSON.stringify(pixiLive.stats))");
   assert.ok(report.fixture.direct.geometryHits > 0);
+  for (const batch of Object.values(report.fixture.scene.batching)) {
+    assert.ok(batch.merged > 0);
+    assert.ok(batch.output < batch.input);
+  }
   report.composition = await compareComposition();
   assert.ok(report.composition.prepared.preparation.sourceMaskMeshes > 0);
   assert.ok(report.composition.prepared.preparation.sourceCacheQuads > 0);
@@ -375,6 +379,14 @@ try {
         Math.abs(result.expected[i] - result.actual[i]) <= 1,
         JSON.stringify(result),
       );
+  }
+  report.batchRendering = await evaluate(
+    `import('./check-filter-browser.js?v='+Date.now()).then(m=>m.checkBatchRendering(pixiLiveControls.player))`,
+  );
+  assert.equal(report.batchRendering.glError, 0);
+  for (const result of report.batchRendering.results) {
+    assert.equal(result.max, 0);
+    assert.equal(result.batching.scene.merged, 2);
   }
   report.destroyedTextureWarnings = destroyedTextureWarnings;
   assert.deepEqual(destroyedTextureWarnings, []);
