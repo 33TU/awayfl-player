@@ -138,7 +138,10 @@ quality is 0.1, glow radius is capped at 32 render pixels, and blur/shadow quali
 is capped at two passes. Strength is bounded at 16; high-strength narrow glows
 become crisp outlines. Glow radii are circular, inner shadows lose their direction,
 shadow knockout uses Pixi's shadow-only mode, and bevel type/knockout/blur have no
-exact mapping. Filter sizes follow display scale, with quarter-pixel rounding.
+exact mapping. Filter sizes follow display scale. Broad Gaussian blurs use a
+nine-sample kernel on a smaller target, with scene-space padding; their sample
+spacing is derived from the blur width to avoid repeated silhouettes. Other
+filter sizes use quarter-pixel rounding.
 Unchanged parameters reuse filters. A changed glow radius recreates the filter,
 because Pixi compiles its WebGL sampling radius into the shader.
 

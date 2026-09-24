@@ -120,6 +120,38 @@ try {
   );
   report.mouseAndKeyboard = "passed";
   await evaluate("pixiLiveControls.player.isPaused=true");
+  // Use the actual avatar shadow: a thin ellipse with a broad one-pass blur.
+  // At large scale, widely spaced Gaussian samples used to form repeated ovals.
+  report.avatarShadow = await evaluate(`(()=>{
+    const p=pixiLiveControls.player,g=p.root._children.find(n=>n.name==='scene').adapter,s=g.sec;
+    const visibility=g.adaptee._children.map(n=>[n,n.visible]);for(const [n] of visibility)n.visible=false;
+    const bg=s.flash.display.Sprite.axClass.axConstruct([]);
+    bg.$Bggraphics.$BgbeginFill(0xffffff);bg.$Bggraphics.$BgdrawRect(0,0,960,550);bg.$Bggraphics.$BgendFill();g.$BgaddChild(bg);
+    const avatar=g.$BgloaderInfo.$BgapplicationDomain.$BggetDefinition('AvatarMC').axConstruct([false]);
+    g.$BgaddChild(avatar);avatar.$Bgx=450;avatar.$Bgy=300;avatar.$BgscaleX=avatar.$BgscaleY=4;
+    for(const c of avatar.adaptee._children)c.visible=c.name==='shadow';
+    const canvas=p._view.stage.context._gl.canvas.ownerDocument.querySelector('[data-pixi-display-list]'),gl=canvas.getContext('webgl2');
+    function profile(){p._renderer.render();const pt=g.$BglocalToGlobal(new s.flash.geom.Point(450,300)),m=p._view.viewMatrix3D._rawData;
+      const x=Math.floor(canvas.width*.5*(1+(m[0]*pt.$Bgx+m[4]*pt.$Bgy+m[12])/m[15]));
+      const y=Math.floor(canvas.height*.5*(1-(m[1]*pt.$Bgx+m[5]*pt.$Bgy+m[13])/m[15]));
+      const a=new Uint8Array(4*201);gl.readPixels(x,canvas.height-1-y-100,1,201,gl.RGBA,gl.UNSIGNED_BYTE,a);
+      return Array.from({length:201},(_,i)=>255-a[4*i]);}
+    const values=profile(),peak=Math.max(...values),center=values.indexOf(peak);
+    let reversal=0;for(let i=1;i<values.length;i++)reversal=Math.max(reversal,i<=center?values[i-1]-values[i]:values[i]-values[i-1]);
+    const stable=JSON.stringify(values)===JSON.stringify(profile());
+    g.$BgremoveChild(avatar);g.$BgremoveChild(bg);for(const [n,v] of visibility)n.visible=v;
+    return {peak,reversal,stable};
+  })()`);
+  assert.ok(report.avatarShadow.peak > 20, "avatar shadow is visible");
+  assert.ok(
+    report.avatarShadow.reversal <= 2,
+    "blur has one smooth lobe, no repeated shadow stamps",
+  );
+  assert.equal(
+    report.avatarShadow.stable,
+    true,
+    "unchanged frames do not accumulate shadows",
+  );
   report.pixels = await evaluate(`(()=>{
     const p=pixiLiveControls.player,g=p.root._children.find(n=>n.name==='scene').adapter,s=g.sec;
     for(const c of g.adaptee._children)c.visible=false;

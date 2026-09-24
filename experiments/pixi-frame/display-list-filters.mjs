@@ -80,15 +80,29 @@ export function describeFilter(f, sx = 1, sy = 1) {
         },
       };
     }
-    case "blur":
+    case "blur": {
+      // Pixi strength is the distance between Gaussian samples, not a blur
+      // radius. Large spacing produces separate copies of thin source shapes.
+      // Use nine adjacent samples on a smaller target for broad blurs. Linear
+      // upsampling keeps the result smooth without adding full-size passes.
+      const width = Math.max(blurX * sx, blurY * sy);
+      const resolution = Math.min(
+        1,
+        2 ** Math.floor(Math.log2(8 / Math.max(8, width))),
+      );
       return {
         kind: "blur",
         options: {
-          strengthX: quarter((blurX * sx) / 2),
-          strengthY: quarter((blurY * sy) / 2),
+          strengthX: (blurX * sx) / 8,
+          strengthY: (blurY * sy) / 8,
+          resolution,
+          kernelSize: 9,
           quality,
         },
+        // Padding is in scene pixels, even when the filter target is smaller.
+        padding: Math.ceil(width * 0.75),
       };
+    }
     case "bevel":
       return {
         kind: "bevel",
@@ -125,8 +139,11 @@ export function createFilter(d) {
       return new DropShadowFilter(d.options);
     case "bevel":
       return new BevelFilter(d.options);
-    case "blur":
-      return new BlurFilter(d.options);
+    case "blur": {
+      const filter = new BlurFilter(d.options);
+      filter.padding = d.padding;
+      return filter;
+    }
     case "colorMatrix": {
       const filter = new ColorMatrixFilter();
       filter.matrix = d.matrix;
