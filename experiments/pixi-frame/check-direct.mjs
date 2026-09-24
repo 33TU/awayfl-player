@@ -77,13 +77,14 @@ const item = {
   },
 };
 const reasons = [];
+const meta = {
+  attributes: [{ name: "va0" }, { name: "va1" }],
+  uniforms: [],
+  vertex: "",
+  fragment: "",
+};
 const context = {
-  metadata: () => ({
-    attributes: [{ name: "va0" }, { name: "va1" }],
-    uniforms: [],
-    vertex: "",
-    fragment: "",
-  }),
+  metadata: () => meta,
   fallback: (r) => reasons.push(r),
   viewport: { x: 0, y: 0, width: 10, height: 10 },
 };
@@ -94,6 +95,7 @@ try {
   assert.deepEqual([...first.attributes.va0.data], [0, 0, 10, 10, 0, 10]);
   assert.deepEqual([...first.attributes.va1.data], [0, 0, 1, 1, 0, 1]);
   assert.equal(adapter.recipe(item, context).attributes, first.attributes);
+  assert.equal(adapter.stats.geometryHits, 1);
   vertices.data[0] = 5;
   vertices.invalidate();
   const edited = adapter.recipe(item, context);
@@ -104,6 +106,45 @@ try {
   assert.deepEqual(
     [...adapter.recipe(item, context).attributes.va0.data],
     [10, 0, 10, 10, 0, 10],
+  );
+  item._offset = 0;
+  assert.deepEqual(
+    [...adapter.recipe(item, context).attributes.va0.data],
+    [5, 0, 10, 0, 10, 10],
+  );
+  item._offset = 1;
+  // Layout mutations and replacing backing storage must not return stale data,
+  // even when the caller does not issue a content invalidation.
+  elements.uvs.offset = 0;
+  assert.deepEqual(
+    [...adapter.recipe(item, context).attributes.va1.data],
+    [10, 0, 10, 10, 0, 10],
+  );
+  elements.uvs.offset = 8;
+  vertices.data = new Float32Array(vertices.data);
+  vertices.data[4] = 17;
+  assert.deepEqual(
+    [...adapter.recipe(item, context).attributes.va0.data],
+    [17, 0, 10, 10, 0, 10],
+  );
+  elements.positions = { ...elements.positions, dimensions: 3 };
+  assert.deepEqual(
+    [...adapter.recipe(item, context).attributes.va0.data],
+    [17, 0, 1, 10, 10, 1, 0, 10, 0],
+  );
+  const hits = adapter.stats.geometryHits;
+  adapter.recipe(item, context);
+  assert.equal(adapter.stats.geometryHits, hits + 1);
+  elements.positions.dimensions = 2;
+  vertices.stride = 8;
+  assert.deepEqual(
+    [...adapter.recipe(item, context).attributes.va0.data],
+    [0, 0, 17, 0, 1, 0],
+  );
+  vertices.stride = 16;
+  assert.deepEqual(
+    [...adapter.recipe(item, context).attributes.va0.data],
+    [17, 0, 10, 10, 0, 10],
   );
   // Cached layer quads sample their own texture and must not overwrite an
   // unrelated diffuse constant or double-blend a precomposited backdrop.

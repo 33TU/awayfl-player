@@ -4,32 +4,112 @@
 export function createDirectScene() {
   const ids = new WeakMap(),
     versions = new WeakMap(),
+    tracked = new WeakMap(),
     geometries = new Map();
   const textures = new WeakMap(),
     hooks = new Map();
   let nextId = 0;
+  let layouts = new WeakMap();
+  const stats = { geometryHits: 0, geometryMisses: 0 };
   const id = (o) => {
     if (!ids.has(o)) ids.set(o, ++nextId);
     return ids.get(o);
   };
   function track(buffer) {
-    let proto = Object.getPrototypeOf(buffer);
-    while (!Object.hasOwn(proto, "invalidate"))
-      proto = Object.getPrototypeOf(proto);
-    if (!hooks.has(proto)) {
-      const descriptor = Object.getOwnPropertyDescriptor(proto, "invalidate");
-      hooks.set(proto, descriptor);
-      proto.invalidate = function (...args) {
-        versions.set(this, (versions.get(this) || 0) + 1);
-        return descriptor.value.apply(this, args);
-      };
+    let record = tracked.get(buffer);
+    if (!record) {
+      let proto = Object.getPrototypeOf(buffer);
+      while (!Object.hasOwn(proto, "invalidate"))
+        proto = Object.getPrototypeOf(proto);
+      if (!hooks.has(proto)) {
+        const descriptor = Object.getOwnPropertyDescriptor(proto, "invalidate");
+        hooks.set(proto, descriptor);
+        proto.invalidate = function (...args) {
+          versions.set(this, (versions.get(this) || 0) + 1);
+          return descriptor.value.apply(this, args);
+        };
+      }
     }
     // Reading the CPU buffer materializes pending layout changes and resets
     // its dirty flag, allowing the next edit to dispatch invalidation again.
     const bytes = buffer.buffer;
-    return { bytes, key: id(buffer) + ":" + (versions.get(buffer) || 0) };
+    const version = versions.get(buffer) || 0;
+    if (!record || record.bytes !== bytes || record.version !== version) {
+      record = {
+        bytes,
+        version,
+        key: id(buffer) + ":" + version + ":" + id(bytes),
+      };
+      tracked.set(buffer, record);
+    }
+    return record;
   }
   function geometry(elements, shader, meta, count, offset, line) {
+    const currentViews = [elements.positions];
+    if (shader.uvIndex >= 0)
+      currentViews.push(
+        line ? elements.positions : elements.uvs || elements.positions,
+      );
+    if (shader.curvesIndex >= 0)
+      currentViews.push(elements.getCustomAtributes("curves"));
+    if (line) currentViews.push(elements.thickness);
+    if (elements.indices) currentViews.push(elements.indices);
+    let byProgram = layouts.get(elements);
+    if (!byProgram) layouts.set(elements, (byProgram = new WeakMap()));
+    let ranges = byProgram.get(meta);
+    if (!ranges) byProgram.set(meta, (ranges = new Map()));
+    const range = [
+      count,
+      offset,
+      shader.uvIndex,
+      shader.curvesIndex,
+      line ? elements.dimension : 0,
+      line?.secondaryPositionIndex,
+      line?.thicknessIndex,
+    ].join(":");
+    const previous = ranges.get(range);
+    const length = elements.indices
+      ? count * 3 || elements.indices.count * 3
+      : count || elements.numVertices;
+    if (
+      previous &&
+      previous.mesh.count === length &&
+      previous.views.length === currentViews.length &&
+      currentViews.every((view, i) => {
+        const saved = previous.views[i];
+        return (
+          view === saved.view &&
+          view.attributesBuffer === saved.buffer &&
+          track(saved.buffer) === saved.content &&
+          view.offset === saved.offset &&
+          view.stride === saved.stride &&
+          view.size === saved.size &&
+          view.dimensions === saved.dimensions &&
+          saved.buffer.stride === saved.bufferStride
+        );
+      })
+    ) {
+      stats.geometryHits++;
+      return previous.mesh;
+    }
+    stats.geometryMisses++;
+    const remember = (mesh) => {
+      if (ranges.size > 2048) ranges.clear();
+      ranges.set(range, {
+        mesh,
+        views: currentViews.map((view) => ({
+          view,
+          buffer: view.attributesBuffer,
+          content: track(view.attributesBuffer),
+          offset: view.offset,
+          stride: view.stride,
+          size: view.size,
+          dimensions: view.dimensions,
+          bufferStride: view.attributesBuffer.stride,
+        })),
+      });
+      return mesh;
+    };
     const binding = (view, size = view.dimensions, extra = 0) => ({
       view,
       size,
@@ -73,17 +153,19 @@ export function createDirectScene() {
     }
     const indices = elements.indices;
     const indexData = indices && track(indices.attributesBuffer);
-    const length = indices
-      ? count * 3 || indices.count * 3
-      : count || elements.numVertices;
     const start = indices ? offset * 3 : offset;
     const key = [
       start,
       length,
       indices
-        ? [indexData.key, indices.offset, indices.stride, indices.size].join(
-            ":",
-          )
+        ? [
+            indexData.key,
+            indices.offset,
+            indices.stride,
+            indices.size,
+            indices.dimensions,
+            indices.attributesBuffer.stride,
+          ].join(":")
         : "",
       ...attributes.map((a) =>
         [
@@ -91,13 +173,14 @@ export function createDirectScene() {
           a.data.key,
           a.view.offset,
           a.view.stride,
+          a.view.attributesBuffer.stride,
           a.size,
           a.extra,
         ].join(":"),
       ),
     ].join("|");
     if (geometries.has(key))
-      return { attributes: geometries.get(key), count: length };
+      return remember({ attributes: geometries.get(key), count: length });
     const order = new Uint32Array(length);
     if (indices) {
       if (indices.size !== 2 && indices.size !== 4) return null;
@@ -133,7 +216,7 @@ export function createDirectScene() {
     }
     if (geometries.size > 10000) geometries.clear();
     geometries.set(key, result);
-    return { attributes: result, count: length };
+    return remember({ attributes: result, count: length });
   }
   function imageTexture(image, sampler, transport) {
     const native = image.getTexture();
@@ -157,6 +240,7 @@ export function createDirectScene() {
     return descriptor;
   }
   return {
+    stats,
     recipe(
       item,
       {
@@ -381,6 +465,7 @@ export function createDirectScene() {
         Object.defineProperty(proto, "invalidate", descriptor);
       hooks.clear();
       geometries.clear();
+      layouts = new WeakMap();
     },
   };
 }

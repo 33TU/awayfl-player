@@ -12,6 +12,7 @@ export async function startLive(
     directScene = true,
     pixiFilters = true,
     cachedLayers = true,
+    validateGL = false,
   } = {},
 ) {
   const root = player._renderer,
@@ -49,9 +50,11 @@ export async function startLive(
     frames: 0,
     captureMs: 0,
     pixiMs: 0,
+    renderSize: [gl.drawingBufferWidth, gl.drawingBufferHeight],
     lastError: null,
     transport: transport.stats,
     filters: filters?.stats,
+    direct: direct?.stats,
   };
   function stop() {
     if (stopped) return;
@@ -81,6 +84,9 @@ export async function startLive(
         programs,
         quiet: true,
         prepareOnly,
+        // Validate initial setup, but avoid a synchronous GPU error query at
+        // the preparation/composition boundary on every production frame.
+        checkErrors: validateGL || frames === 0,
         direct,
         filters,
         drawSources:
@@ -107,6 +113,8 @@ export async function startLive(
         render: () => original.apply(this, args),
       });
       stats.preparation = frame.stats;
+      stats.renderSize[0] = frame.width;
+      stats.renderSize[1] = frame.height;
       stats.captureMs = performance.now() - begin;
       transport.suspend();
       const restore = saveGL(gl),

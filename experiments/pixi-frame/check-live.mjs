@@ -202,6 +202,7 @@ try {
   );
   assert.equal(await evaluate("pixiLive.active"), true);
   report.fixture = await evaluate("JSON.parse(JSON.stringify(pixiLive.stats))");
+  assert.ok(report.fixture.direct.geometryHits > 0);
   report.composition = await compareComposition();
   assert.ok(report.composition.prepared.preparation.sourceMaskMeshes > 0);
   assert.ok(report.composition.prepared.preparation.sourceCacheQuads > 0);
@@ -213,6 +214,10 @@ try {
     `(()=>{const g=testGL,old=g.readPixels;let count=0;g.readPixels=function(){count++;return old.apply(this,arguments)};try{for(let i=0;i<3;i++)pixiLiveControls.player._renderer.render();return count;}finally{g.readPixels=old;}})()`,
   );
   assert.equal(report.liveReadbacks, 0);
+  report.liveErrorPolls = await evaluate(
+    `(()=>{const g=testGL,old=g.getError;let count=0;g.getError=function(){count++;return old.apply(this,arguments)};try{for(let i=0;i<3;i++)pixiLiveControls.player._renderer.render();return count;}finally{g.getError=old;}})()`,
+  );
+  assert.equal(report.liveErrorPolls, 0);
   report.resizes = [];
   for (const [width, height] of [
     [1200, 800],

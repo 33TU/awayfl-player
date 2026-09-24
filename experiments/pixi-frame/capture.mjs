@@ -777,7 +777,7 @@ export function captureFrame(player, options = {}) {
       stats.triangles += geometry.reduce((s, g) => s + g.count / 3, 0);
       return { ...entry, kind: "geometry", geometry };
     });
-    if (gl.isContextLost() || gl.getError())
+    if (gl.isContextLost() || (options.checkErrors !== false && gl.getError()))
       throw Error("Capture generated a WebGL error");
     return {
       width,

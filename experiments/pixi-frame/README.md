@@ -69,6 +69,23 @@ these ten-frame, separate-load measurements are not Brave hardware FPS or a
 guaranteed speedup in a live room. Thousands of individual draws and the remaining
 preparation work still limit this experimental bridge.
 
+The direct adapter also caches geometry layouts per elements/program/draw range.
+It checks buffer content revisions, backing-storage identity, attribute views,
+offsets, dimensions and strides before reusing expanded geometry. Reading the CPU
+buffer still materializes pending layout changes and resets its dirty flag;
+vertex and index edits therefore invalidate the cached result. Cumulative
+`pixiLive.stats.direct.geometryHits`/`geometryMisses` expose reuse.
+
+Live rendering checks WebGL errors at startup and context loss each frame. To
+enable the synchronous error query on every frame while diagnosing a problem,
+restart with `pixiLiveControls.enable({ validateGL: true })` after stopping Pixi.
+Frozen capture and browser regression checks retain explicit error checks.
+The geometry-cache/startup-only-query changes matched all RGBA pixels in an
+old/new/new/old comparison on the same paused Battleon scene. Median completion
+time was 80.95 ms before and 75.15 ms after; preparation was 60.5 ms versus
+52.1 ms (`geometry-cache-profile.json`). These software-GPU fixture measurements
+do not establish the bottleneck or FPS gain in a logged-in Brave session.
+
 This uses private APIs from both engines. Fractional-size alignment differences
 remain in the shared adapter: the 835×478 Battleon fixture had about 16.6% of
 pixels differing over 3/255 (mean RGB error about 4.15), also reproduced with the
