@@ -86,7 +86,15 @@ export async function startLive(
         drawSources:
           cachedLayers && direct
             ? (entries) => {
-                const restore = saveGL(gl);
+                // The encoder binds this batch's shader samplers from unit 0;
+                // it does not run Pixi's scene/batch/filter render pipes.
+                let textureUnits = 0;
+                for (const { recipe } of entries)
+                  textureUnits = Math.max(
+                    textureUnits,
+                    Object.keys(recipe.samplers).length,
+                  );
+                const restore = saveGL(gl, textureUnits);
                 transport.suspend();
                 try {
                   live.drawSources(entries);

@@ -327,6 +327,12 @@ try {
     `import('./check-filter-browser.js?v='+Date.now()).then(m=>m.checkRenderer(pixiLiveControls.player))`,
   );
   assert.equal(report.renderer.glError, 0);
+  assert.deepEqual(report.renderer.scopedState, {
+    switches: 3,
+    active: true,
+    highBinding: true,
+    lowBindings: [true, true],
+  });
   for (const key of [
     "retained",
     "released",

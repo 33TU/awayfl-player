@@ -57,6 +57,18 @@ Reusable filter shaders release their borrowed inputs after each pass. Texture
 cleanup waits for remaining Pixi bind groups to release their sources, and
 shutdown releases those bindings before destroying the borrowed wrappers.
 
+Small source-encoder and blur/shadow passes save only the texture slots their
+shaders can touch (consecutive slots from zero). Full renderer transitions still
+preserve all slots. Shader identity lookup also reuses the original GLSL strings
+instead of concatenating and hashing both sources for each mesh every frame.
+In the instrumented, paused Battleon fixture this reduced texture binds from
+7,071 to 1,744 per frame and active-texture switches from 6,072 to 742, with the
+same draw count. Median render completion time was 174.0 ms before and 150.55 ms
+after on SwiftShader with profiling enabled. See `state-scope-profile.json`;
+these ten-frame, separate-load measurements are not Brave hardware FPS or a
+guaranteed speedup in a live room. Thousands of individual draws and the remaining
+preparation work still limit this experimental bridge.
+
 This uses private APIs from both engines. Fractional-size alignment differences
 remain in the shared adapter: the 835×478 Battleon fixture had about 16.6% of
 pixels differing over 3/255 (mean RGB error about 4.15), also reproduced with the

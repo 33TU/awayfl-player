@@ -87,7 +87,9 @@ export function createFilterPasses(stage, live, transport) {
         stats.unsupported++;
         return false;
       }
-      const restore = saveGL(gl);
+      // These shaders use one input for blur, two for shadow, starting at unit
+      // zero. Their non-blended mesh pass does not bind other sampler units.
+      const restore = saveGL(gl, shadow ? 2 : 1);
       transport.suspend();
       let pass;
       try {

@@ -9,13 +9,13 @@
     "maxChannelError": 1,
     "meanChannelError": 0.004810712811215423,
     "reference": {
-      "medianMs": 8.899999998509884,
+      "medianMs": 13.199999999254942,
       "preparation": {
-        "meshes": 130,
+        "meshes": 131,
         "cachedImages": 11,
         "overlays": 4,
         "masks": 0,
-        "triangles": 97192,
+        "triangles": 97194,
         "unsupported": [],
         "directMeshes": 0,
         "directCaches": 0,
@@ -27,22 +27,22 @@
         "directFallbacks": {},
         "awayDraws": 80,
         "pixiFilterPasses": 0,
-        "skippedSceneDraws": 143,
+        "skippedSceneDraws": 144,
         "skippedSceneClears": 4,
         "skippedComposites": 4,
         "skippedBackdropFlushes": 4
       }
     },
     "prepared": {
-      "medianMs": 11.699999999254942,
+      "medianMs": 5.800000000745058,
       "preparation": {
-        "meshes": 130,
+        "meshes": 131,
         "cachedImages": 11,
         "overlays": 4,
         "masks": 0,
-        "triangles": 97192,
+        "triangles": 97194,
         "unsupported": [],
-        "directMeshes": 130,
+        "directMeshes": 131,
         "directCaches": 13,
         "sourceMeshes": 47,
         "sourceCacheQuads": 0,
@@ -66,29 +66,29 @@
   },
   "fixture": {
     "mode": "direct-scene",
-    "frames": 68,
-    "captureMs": 160.60000000149012,
-    "pixiMs": 30,
+    "frames": 78,
+    "captureMs": 186.5,
+    "pixiMs": 37,
     "lastError": null,
     "transport": {
       "initialBufferReads": 0,
       "bufferUploads": 0,
-      "textureCopies": 73,
+      "textureCopies": 83,
       "pixelReadbacks": 1
     },
     "filters": {
-      "blur": 2972,
-      "shadow": 220,
+      "blur": 3272,
+      "shadow": 250,
       "unsupported": 0
     },
     "preparation": {
-      "meshes": 2484,
+      "meshes": 2485,
       "cachedImages": 546,
       "overlays": 140,
       "masks": 92,
-      "triangles": 447084,
+      "triangles": 447086,
       "unsupported": [],
-      "directMeshes": 2506,
+      "directMeshes": 2507,
       "directCaches": 653,
       "sourceMeshes": 1286,
       "sourceCacheQuads": 39,
@@ -104,7 +104,7 @@
       "skippedBackdropFlushes": 140
     },
     "scene": {
-      "commands": 3030,
+      "commands": 3031,
       "sourceMeshes": 1621,
       "textures": 825,
       "programs": 9
@@ -119,13 +119,13 @@
     "maxChannelError": 0,
     "meanChannelError": 0,
     "reference": {
-      "medianMs": 98.39999999850988,
+      "medianMs": 86,
       "preparation": {
-        "meshes": 2491,
+        "meshes": 2490,
         "cachedImages": 546,
         "overlays": 140,
         "masks": 92,
-        "triangles": 448538,
+        "triangles": 448536,
         "unsupported": [],
         "directMeshes": 0,
         "directCaches": 0,
@@ -137,22 +137,22 @@
         "directFallbacks": {},
         "awayDraws": 1051,
         "pixiFilterPasses": 0,
-        "skippedSceneDraws": 3166,
+        "skippedSceneDraws": 3165,
         "skippedSceneClears": 122,
         "skippedComposites": 140,
         "skippedBackdropFlushes": 140
       }
     },
     "prepared": {
-      "medianMs": 79,
+      "medianMs": 510.1000000014901,
       "preparation": {
-        "meshes": 2491,
+        "meshes": 2490,
         "cachedImages": 546,
         "overlays": 140,
         "masks": 92,
-        "triangles": 448538,
+        "triangles": 448536,
         "unsupported": [],
-        "directMeshes": 2513,
+        "directMeshes": 2512,
         "directCaches": 653,
         "sourceMeshes": 1014,
         "sourceCacheQuads": 1,
@@ -183,15 +183,15 @@
     "maxChannelError": 0,
     "meanChannelError": 0,
     "reference": {
-      "medianMs": 200.60000000149012,
+      "medianMs": 153,
       "preparation": {
-        "meshes": 2490,
+        "meshes": 2491,
         "cachedImages": 546,
         "overlays": 140,
         "masks": 92,
-        "triangles": 449196,
+        "triangles": 449198,
         "unsupported": [],
-        "directMeshes": 2512,
+        "directMeshes": 2513,
         "directCaches": 653,
         "sourceMeshes": 0,
         "sourceCacheQuads": 0,
@@ -208,15 +208,15 @@
       }
     },
     "prepared": {
-      "medianMs": 240.10000000149012,
+      "medianMs": 189.79999999701977,
       "preparation": {
-        "meshes": 2490,
+        "meshes": 2491,
         "cachedImages": 546,
         "overlays": 140,
         "masks": 92,
-        "triangles": 449196,
+        "triangles": 449198,
         "unsupported": [],
-        "directMeshes": 2512,
+        "directMeshes": 2513,
         "directCaches": 653,
         "sourceMeshes": 1932,
         "sourceCacheQuads": 40,
@@ -266,13 +266,13 @@
     "maxChannelError": 1,
     "meanChannelError": 3.0021834061135373e-05,
     "reference": {
-      "medianMs": 77.39999999850988,
+      "medianMs": 70.80000000074506,
       "preparation": {
-        "meshes": 2505,
+        "meshes": 2506,
         "cachedImages": 546,
         "overlays": 140,
         "masks": 92,
-        "triangles": 458502,
+        "triangles": 458504,
         "unsupported": [],
         "directMeshes": 0,
         "directCaches": 0,
@@ -284,22 +284,22 @@
         "directFallbacks": {},
         "awayDraws": 1064,
         "pixiFilterPasses": 0,
-        "skippedSceneDraws": 3180,
+        "skippedSceneDraws": 3181,
         "skippedSceneClears": 122,
         "skippedComposites": 140,
         "skippedBackdropFlushes": 140
       }
     },
     "prepared": {
-      "medianMs": 74.60000000149012,
+      "medianMs": 76.30000000074506,
       "preparation": {
-        "meshes": 2505,
+        "meshes": 2506,
         "cachedImages": 546,
         "overlays": 140,
         "masks": 92,
-        "triangles": 458502,
+        "triangles": 458504,
         "unsupported": [],
-        "directMeshes": 2527,
+        "directMeshes": 2528,
         "directCaches": 653,
         "sourceMeshes": 1021,
         "sourceCacheQuads": 2,
@@ -524,6 +524,15 @@
         "test": true
       }
     ],
+    "scopedState": {
+      "switches": 3,
+      "active": true,
+      "highBinding": true,
+      "lowBindings": [
+        true,
+        true
+      ]
+    },
     "retained": true,
     "released": true,
     "destroyedOnStop": true,

@@ -187,13 +187,19 @@ void main(){awayMain();vec2 p=gl_Position.xy/gl_Position.w;p=p*vec2(0.5,${g.offs
   }
   const shaderIds = new Map();
   const geometrySignature = (g) => {
-    const key = g.vertex + g.fragment + g.offscreen + !!g.nativeProjection;
-    if (!shaderIds.has(key)) shaderIds.set(key, ++nextId);
+    // Shader strings are shared by thousands of recipes. Avoid concatenating
+    // and hashing the entire GLSL sources again for every mesh on every frame.
+    let fragments = shaderIds.get(g.vertex);
+    if (!fragments) shaderIds.set(g.vertex, (fragments = new Map()));
+    let shaderId = fragments.get(g.fragment);
+    if (!shaderId) fragments.set(g.fragment, (shaderId = ++nextId));
     return [
       Object.entries(g.attributes)
         .map(([n, a]) => n + ":" + a.size + ":" + a.data.length)
         .join(","),
-      shaderIds.get(key),
+      shaderId,
+      !!g.offscreen,
+      !!g.nativeProjection,
       Object.keys(g.samplers).join(","),
     ].join("|");
   };

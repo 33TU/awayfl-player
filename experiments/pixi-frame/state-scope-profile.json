@@ -1,0 +1,101 @@
+{
+  "fixture": "Paused no-login Battleon map, 10 warmed frames per run",
+  "environment": "Chrome headless, ANGLE SwiftShader, WebGL 2",
+  "measurement": "CPU profiler at 100us plus GL call counters; render and gl.finish time; separate page loads. Not game FPS or hardware GPU performance.",
+  "before": {
+    "frameMs": [
+      125.90000000223517,
+      125.79999999701977,
+      173.70000000298023,
+      175.09999999776483,
+      133.69999999925494,
+      139.90000000223517,
+      203,
+      182.59999999776483,
+      174.30000000074506,
+      193.5
+    ],
+    "medianMs": 174.00000000186265,
+    "callsPerFrame": {
+      "bindFramebuffer": 2636.0,
+      "activeTexture": 6072.0,
+      "pixelStorei": 996.0,
+      "useProgram": 1914.0,
+      "bindTexture": 7071.0,
+      "bindSampler": 3389.0,
+      "drawArrays": 4112.0,
+      "stencilMaskSeparate": 174.0,
+      "drawElements": 674.0
+    },
+    "preparation": {
+      "meshes": 2489,
+      "cachedImages": 546,
+      "overlays": 140,
+      "masks": 92,
+      "triangles": 449324,
+      "unsupported": [],
+      "directMeshes": 2511,
+      "directCaches": 653,
+      "sourceMeshes": 1286,
+      "sourceCacheQuads": 32,
+      "sourceMaskMeshes": 291,
+      "sourceBatches": 48,
+      "sourceFallbacks": {},
+      "directFallbacks": {},
+      "awayDraws": 36,
+      "pixiFilterPasses": 38,
+      "skippedSceneDraws": 0,
+      "skippedSceneClears": 122,
+      "skippedComposites": 140,
+      "skippedBackdropFlushes": 140
+    }
+  },
+  "after": {
+    "frameMs": [
+      112.39999999850988,
+      124.40000000223517,
+      157.79999999701977,
+      175.20000000298023,
+      143.29999999701977,
+      172.90000000223517,
+      211.80000000074506,
+      181.39999999850988,
+      140.59999999776483,
+      136.30000000074506
+    ],
+    "medianMs": 150.54999999701977,
+    "callsPerFrame": {
+      "bindFramebuffer": 2636.0,
+      "activeTexture": 742.0,
+      "pixelStorei": 996.0,
+      "useProgram": 1914.0,
+      "bindTexture": 1744.0,
+      "bindSampler": 727.0,
+      "drawArrays": 4112.0,
+      "stencilMaskSeparate": 174.0,
+      "drawElements": 674.0
+    },
+    "preparation": {
+      "meshes": 2489,
+      "cachedImages": 546,
+      "overlays": 140,
+      "masks": 92,
+      "triangles": 448214,
+      "unsupported": [],
+      "directMeshes": 2511,
+      "directCaches": 653,
+      "sourceMeshes": 1286,
+      "sourceCacheQuads": 32,
+      "sourceMaskMeshes": 291,
+      "sourceBatches": 48,
+      "sourceFallbacks": {},
+      "directFallbacks": {},
+      "awayDraws": 36,
+      "pixiFilterPasses": 38,
+      "skippedSceneDraws": 0,
+      "skippedSceneClears": 122,
+      "skippedComposites": 140,
+      "skippedBackdropFlushes": 140
+    }
+  }
+}

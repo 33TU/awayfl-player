@@ -130,6 +130,39 @@ export async function checkRenderer(player) {
       gl.UNSIGNED_BYTE,
       new Uint8Array([255, 0, 0, 255]),
     );
+    // Small encoder/filter passes only touch low sampler slots. Keep a high
+    // slot active to verify both its binding and the active unit are preserved.
+    const highUnit = gl.getParameter(gl.MAX_TEXTURE_IMAGE_UNITS) - 1;
+    for (const unit of [0, 1, highUnit]) {
+      gl.activeTexture(gl.TEXTURE0 + unit);
+      gl.bindTexture(gl.TEXTURE_2D, handle);
+    }
+    const activeTexture = gl.activeTexture;
+    let switches = 0;
+    gl.activeTexture = function (...args) {
+      switches++;
+      return activeTexture.apply(this, args);
+    };
+    let restoreScoped;
+    try {
+      restoreScoped = saveGL(gl, 2);
+    } finally {
+      gl.activeTexture = activeTexture;
+    }
+    for (const unit of [0, 1]) {
+      gl.activeTexture(gl.TEXTURE0 + unit);
+      gl.bindTexture(gl.TEXTURE_2D, null);
+    }
+    restoreScoped();
+    const scopedState = {
+      switches,
+      active: gl.getParameter(gl.ACTIVE_TEXTURE) === gl.TEXTURE0 + highUnit,
+      highBinding: gl.getParameter(gl.TEXTURE_BINDING_2D) === handle,
+      lowBindings: [0, 1].map((unit) => {
+        gl.activeTexture(gl.TEXTURE0 + unit);
+        return gl.getParameter(gl.TEXTURE_BINDING_2D) === handle;
+      }),
+    };
     const descriptor = {
       handle,
       width: 1,
@@ -174,6 +207,7 @@ export async function checkRenderer(player) {
     destroyed = true;
     return {
       masks,
+      scopedState,
       retained,
       released,
       destroyedOnStop: rebound.destroyed,

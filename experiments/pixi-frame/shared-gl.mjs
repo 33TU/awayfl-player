@@ -389,7 +389,13 @@ export function mirrorGL(gl, context) {
   };
 }
 
-export function saveGL(gl) {
+// A caller may limit this only when it owns the draw code and knows that it
+// binds samplers consecutively from unit zero. General renderer transitions
+// keep the full snapshot (the default).
+export function saveGL(
+  gl,
+  textureUnitCount = gl.getParameter(gl.MAX_TEXTURE_IMAGE_UNITS),
+) {
   const get = (name) => gl.getParameter(gl[name]);
   const names = [
     "CURRENT_PROGRAM",
@@ -457,7 +463,7 @@ export function saveGL(gl) {
   ];
   const pixels = stores.map(get),
     textures = [];
-  for (let i = 0; i < get("MAX_TEXTURE_IMAGE_UNITS"); i++) {
+  for (let i = 0; i < textureUnitCount; i++) {
     gl.activeTexture(gl.TEXTURE0 + i);
     textures.push([
       get("TEXTURE_BINDING_2D"),
