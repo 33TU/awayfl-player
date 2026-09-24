@@ -7,7 +7,9 @@
     "check:live": "node check-live.mjs",
     "check:direct": "node check-direct.mjs",
     "check:batches": "node check-batches.mjs",
-    "check:caches": "node check-cache-bounds.mjs"
+    "check:caches": "node check-cache-bounds.mjs",
+    "check:display-data": "node check-display-data.mjs",
+    "check:display-list": "node check-display-list.mjs"
   },
   "dependencies": {
     "pixi.js": "8.21.0"

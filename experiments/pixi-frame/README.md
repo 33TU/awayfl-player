@@ -1,7 +1,8 @@
 # Pixi renderer experiments
 
-The branch contains a frozen-frame comparison and an experimental live bridge.
-Neither replaces the normal player bundle or changes its loader settings.
+The branch contains a frozen-frame comparison, a live bridge, and a direct
+display-list prototype. These experiments do not replace the normal player bundle
+or change its loader settings.
 PixiJS is pinned to 8.21.0 in this package's own lockfile.
 
 From this directory:
@@ -92,6 +93,56 @@ pixels differing over 3/255 (mean RGB error about 4.15), also reproduced with th
 frozen adapter at that size. The previous 945×541 comparison below is not a
 universal accuracy result. Server login, combat and every possible SWF effect
 have not been automated or exhaustively validated.
+
+## Direct display-list prototype
+
+Branch: `experiment/pixi-display-list`. Build with the same `npm run build`.
+
+https://localhost:4433/game/gamefiles/pixi-benchmark/play.html?backend=display-list&renderScale=0&fps=1
+
+This opts into a separate Pixi WebGL canvas/context. The backend walks AwayFL's
+runtime display objects and builds retained Pixi containers and meshes directly.
+It does **not** call AwayFL's root renderer or capture its render commands. SWF
+loading, tessellation, text layout, ActionScript, timelines and input still use
+AwayFL. Runtime operations such as `BitmapData.draw()` still use native offscreen
+renderers; this is not complete removal of AwayFL's graphics implementation.
+
+Ordinary triangle meshes batch through Pixi. Geometry and CPU bitmap uploads are
+cached by asset revisions; movement reuses meshes. Embedded text, UV transforms,
+linear/radial gradient atlases, color transforms, display-list changes, script and
+timeline masks, and scroll rectangles have initial implementations. Bitmap edits
+are observed without clearing AwayFL's pending upload flags, allowing a clean
+switch back. The overlay passes mouse input through to the original player.
+
+**Compatibility is incomplete.** GPU-only `BitmapData` images are skipped and
+reported as `gpu-bitmap`; some game backgrounds therefore disappear. Flash glow,
+shadow, bevel and color-matrix filters are not implemented. Strokes, blur and
+isolated blend groups are approximations and also reported. Detached masks,
+3D transforms and animated materials need further work. Cache-as-bitmap hints do
+not yet create retained Pixi render textures. Do not compare FPS with the working
+bridge or Ruffle as though the output were equivalent.
+
+`pixiLive.stats` reports `mode: "display-list"`, `syncMs`, `pixiMs`, mesh counts,
+cumulative `geometryBuilds`/`textureUploads`, and per-frame `unsupported` counts.
+Timings are CPU synchronization/submission times, not GPU completion times. The
+header shows the measured frame rate. Omit `backend=display-list` to use the
+existing bridge, or click **Use AwayFL** to switch to the native renderer.
+
+Validation:
+
+```sh
+npm run check:display-data
+npm run check:display-list
+```
+
+The browser check needs disposable Chrome on CDP port 9234. It opens its own tab,
+never logs in, and checks input, retained resources, pixel output after movement,
+redrawing, visibility, masks, bitmap edits, resize and stop/restart. It replaces
+AwayFL's root render function with a throwing stub during the direct-path tests.
+It also loads the offline Battleon fixture and exposes its original vector
+background, since the fixture normally rasterizes that background using native
+`BitmapData.draw()`. GPU bitmap skipping is separately asserted. This validates
+a first independent scene path, not Flash visual parity or gameplay performance.
 
 ## Frozen comparison
 

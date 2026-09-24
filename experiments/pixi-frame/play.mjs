@@ -1,11 +1,14 @@
 import { loadBattleonFixture } from "./fixture.mjs";
 import { startLive } from "./live.mjs";
+import { startDisplayList } from "./display-list.mjs";
 const iframe = document.getElementById("player"),
   button = document.getElementById("toggle"),
   status = document.getElementById("status");
 const params = new URLSearchParams(location.search);
 if (!params.has("renderScale")) params.set("renderScale", "1.5");
 if (!params.has("fps")) params.set("fps", "1");
+const backend = params.get("backend") || "bridge";
+params.delete("backend");
 params.delete("autostart");
 iframe.src = "/game/gamefiles/loader-awayfl.html?" + params;
 let bridge,
@@ -24,7 +27,11 @@ async function enable(options = {}) {
   button.disabled = true;
   const target = player;
   try {
-    const created = await startLive(target, { ...options, onStatus });
+    const start =
+      (options.backend || backend) === "display-list"
+        ? startDisplayList
+        : startLive;
+    const created = await start(target, { ...options, onStatus });
     if (player !== target) {
       created.stop();
       return;
