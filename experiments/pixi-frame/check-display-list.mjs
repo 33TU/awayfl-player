@@ -57,7 +57,6 @@ async function until(expression) {
   }
   throw Error("Timeout: " + expression);
 }
-const pixelLine = process.env.PIXEL_LINE === "1";
 const report = {};
 try {
   await send("Runtime.enable");
@@ -69,9 +68,7 @@ try {
     mobile: false,
   });
   await send("Page.navigate", {
-    url:
-      "https://localhost:4433/game/gamefiles/pixi-benchmark/play.html?autostart=0&renderScale=0&backend=display-list" +
-      (pixelLine ? "&pixelLine=1" : ""),
+    url: "https://localhost:4433/game/gamefiles/pixi-benchmark/play.html?autostart=0&renderScale=0&backend=display-list",
   });
   await until(
     '!!window.pixiLiveControls?.player?.root?._children.find(n=>n.name==="scene")?.adapter?.$BgmcLogin',
@@ -123,47 +120,6 @@ try {
   );
   report.mouseAndKeyboard = "passed";
   await evaluate("pixiLiveControls.player.isPaused=true");
-  if (pixelLine) {
-    report.pixelLines = await evaluate(`(()=>{
-      const p=pixiLiveControls.player,g=p.root._children.find(n=>n.name==='scene').adapter,s=g.sec;
-      const visibility=g.adaptee._children.map(n=>[n,n.visible]);
-      for(const [n] of visibility)n.visible=false;
-      const a=s.flash.display.Sprite.axClass.axConstruct([]),b=s.flash.display.Sprite.axClass.axConstruct([]);
-      a.$Bggraphics.$BglineStyle(10,0x00ff00,1);a.$Bggraphics.$BgmoveTo(0,0);a.$Bggraphics.$BglineTo(50,0);
-      b.$Bggraphics.$BgcopyFrom(a.$Bggraphics);
-      g.$BgaddChild(a);g.$BgaddChild(b);a.$Bgx=100;a.$Bgy=100;b.$Bgx=400;b.$Bgy=200;b.$BgscaleX=b.$BgscaleY=4;
-      p._renderer.render();
-      const canvas=p._view.stage.context._gl.canvas.ownerDocument.querySelector('[data-pixi-display-list]'),gl=canvas.getContext('webgl2');
-      const data=new Uint8Array(canvas.width*canvas.height*4);gl.readPixels(0,0,canvas.width,canvas.height,gl.RGBA,gl.UNSIGNED_BYTE,data);
-      const rows=new Map();
-      for(let y=0;y<canvas.height;y++)for(let x=0;x<canvas.width;x++){
-        const i=(y*canvas.width+x)*4;
-        if(data[i+1]>50&&data[i]<10&&data[i+2]<10)rows.set(y,(rows.get(y)||0)+1);
-      }
-      const bands=[];for(const y of [...rows.keys()].sort((a,b)=>a-b)){
-        const last=bands.at(-1);if(last&&last.end===y-1){last.end=y;last.pixels+=rows.get(y)}else bands.push({start:y,end:y,pixels:rows.get(y)});
-      }
-      const before=pixiLive.stats.pixelLineBuilds,entries=pixiLive.stats.pixelLineEntries;
-      b.$Bgx+=10;b.$Bgrotation=20;b.$BgscaleX=2;p._renderer.render();
-      const reused=before===pixiLive.stats.pixelLineBuilds;
-      g.$BgremoveChild(a);for(let i=0;i<4;i++)p._renderer.render();
-      const survivor=pixiLive.stats.pixelLineShapes;
-      g.$BgremoveChild(b);for(let i=0;i<4;i++)p._renderer.render();
-      for(const [n,v] of visibility)n.visible=v;
-      return {enabled:pixiLive.stats.pixelLine,bands,reused,entries,survivor,error:pixiLive.stats.lastError};
-    })()`);
-    assert.equal(report.pixelLines.enabled, true);
-    assert.equal(report.pixelLines.error, null);
-    assert.equal(report.pixelLines.bands.length, 2);
-    assert.ok(
-      report.pixelLines.bands.every(
-        (b) => b.end - b.start <= 1 && b.pixels > 30,
-      ),
-      "unscaled and 4x strokes remain thin",
-    );
-    assert.equal(report.pixelLines.reused, true);
-    assert.equal(report.pixelLines.survivor, 1);
-  }
   report.pixels = await evaluate(`(()=>{
     const p=pixiLiveControls.player,g=p.root._children.find(n=>n.name==='scene').adapter,s=g.sec;
     for(const c of g.adaptee._children)c.visible=false;

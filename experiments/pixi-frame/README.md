@@ -453,30 +453,3 @@ Stop and enable with no options to restore batching. `npm run check:batches`
 checks limits, order/state boundaries, geometry edits and constant isolation.
 `npm run check:live` compares batched output against the unbatched renderer,
 including moved meshes, color changes, masks, resize and rebuilt cache sources.
-
-### Optional one-pixel strokes
-
-On the direct display-list backend, append `&pixelLine=1` to try Pixi's native
-one-pixel line rendering:
-
-https://localhost:4433/game/gamefiles/pixi-benchmark/play.html?backend=display-list&renderScale=0&fps=1&pixelLine=1
-
-Remove `pixelLine=1` to restore normal stroke widths. This experiment converts
-eligible solid LineElements (including solid color-atlas strokes) to retained,
-shared `GraphicsContext` paths with `pixelLine: true`. Filled shapes, font glyph
-outlines and textured/gradient strokes retain their existing rendering. It can
-make artwork thinner at full scale; it is not a guaranteed FPS improvement.
-
-`pixiLive.stats.pixelLineShapes` reports converted shapes in the current frame;
-`pixelLineBuilds` counts path rebuilds, and `pixelLineEntries` counts shared
-contexts. Transforms and color changes do not rebuild paths. You can also switch
-without reconnecting, in the top page's console:
-
-```js
-pixiLiveControls.stop();
-await pixiLiveControls.enable({ pixelLine: true }); // false to restore widths
-```
-
-With the disposable test browser running, `PIXEL_LINE=1 npm run check:display-list`
-checks thin strokes at 1x/4x scale, retained paths, shared lifetime, the normal
-pixel/interaction tests, and the offline Battleon fixture with the toggle enabled.
