@@ -237,7 +237,8 @@ export function installVectorBatcher(renderer, partialUploads = true, sparseUplo
   const graphicsPipe = renderer.renderPipes.graphics;
   const addGraphics = graphicsPipe?._addToBatcher;
   let addGraphicsVector;
-  if (instancedTransforms && addGraphics) {
+  // Off: Graphics in the 92-byte format quadrupled rebuild repacks (t9.json).
+  if (instancedTransforms && addGraphics && installVectorBatcher.routeGraphics) {
     addGraphicsVector = function(graphics, instructionSet) {
       const batches = this._getGpuDataForRenderable(graphics).batches;
       for (let i = 0; i < batches.length; i++) {

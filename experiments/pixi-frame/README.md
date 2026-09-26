@@ -413,8 +413,12 @@ subtree on every frame to size the filter texture, 10 percent of a
 filter-heavy frame (t7.json); in a live room about 18 of 160 filtered groups
 refresh per frame. `stats.filterAreaUpdates` counts refreshes.
 
-Instanced transforms (opt-in with `instanced=1`; WebGL2 only). Not the
-default: every vertex then uses the 92-byte Flash format, so each render-group
+Instanced transforms (opt-in with `instanced=1`; WebGL2 only) now apply to
+the Flash vector meshes only, the colour-transformed and curved art already
+in the 88-byte format. In combat those repacked about 140 times a frame only
+because they moved (repack-reason trace); private-room idle: uploads 20 KB
+against 885 KB per frame, same draw count. An earlier version moved every
+mesh and Graphics shape into that format and was not the default: every vertex then uses the 92-byte Flash format, so each render-group
 rebuild repacks about four times the bytes, and combat (constant rebuilds)
 got slower: packAttributes 27 percent and uploads 16 percent of the frame
 against 5 and 6 (t9.json). A compact instanced format for plain vertices is

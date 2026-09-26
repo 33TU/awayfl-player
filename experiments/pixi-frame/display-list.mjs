@@ -533,10 +533,11 @@ export async function startDisplayList(
       const mesh = new Mesh({ geometry, texture });
       // Ordinary geometry can share Pixi's default batch with native Graphics.
       // Reserve the wider Flash vertex format for curves/radial fills/offsets.
-      // With instanced transforms (opt-in) every mesh goes to the Flash
-      // batcher: mixing it with Pixi's default batcher was ten times slower
-      // headless, and all-in quadruples rebuild repacks in combat (t9.json).
-      mesh.flashVectorBatch = vectorBatching && (instanced || custom || !nativeGraphics || !nativeBatching);
+      // Instanced transforms apply to the Flash vector meshes only: routing
+      // every plain mesh and Graphics shape into the 92-byte format
+      // quadrupled rebuild repacks in combat (t9.json). In combat those
+      // vector meshes repacked about 140 times a frame only for moving.
+      mesh.flashVectorBatch = vectorBatching && (custom || !nativeGraphics || !nativeBatching);
       r = record.meshes[index] = {
         shape,
         mesh,
