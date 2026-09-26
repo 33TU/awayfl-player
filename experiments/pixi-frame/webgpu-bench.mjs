@@ -56,10 +56,25 @@ async function run(Renderer, name) {
   return result;
 }
 
+// Each backend runs in a fresh page load: Pixi keeps global state (shared
+// texture sources, the batcher's texture limit) from the first renderer, which
+// broke WebGPU after WebGL in the same page.
 (async () => {
   log(`navigator.gpu: ${!!navigator.gpu}`);
-  const gl = await run(WebGLRenderer, "WebGL");
-  const gpu = await run(WebGPURenderer, "WebGPU");
-  if (gl && gpu) log(`WebGPU / WebGL median: ${(gpu.median / gl.median).toFixed(2)}x`);
-  window.benchDone = { gl, gpu };
+  const backend = params.get("backend") || "webgl";
+  const key = "pixi-backend-bench";
+  let saved = {};
+  try { saved = JSON.parse(sessionStorage.getItem(key) || "{}"); } catch {}
+  if (backend === "webgl") saved = {};
+  const result = await run(backend === "webgpu" ? WebGPURenderer : WebGLRenderer, backend === "webgpu" ? "WebGPU" : "WebGL");
+  saved[backend] = result;
+  try { sessionStorage.setItem(key, JSON.stringify(saved)); } catch {}
+  if (backend === "webgl" && params.get("both") !== "0") {
+    const next = new URL(location.href); next.searchParams.set("backend", "webgpu");
+    log("Reloading for WebGPU..."); setTimeout(() => location.replace(next), 500);
+    return;
+  }
+  if (saved.webgl) log(`WebGL:  render() median ${saved.webgl.median} ms, p90 ${saved.webgl.p90} ms`);
+  if (saved.webgl && saved.webgpu) log(`WebGPU / WebGL median: ${(saved.webgpu.median / saved.webgl.median).toFixed(2)}x`);
+  window.benchDone = saved;
 })();
