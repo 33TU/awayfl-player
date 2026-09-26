@@ -397,14 +397,18 @@ draws (a room's background layer arriving as its own SWF), keeps the
 previous picture on screen until it is complete instead of hiding: the game already shows the
 new room, so hidden layers appeared as black areas that then flashed in.
 Timelines, sockets and input keep running during that hold, which the old
-one-frame freeze did not allow. `arrivalBudget=0` disables gating.
+one-frame freeze did not allow. By default any incomplete arrival holds the previous picture, so a partially
+prepared scene is never shown; `arrivalHide=1` restores hiding small
+arrivals over existing content, which flashed in practice. `arrivalBudget=0`
+disables gating.
 `pixiLive.stats.arrivalRoots`, `arrivalDeferred`, `arrivalHidden` and
 `arrivalFrozen` count gated branches, deferred shapes, hidden frames and
 held frames.
 
 Each filtered record hands Pixi a `filterArea` taken from the container's
-cached local bounds, refreshed only when the record's visual revision or the
-inherited transform changed. Pixi otherwise measures the whole filtered
+cached local bounds (Pixi caches them by change ticks), refreshed on every
+visit of the record: a child that only translates does not advance the
+record's revision, and refreshing by revision clipped glows for a frame. Pixi otherwise measures the whole filtered
 subtree on every frame to size the filter texture, 10 percent of a
 filter-heavy frame (t7.json); in a live room about 18 of 160 filtered groups
 refresh per frame. `stats.filterAreaUpdates` counts refreshes.

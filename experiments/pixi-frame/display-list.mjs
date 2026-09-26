@@ -78,7 +78,7 @@ const clamp = (v) => Math.max(0, Math.min(1, v));
 // renderer. Own canvas/context/textures; no render-command capture or GPU readback.
 export async function startDisplayList(
   player,
-  { onStatus = () => {}, cacheEffects = true, directObjects = false, cacheScenery = true, vectorBatching = true, boundedBlends = true, partialUploads = true, renderGroups = true, groupVertexLimit = 6000, reuseFilters = true, isolateTopology = true, sparseUploads = true, skipUnchanged = true, idleHoverHz = 0, retainedHover = true, pixiPickBounds = false, pixiEvents = false, catchUp = false, reuseTranslations = true, retainContent = true, retainMaskedContent = true, skipUnchangedColors = true, nativeGraphics = false, shapeSprites = false, nativeText, nativeBatching = true, sampledTextures = true, pixiBitmapDraw = false, retainPaths = 4096, retainGeometry = 4096, pixiEventsScopedPress = true, pixiEventsCull = false, effectTextures = false, directMultiBlend = true, antialias = true, bezierSmoothness, reuseLinear = true, arrivalBudgetMs = 12, arrivalMaxFrames = 8, arrivalFreezeMs = 60, instancedTransforms = true } = {},
+  { onStatus = () => {}, cacheEffects = true, directObjects = false, cacheScenery = true, vectorBatching = true, boundedBlends = true, partialUploads = true, renderGroups = true, groupVertexLimit = 6000, reuseFilters = true, isolateTopology = true, sparseUploads = true, skipUnchanged = true, idleHoverHz = 0, retainedHover = true, pixiPickBounds = false, pixiEvents = false, catchUp = false, reuseTranslations = true, retainContent = true, retainMaskedContent = true, skipUnchangedColors = true, nativeGraphics = false, shapeSprites = false, nativeText, nativeBatching = true, sampledTextures = true, pixiBitmapDraw = false, retainPaths = 4096, retainGeometry = 4096, pixiEventsScopedPress = true, pixiEventsCull = false, effectTextures = false, directMultiBlend = true, antialias = true, bezierSmoothness, reuseLinear = true, arrivalBudgetMs = 12, arrivalMaxFrames = 8, arrivalFreezeMs = 60, arrivalHide = false, instancedTransforms = true } = {},
 ) {
   const useNativeText = nativeText ?? nativeGraphics;
   const native = player._renderer;
@@ -132,7 +132,7 @@ export async function startDisplayList(
   const stats = {
     active: true,
     mode: directObjects ? "direct-objects" : "display-list",
-    configuration: { nativeGraphics, retainPaths, retainGeometry, arrivalBudgetMs, arrivalMaxFrames, arrivalFreezeMs, instancedTransforms: instanced, effectTextures: directObjects && effectTextures, directMultiBlend, antialias, bezierSmoothness: bezierSmoothness ?? null, shapeSprites: nativeGraphics && shapeSprites, nativeText: useNativeText, nativeBatching, sampledTextures, cacheScenery: directObjects && cacheScenery, groupVertexLimit,
+    configuration: { nativeGraphics, retainPaths, retainGeometry, arrivalBudgetMs, arrivalMaxFrames, arrivalFreezeMs, arrivalHide, instancedTransforms: instanced, effectTextures: directObjects && effectTextures, directMultiBlend, antialias, bezierSmoothness: bezierSmoothness ?? null, shapeSprites: nativeGraphics && shapeSprites, nativeText: useNativeText, nativeBatching, sampledTextures, cacheScenery: directObjects && cacheScenery, groupVertexLimit,
       retainContent, retainMaskedContent, skipUnchangedColors, reuseTranslations, retainedHover: directObjects && retainedHover, pixiPickBounds: false, pixiEvents: false },
     deferredGeometry: pathSource?.lazyStats ?? null,
     pixiBitmapDraws: 0,
@@ -1132,14 +1132,16 @@ export async function startDisplayList(
     // from the cached local bounds instead, refreshed only when the subtree's
     // visual revision changed; Pixi still pads it for the filter.
     if (r.content.filters) {
-      if (r.filterAreaRevision !== r.revision || r.filterAreaTransform !== transformRevision) {
+      // Refresh on every visit: a child that only translates does not advance
+      // this record's revision, and a stale area clipped glows and blurs for
+      // a frame (flashing). Pixi caches getLocalBounds by change ticks, and
+      // untouched branches are not visited at all.
+      {
         const b = r.content.getLocalBounds();
         if (b.maxX > b.minX && b.maxY > b.minY) {
           (r.filterArea ||= new Rectangle()).set(b.minX, b.minY, b.maxX - b.minX, b.maxY - b.minY);
           if (r.content.filterArea !== r.filterArea) r.content.filterArea = r.filterArea;
         } else if (r.content.filterArea) r.content.filterArea = null;
-        r.filterAreaRevision = r.revision;
-        r.filterAreaTransform = transformRevision;
         stats.filterAreaUpdates++;
       }
     } else if (r.content.filterArea) r.content.filterArea = null;
@@ -1163,7 +1165,10 @@ export async function startDisplayList(
         // picture on screen instead; timelines, sockets and input keep
         // running, which is what the old one-frame freeze did not allow.
         const remaining = r.arrivalDeferredCount * (r.arrivalPerShapeMs || 0);
-        if (r.arrivalBottom || r.arrivalSpent + remaining >= arrivalFreezeMs) arrivalFreeze = true;
+        // Default: never show a partially prepared scene; hold the previous
+        // picture (at most arrivalMaxFrames). arrivalHide=1 restores hiding
+        // small arrivals over existing content, which flashed in practice.
+        if (!arrivalHide || r.arrivalBottom || r.arrivalSpent + remaining >= arrivalFreezeMs) arrivalFreeze = true;
       } else if (r.arrivalGated) {
         r.arrivalGated = false;
         r.arrivalFrames = 0;
