@@ -60,9 +60,13 @@ export function installPixiPickEvents(player, scene, records, owners, renderer, 
     // same scoped pick as hover (with the full-tree fallback on a miss) unless
     // nativePress asks for the original per-click full pick: in combat, clicks
     // arrive on most ticks and each full pick costs as much as a whole frame.
+    // A pending press collision must not switch the release to the native
+    // pick: a click only fires when both resolve to the same root, so the
+    // release has to be computed the same way as the press was.
+    const pointers = Object.values(manager?._pointerDataArray || {});
     if (this.dragNode || manager?._isAVM1Dragging ||
-        Object.values(manager?._pointerDataArray || {}).some(p => p.dragCollision ||
-          (nativePress && p.queuedEvents?.some(event => event.type !== p.move?.type))))
+        pointers.some(p => nativePress && (p.dragCollision ||
+          p.queuedEvents?.some(event => event.type !== p.move?.type))))
       return originalViewCollision.call(this, x, y, ...args);
     const view = this.node?.view;
     if (!Number.isFinite(x) || !Number.isFinite(y) || !view?.width || !view?.height)
