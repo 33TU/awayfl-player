@@ -21,6 +21,15 @@ export async function checkTranslationReuse(player, live) {
     child.$Bggraphics.$BgbeginFill(0x3377bb);
     child.$Bggraphics.$BgdrawRect(0,0,12,12); child.$Bggraphics.$BgendFill();
   }
+  // Plain fills have no transform-dependent Pixi content; a parent rotation or
+  // scale must retain them while the strokes above are re-prepared.
+  const plain = [];
+  for (let i=0;i<16;i++) {
+    const child = sprite(); parent.$BgaddChild(child); plain.push(child);
+    child.$Bgx = i%8*20; child.$Bgy = 165 + Math.floor(i/8)*18;
+    child.$Bggraphics.$BgbeginFill(0xbb7733);
+    child.$Bggraphics.$BgdrawRect(0,0,12,12); child.$Bggraphics.$BgendFill();
+  }
   children[0].$Bgmask = mask;
   children[1].$Bgfilters = s.createArray([new s.flash.filters.GlowFilter(0xff0000,1,4,4,1,1)]);
   const text = s.flash.text.TextField.axClass.axConstruct([]);

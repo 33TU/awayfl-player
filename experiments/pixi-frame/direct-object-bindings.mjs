@@ -2,7 +2,7 @@
 // Observe the shared mutation methods so timeline super.addChildAt calls are
 // covered too. Restore every hook when switching back to the native renderer.
 const PIXI_OBJECT = Symbol("flash-pixi-object");
-export function createDirectObjectBindings({ record, update, changed, hierarchyChanged = () => {}, detached = () => {}, stats, profiler, reuseTranslations = true, retainMaskedContent = true, skipUnchangedColors = true }) {
+export function createDirectObjectBindings({ record, update, changed, linearChanged = null, hierarchyChanged = () => {}, detached = () => {}, stats, profiler, reuseTranslations = true, retainMaskedContent = true, skipUnchangedColors = true }) {
   const owned = new Map(), hooks = [];
   const patched = new WeakMap();
   let stopped = false;
@@ -73,6 +73,16 @@ export function createDirectObjectBindings({ record, update, changed, hierarchyC
         before[0] === r.transform[0] && before[1] === r.transform[1] &&
         before[2] === r.transform[2] && before[3] === r.transform[3];
       if (translation) stats.translationReuses++;
+      // A rotation or scale also propagates through Pixi. Only subtrees whose
+      // Pixi content depends on the world transform (filters, native text,
+      // screen-space strokes, scenery rasters, 3D) need re-preparation.
+      const linear = !translation && linearChanged && reuseTranslations && args?.[0] === 32 &&
+        before && !was3D && !r.is3D && r.transform;
+      if (linear) {
+        stats.linearReuses++;
+        linearChanged(r);
+        return;
+      }
       // Translation is already applied to the Pixi container above. Keep any
       // pending content dirtiness, but don't request a fresh mesh preparation.
       changed(r, !translation, !translation);

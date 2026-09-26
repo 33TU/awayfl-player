@@ -359,8 +359,15 @@ quad until its revision or scale changes. Budget 16 Mi texels;
 and `effectTextureRejected` report it. It is opt-in because a subpixel move of
 a cached group resamples the texture instead of re-rendering the effect.
 
-Groups with up to six own draws that do not overlap each other now use GPU
-add/multiply/screen blending directly (`directMultiBlendGroups`;
+A rotation or scale of an ancestor no longer re-prepares descendants whose
+Pixi content does not depend on the world transform. Filters, native text,
+screen-space strokes, scenery raster candidates and 3D content mark their
+subtree transform-sensitive and keep the full re-preparation;
+`linearReuses` counts the retained notifications, and the translation
+regression compares pixels against a forced invalidation.
+
+Groups with up to six draws (own shapes or single-draw children) that do not
+overlap each other now use GPU add/multiply/screen blending directly (`directMultiBlendGroups`;
 `directMultiBlend=0` restores isolation). `antialias=0` disables MSAA on the
 Pixi canvas, which also removes the per-pass resolve before every backdrop
 copy; `bezierSmoothness=N` (Pixi default 0.5) lowers curve subdivision, which

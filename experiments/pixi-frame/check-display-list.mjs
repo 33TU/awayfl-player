@@ -162,7 +162,10 @@ try {
       }
       assert.equal(c.maxDelta,0,c.name);
       if(['translate','fractional'].includes(c.name))assert.ok(c.retainedPrepared<c.forcedPrepared/2,c.name+' skips descendants');
-      if(['scale','rotate','color'].includes(c.name))assert.ok(c.retainedPrepared>=64,c.name+' updates descendants');
+      if(c.name==='color')assert.ok(c.retainedPrepared>=64,c.name+' updates descendants');
+      // Scale/rotate re-prepare only transform-sensitive descendants (the glow and
+      // text here); plain and normal-stroke children follow the Pixi transform.
+      if(['scale','rotate'].includes(c.name))assert.ok(c.retainedPrepared<c.forcedPrepared,c.name+' retains transform-insensitive descendants');
     }
 
   }

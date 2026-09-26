@@ -49,7 +49,7 @@ import {
   updateFilter,
   destroyFilter,
 } from "./display-list-filters.mjs";
-import { createAssetTracker, combineColor } from "./display-list-data.mjs";
+import { createAssetTracker, combineColor, screenSpaceStroke } from "./display-list-data.mjs";
 import { installPixiPickBounds } from "./pixi-pick-bounds.mjs";
 import { installPixiPickEvents } from "./pixi-pick-events.mjs";
 
@@ -178,6 +178,7 @@ export async function startDisplayList(
     uniformUpdates: 0,
     effectCacheHits: 0,
     directMultiBlendGroups: 0,
+    linearReuses: 0,
     effectCacheBuilds: 0,
     effectCachePixels: 0,
     effectPasses: 0,
@@ -223,6 +224,7 @@ export async function startDisplayList(
     record: nodeRecord,
     update: updateObject,
     changed: sourceChanged,
+    linearChanged,
     hierarchyChanged: (r) => { if (r) dirty(r, "hierarchy"); },
     detached: (r) => detachedRecords.set(r, stats.frames),
     stats,
@@ -239,6 +241,15 @@ export async function startDisplayList(
   const missing = (reason) => {
     stats.unsupported[reason] = (stats.unsupported[reason] || 0) + 1;
   };
+  function linearChanged(r) {
+    if (!r) return;
+    r.linearDirty = true;
+    for (let node = r.node; node; node = node.parent) {
+      const parent = records.get(node);
+      if (!parent || parent.branchDirty) break;
+      parent.branchDirty = true;
+    }
+  }
   function sourceChanged(r, descendants = false, content = true) {
     if (!r) return;
     r.selfDirty ||= content;
@@ -430,6 +441,9 @@ export async function startDisplayList(
     if (node.animator || shape.particleCollection) missing("animator");
     if (e.assetType === "[asset LineElements]" && ![1, 2, 4].includes(e.scaleMode))
       missing("stroke-scale-mode:" + e.scaleMode);
+    // Screen-space extrusion depends on the world transform; the owner must be
+    // re-prepared when an ancestor rotates or scales.
+    if (e.assetType === "[asset LineElements]" && screenSpaceStroke(e)) record.screenStrokes = true;
     const material = shape.material || node.material;
     const style = shape.style || node.style;
     const tex = material?.getTextureAt?.(0);
@@ -659,6 +673,7 @@ export async function startDisplayList(
     parentMatrix = scene.localTransform,
     parentTransformRevision = 0,
     force = false,
+    linear = false,
   ) {
     if (path.has(node)) {
       missing("cyclic-display-list");
@@ -667,14 +682,20 @@ export async function startDisplayList(
     path.add(node);
     const r = bindings ? bindings.own(node) : nodeRecord(node);
     r.epoch = stats.frames;
-    if (bindings && r.summary && !force && !r.branchDirty) {
+    // An ancestor rotated or scaled: only transform-sensitive content and
+    // subtrees need another preparation; the rest follows the Pixi hierarchy.
+    const linearForce = linear || !!r.linearDirty;
+    r.linearDirty = false;
+    const linearSensitive = linearForce && r.subtreeTransformSensitive !== false;
+    if (bindings && r.summary && !force && !r.branchDirty && !linearSensitive) {
       stats.skippedSubtrees++;
       reuseSummary(r);
       path.delete(node);
       return r.outer;
     }
     const before = bindings ? summaryStart() : null;
-    const prepareContent = !bindings || !retainContent || !r.ownContent || force || r.selfDirty || r.descendantsDirty;
+    const prepareContent = !bindings || !retainContent || !r.ownContent || force || r.selfDirty || r.descendantsDirty ||
+      (linearForce && r.transformSensitive !== false);
     const forceChildren = force || r.descendantsDirty;
     r.branchDirty = r.selfDirty = r.descendantsDirty = false;
     stats.preparedNodes++;
@@ -719,6 +740,7 @@ export async function startDisplayList(
       stats.retainedContents++;
     } else {
       stats.preparedContents++;
+      r.screenStrokes = false;
       const contentBefore = bindings ? summaryStart() : null;
       // Native getters/traversers can tessellate dirty graphics or lay out text.
       // Keep that cost separate from converting their output to Pixi objects.
@@ -803,8 +825,10 @@ export async function startDisplayList(
     let batchVertices = ownVertices;
     let drawingChildren = 0;
     let singleDraws = children.length;
+    let childSensitive = false;
+    const singleChildren = [];
     for (const child of node._children || []) {
-      const object = visit(child, r.color, path, world, transformRevision, forceChildren);
+      const object = visit(child, r.color, path, world, transformRevision, forceChildren, linearForce);
       if (object) {
         if (!bindings) children.push(object);
         const childRecord = records.get(child);
@@ -813,7 +837,11 @@ export async function startDisplayList(
           r.lastChange = childRecord.lastChange;
         }
         if (childRecord.outer.visible) {
-          if (childRecord.drawCost) drawingChildren++;
+          childSensitive ||= childRecord.subtreeTransformSensitive !== false;
+          if (childRecord.drawCost) {
+            drawingChildren++;
+            if (childRecord.singleDraws === 1) singleChildren.push(childRecord);
+          }
           singleDraws += childRecord.singleDraws ?? 2;
           drawCost += childRecord.drawCost || 0;
           // Existing child groups already own separate buffers.
@@ -891,6 +919,13 @@ export async function startDisplayList(
     // composited together before blending against the backdrop.
     const simple = !hasFilter && !maskNodes.length && !scroll;
     r.rasterSafe = rasterSafe && simple && !node.maskMode && ["normal", ""].includes(blend);
+    // Content whose Pixi representation depends on the world linear transform:
+    // scale-aware filters, native text resolution, screen-space stroke
+    // extrusion, scenery raster resolution and 3D. Everything else follows the
+    // ancestor's Pixi transform and needs no re-preparation on rotate/scale.
+    r.transformSensitive = hasFilter || !!r.nativeText || !!r.screenStrokes || r.is3D ||
+      (r.rasterSafe && drawCost >= 64);
+    r.subtreeTransformSensitive = r.transformSensitive || childSensitive;
     r.drawCost = drawCost;
     r.batchVertices = batchVertices;
     // A small morph/timeline shape can invalidate a huge parent's batch even
@@ -926,9 +961,11 @@ export async function startDisplayList(
     // whether blended one by one or as an isolated group.
     const disjointDraws = () => {
       const boxes = [];
-      for (const m of r.meshes) {
-        if (!m?.mesh.visible) continue;
-        const b = m.mesh.getBounds();
+      const objects = [];
+      for (const m of r.meshes) if (m?.mesh.visible) objects.push(m.mesh);
+      for (const c of singleChildren) objects.push(c.outer);
+      for (const object of objects) {
+        const b = object.getBounds();
         for (const o of boxes)
           if (b.minX < o.maxX && b.maxX > o.minX && b.minY < o.maxY && b.maxY > o.minY) return false;
         boxes.push({ minX: b.minX, minY: b.minY, maxX: b.maxX, maxY: b.maxY });
@@ -937,7 +974,7 @@ export async function startDisplayList(
     };
     const blendable = ["add", "multiply", "screen"].includes(blend);
     const multiDirect = directMultiBlend && simple && blendable && singleDraws > 1 &&
-      singleDraws <= 6 && drawingChildren === 0 && disjointDraws();
+      singleDraws <= 6 && drawingChildren === singleChildren.length && disjointDraws();
     const directBlend = simple && blendable && (singleDraws === 1 || multiDirect);
     r.singleDraws = simple && ["normal", ""].includes(blend) ? singleDraws : 2;
     if (directBlend) stats.directBlendGroups++;
