@@ -395,7 +395,7 @@ Pixi reuses the same `GraphicsContext` for a repeated ratio.
 
 Unused native path contexts and mesh geometry are retained across sweeps in
 least-recently-used order (`retainPaths=N`, default 4096 contexts, and
-`retainGeometry=N`, default 2048 geometries; `0` restores immediate release).
+`retainGeometry=N`, default 4096 geometries; `0` restores immediate release).
 Without this, a morph returning to a cached ratio still rebuilt its Pixi
 context every frame. Bitmap-filled and rasterized contexts are not retained;
 they follow their texture's lifetime. `pixiLive.stats.nativePathRetained`,
