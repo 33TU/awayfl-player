@@ -28,6 +28,7 @@ const advancedBlends = {
 };
 import { installVectorBatcher } from "./vector-batcher.mjs";
 import { installBlendResolve } from "./blend-resolve.mjs";
+import { createEffectTextureCache } from "./effect-texture-cache.mjs";
 import { createRenderProfiler } from "./render-profile.mjs";
 import { installIdleHover } from "./idle-hover.mjs";
 import { installCatchUp } from "./catch-up.mjs";
@@ -90,7 +91,7 @@ const clamp = (v) => Math.max(0, Math.min(1, v));
 // renderer. Own canvas/context/textures; no render-command capture or GPU readback.
 export async function startDisplayList(
   player,
-  { onStatus = () => {}, cacheEffects = true, directObjects = false, cacheScenery = true, vectorBatching = true, boundedBlends = true, partialUploads = true, renderGroups = true, groupVertexLimit = 6000, reuseFilters = true, isolateTopology = true, sparseUploads = true, skipUnchanged = true, idleHoverHz = 0, retainedHover = true, pixiPickBounds = false, pixiEvents = false, catchUp = false, reuseTranslations = true, retainContent = true, retainMaskedContent = true, skipUnchangedColors = true, nativeGraphics = false, shapeSprites = false, nativeText, nativeBatching = true, sampledTextures = true, pixiBitmapDraw = false, retainPaths = 4096, retainGeometry = 2048, pixiEventsScopedPress = false } = {},
+  { onStatus = () => {}, cacheEffects = true, directObjects = false, cacheScenery = true, vectorBatching = true, boundedBlends = true, partialUploads = true, renderGroups = true, groupVertexLimit = 6000, reuseFilters = true, isolateTopology = true, sparseUploads = true, skipUnchanged = true, idleHoverHz = 0, retainedHover = true, pixiPickBounds = false, pixiEvents = false, catchUp = false, reuseTranslations = true, retainContent = true, retainMaskedContent = true, skipUnchangedColors = true, nativeGraphics = false, shapeSprites = false, nativeText, nativeBatching = true, sampledTextures = true, pixiBitmapDraw = false, retainPaths = 4096, retainGeometry = 2048, pixiEventsScopedPress = false, effectTextures = false, directMultiBlend = true, antialias = true, bezierSmoothness } = {},
 ) {
   const useNativeText = nativeText ?? nativeGraphics;
   const native = player._renderer;
@@ -113,7 +114,8 @@ export async function startDisplayList(
       width: sourceCanvas.width,
       height: sourceCanvas.height,
       resolution: 1,
-      antialias: true,
+      antialias,
+      bezierSmoothness,
       background: 0,
       backgroundAlpha: 1,
       useBackBuffer: true,
@@ -138,7 +140,7 @@ export async function startDisplayList(
   const stats = {
     active: true,
     mode: directObjects ? "direct-objects" : "display-list",
-    configuration: { nativeGraphics, retainPaths, retainGeometry, shapeSprites: nativeGraphics && shapeSprites, nativeText: useNativeText, nativeBatching, sampledTextures, cacheScenery: directObjects && cacheScenery, groupVertexLimit,
+    configuration: { nativeGraphics, retainPaths, retainGeometry, effectTextures: directObjects && effectTextures, directMultiBlend, antialias, bezierSmoothness: bezierSmoothness ?? null, shapeSprites: nativeGraphics && shapeSprites, nativeText: useNativeText, nativeBatching, sampledTextures, cacheScenery: directObjects && cacheScenery, groupVertexLimit,
       retainContent, retainMaskedContent, skipUnchangedColors, reuseTranslations, retainedHover: directObjects && retainedHover, pixiPickBounds: false, pixiEvents: false },
     deferredGeometry: pathSource?.lazyStats ?? null,
     pixiBitmapDraws: 0,
@@ -175,6 +177,7 @@ export async function startDisplayList(
     nativeTexts: 0,
     uniformUpdates: 0,
     effectCacheHits: 0,
+    directMultiBlendGroups: 0,
     effectCacheBuilds: 0,
     effectCachePixels: 0,
     effectPasses: 0,
@@ -201,6 +204,8 @@ export async function startDisplayList(
     ? installPixiPickBounds(player, records, stats, renderer) : null;
   const scenery = directObjects && cacheScenery
     ? createSceneryCache(stats, () => { visualDirty = true; }) : null;
+  const effectTextureCache = directObjects && cacheEffects && effectTextures
+    ? createEffectTextureCache(stats, () => { visualDirty = true; }) : null;
   const geometryCache = createGeometryCache(tracker, stats, { retain: retainGeometry });
   const nativePaths = createNativePaths(stats, renderer, { shapeSprites: nativeGraphics && shapeSprites, retain: retainPaths });
   const nativePicking = createNativePicking(pathSource?.Box);
@@ -678,6 +683,7 @@ export async function startDisplayList(
     stats.nodes++;
     if (!r.outer.visible) {
       scenery?.release(r);
+      effectTextureCache?.release(r);
       if (before) finishSummary(r, before);
       path.delete(node);
       return r.outer;
@@ -916,12 +922,26 @@ export async function startDisplayList(
       visualDirty = true;
     }
     if (r.batchGroup) stats.batchGroups++;
-    const directBlend =
-      simple &&
-      singleDraws === 1 &&
-      ["add", "multiply", "screen"].includes(blend);
+    // Several own draws that never overlap each other composite identically
+    // whether blended one by one or as an isolated group.
+    const disjointDraws = () => {
+      const boxes = [];
+      for (const m of r.meshes) {
+        if (!m?.mesh.visible) continue;
+        const b = m.mesh.getBounds();
+        for (const o of boxes)
+          if (b.minX < o.maxX && b.maxX > o.minX && b.minY < o.maxY && b.maxY > o.minY) return false;
+        boxes.push({ minX: b.minX, minY: b.minY, maxX: b.maxX, maxY: b.maxY });
+      }
+      return true;
+    };
+    const blendable = ["add", "multiply", "screen"].includes(blend);
+    const multiDirect = directMultiBlend && simple && blendable && singleDraws > 1 &&
+      singleDraws <= 6 && drawingChildren === 0 && disjointDraws();
+    const directBlend = simple && blendable && (singleDraws === 1 || multiDirect);
     r.singleDraws = simple && ["normal", ""].includes(blend) ? singleDraws : 2;
     if (directBlend) stats.directBlendGroups++;
+    if (multiDirect) stats.directMultiBlendGroups++;
     else if (!["normal", "layer", ""].includes(blend))
       stats.isolatedBlendGroups++;
     const key = JSON.stringify([
@@ -983,6 +1003,7 @@ export async function startDisplayList(
     if (r.effectCache)
       r.effectCache.revision = Math.max(r.revision, transformRevision);
     scenery?.observe(r);
+    effectTextureCache?.observe(r);
     if (before) finishSummary(r, before);
     path.delete(node);
     return r.outer;
@@ -1014,6 +1035,7 @@ export async function startDisplayList(
   }
   function destroyRecord(r) {
     scenery?.release(r);
+    effectTextureCache?.release(r);
     needsSweep = true;
     bindings?.release(r.node);
     tracker.releaseOwner(r);
@@ -1053,6 +1075,7 @@ export async function startDisplayList(
     if (failed) player.isPaused = pauseBeforeFailure;
     if (native.render === render) native.render = original;
     scenery?.destroy();
+    effectTextureCache?.destroy();
     scene.removeChildren();
     for (const r of records.values()) for (const w of r.wrappers) w.mask = null;
     for (const r of records.values()) destroyRecord(r);
@@ -1094,7 +1117,7 @@ export async function startDisplayList(
       stats.preparedNodes = stats.skippedSubtrees = 0;
       stats.preparedContents = stats.retainedContents = 0;
       stats.nativeGraphics = stats.nativeGradients = stats.nativeBitmaps = stats.nativeCompounds = stats.nativeTexts = stats.nodes = stats.meshes = stats.batchedMeshes = stats.customMeshes = stats.vectorBatchedMeshes = 0;
-      stats.directBlendGroups = stats.isolatedBlendGroups = 0;
+      stats.directBlendGroups = stats.isolatedBlendGroups = stats.directMultiBlendGroups = 0;
       stats.batchGroups = 0;
       stats.unsupported = {};
       tracker.epoch = stats.frames;
@@ -1154,6 +1177,7 @@ export async function startDisplayList(
         }
       endPhase?.(); endPhase = profiler.section("syncSceneryMs");
       scenery?.prepare();
+      effectTextureCache?.prepare();
       endPhase?.(); endPhase = undefined;
       stats.syncMs = performance.now() - start;
       const draw = performance.now();

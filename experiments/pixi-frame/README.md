@@ -350,6 +350,21 @@ Flash hairlines (zero-width strokes) now take the authored path as Pixi
 Before this they stayed Flash line meshes whose extrusion was recomputed on
 every transform change and repacked through the vector batcher. Other
 non-scaling strokes keep the screen-space mesh route.
+`effectTextures=1` (direct-objects) caches each stable, unmasked, normal-blend
+filter group as a Pixi render-group texture after two unchanged frames. A
+retained effect otherwise still renders its source subtree into a filter input
+every frame before blitting the cached result; the cached group is one batched
+quad until its revision or scale changes. Budget 16 Mi texels;
+`pixiLive.stats.effectTextures`, `effectTexturePixels`, `effectTextureBuilds`
+and `effectTextureRejected` report it. It is opt-in because a subpixel move of
+a cached group resamples the texture instead of re-rendering the effect.
+
+Groups with up to six own draws that do not overlap each other now use GPU
+add/multiply/screen blending directly (`directMultiBlendGroups`;
+`directMultiBlend=0` restores isolation). `antialias=0` disables MSAA on the
+Pixi canvas, which also removes the per-pass resolve before every backdrop
+copy; `bezierSmoothness=N` (Pixi default 0.5) lowers curve subdivision, which
+Pixi computes in authored units rather than screen pixels.
 `pixiLive.stats.unsupported` lists `native-fallback:<reason>` counts for
 authored paths that still use the mesh route (`contours`, `paint-offset`,
 `no-snapshot`, ...); a deferred morph shape pays a full tessellation there.
