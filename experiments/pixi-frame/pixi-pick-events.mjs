@@ -48,14 +48,18 @@ export function installPixiPickEvents(player, scene, records, owners, renderer, 
   // worldTransform inside a scenery-cached branch (the map) is stale or unset
   // and the default hit test misses it. Derive world transforms from the
   // local transform chain instead; the cache is cleared per hit test.
-  const worlds = new Map();
+  // Matrices are kept per container and revalidated by a stamp per hit test:
+  // allocating one per visited container was a third of the hit test.
+  const worlds = new WeakMap();
+  let stamp = 0;
   const worldOf = container => {
-    let m = worlds.get(container);
-    if (m) return m;
+    let entry = worlds.get(container);
+    if (entry && entry.stamp === stamp) return entry.matrix;
+    if (!entry) worlds.set(container, entry = { matrix: new Matrix(), stamp: 0 });
     container.updateLocalTransform?.();
-    m = new Matrix().copyFrom(container.localTransform);
+    const m = entry.matrix.copyFrom(container.localTransform);
     if (container.parent && container !== scene) m.prepend(worldOf(container.parent));
-    worlds.set(container, m);
+    entry.stamp = stamp;
     return m;
   };
   const local = { x: 0, y: 0 };
@@ -94,7 +98,7 @@ export function installPixiPickEvents(player, scene, records, owners, renderer, 
     return prune(container, location);
   };
   const hitTest = boundary.hitTest.bind(boundary);
-  boundary.hitTest = (x, y) => { worlds.clear(); try { return hitTest(x, y); } finally { worlds.clear(); } };
+  boundary.hitTest = (x, y) => { stamp++; return hitTest(x, y); };
   let allowed = null;
   stats.pixiEventPicks = 0;
   stats.pixiEventTargets = 0;
