@@ -135,9 +135,11 @@ export function snapshotStrokePath(path) {
   // strokes keep a screen-space width and stay on the mesh path.
   // The SWF decoder marks widths up to 0.05 as hairlines; the script bridge
   // drops the scale mode, so apply the same width rule here.
+  // A SWF hairline is stored with width 0 (thickness 0 after decoding), and
+  // morph shapes carry those on every rebuild; the pixel line ignores width.
   const hairline = style?.scaleMode === 4 || (style?.thickness > 0 && style.thickness <= 0.05);
   if (style?.data_type !== '[graphicsdata StrokeStyle]' || (style.scaleMode !== 2 && !hairline) || (hairline && !hairlinePixelLines) ||
-      !(style.thickness > 0) || !Number.isFinite(style.thickness) ||
+      !(hairline ? style.thickness >= 0 : style.thickness > 0) || !Number.isFinite(style.thickness) ||
       !(style.miterLimit > 0) || !Number.isFinite(style.miterLimit)) return null;
   // SWF decoding supplies enums; script lineStyle calls can supply strings.
   const cap = style.capstyle == null ? 'round' :
@@ -186,6 +188,8 @@ export function installPathSource(Graphics, Factory, Strokes, Box, runtime = {})
   const { AttributesBuffer, LineElements, DisplayObject, SceneImage2D } = runtime;
   const lazyStats = { skipped: 0, materialized: 0, live: 0,
     skippedStrokes: 0, materializedStrokes: 0, liveStrokes: 0,
+    // Why a morph fill or stroke was tessellated instead of deferred.
+    morphFillFallbacks: {}, morphStrokeFallbacks: {},
     morphSkipped: 0, morphMaterialized: 0 };
   let lazyEnabled = false;
   let morphLazyEnabled = false;
@@ -384,6 +388,12 @@ export function installPathSource(Graphics, Factory, Strokes, Box, runtime = {})
       if (morph) lazyStats.morphSkipped++;
       return buffer;
     }
+    if (morph && lazyEnabled) {
+      const reason = !deferred ? 'no-snapshot' : deferred.stroke ? 'stroke-as-fill' :
+        !(deferred.bounds.width > 0 && deferred.bounds.height > 0) ? 'empty-bounds' :
+        path.verts?.length ? 'verts' : 'other';
+      lazyStats.morphFillFallbacks[reason] = (lazyStats.morphFillFallbacks[reason] || 0) + 1;
+    }
     return convert.call(this, path, ...args);
   };
   if (Strokes) {
@@ -419,6 +429,17 @@ export function installPathSource(Graphics, Factory, Strokes, Box, runtime = {})
         lazyStats.skippedStrokes++;
         if (morph) lazyStats.morphSkipped++;
         return elements;
+      }
+      if (morph && lazyEnabled) {
+        const style = paths[0]?.style;
+        const reason = paths.length !== 1 ? 'multi-path' :
+          !deferred ? `no-snapshot:mode${style?.scaleMode}:w${style?.thickness}:${style?.fillStyle?.data_type?.replace(/\W/g, '') || 'nofill'}:a${style?.fillStyle?.alpha}:${style?.capstyle ?? '-'}/${style?.jointstyle ?? '-'}/m${style?.miterLimit}` :
+          !deferred.stroke ? 'fill-as-stroke' :
+          args[0] !== false ? `arg0:${args[0]}` :
+          !(args[1] === 2 || (args[1] === 4 && deferred.stroke.pixelLine)) ? `mode:${args[1]}` :
+          !(deferred.bounds.width > 0 || deferred.bounds.height > 0) ? 'empty-bounds' :
+          paths[0].verts?.length ? 'verts' : 'other';
+        lazyStats.morphStrokeFallbacks[reason] = (lazyStats.morphStrokeFallbacks[reason] || 0) + 1;
       }
       return lines.call(this, paths, ...args);
     };

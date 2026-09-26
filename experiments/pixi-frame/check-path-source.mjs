@@ -50,6 +50,8 @@ assert.equal(snapshotStrokePath({...stroke,style:{...stroke.style,capstyle:null,
 assert.equal(snapshotStrokePath({...stroke,commands:[1,2],data:[0,0,20,0]}).commands.length,2);
 assert.deepEqual(snapshotStrokePath({...stroke,style:{...stroke.style,scaleMode:4,thickness:0.05}}).stroke,
   {width:1,pixelLine:true,cap:'round',join:'miter',miterLimit:5},'hairlines become one-pixel lines');
+assert.deepEqual(snapshotStrokePath({...stroke,style:{...stroke.style,scaleMode:4,thickness:0}}).stroke,
+  {width:1,pixelLine:true,cap:'round',join:'miter',miterLimit:5},'SWF hairlines decode with thickness 0');
 for (const style of [{scaleMode:1},{scaleMode:3},{thickness:0},{thickness:Infinity},
   {capstyle:9},{jointstyle:9},{miterLimit:NaN}])
   assert.equal(snapshotStrokePath({...stroke,style:{...stroke.style,...style}}),null);

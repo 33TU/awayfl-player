@@ -345,6 +345,13 @@ a sibling of the content, outside the candidate's ancestor path. Verified in a
 live room: a click on an inventory row selects it through the scoped press,
 with the scoped and full picks resolving to the same row.
 
+SWF hairlines decode with thickness 0 (width 0 twips) and morph shapes carry
+them on every rebuild, usually with alpha 0; the stroke snapshot accepts a zero
+thickness for hairlines, so they defer like every other hairline instead of
+being tessellated and filling the morph cache.
+`__PIXI_FLASH_PATHS__.lazyStats.morphStrokeFallbacks` and `morphFillFallbacks`
+count why a morph path was tessellated instead of deferred.
+
 `npm run build:native:profile` writes the same `native-runtime.js` without
 minification, so a DevTools trace names the parse, symbol construction, JIT
 and tessellation functions instead of one-letter aliases. Use it to record a
