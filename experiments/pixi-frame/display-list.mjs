@@ -78,7 +78,7 @@ const clamp = (v) => Math.max(0, Math.min(1, v));
 // renderer. Own canvas/context/textures; no render-command capture or GPU readback.
 export async function startDisplayList(
   player,
-  { onStatus = () => {}, cacheEffects = true, directObjects = false, cacheScenery = true, vectorBatching = true, boundedBlends = true, partialUploads = true, renderGroups = true, groupVertexLimit = 6000, reuseFilters = true, isolateTopology = true, sparseUploads = true, skipUnchanged = true, idleHoverHz = 0, retainedHover = true, pixiPickBounds = false, pixiEvents = false, catchUp = false, reuseTranslations = true, retainContent = true, retainMaskedContent = true, skipUnchangedColors = true, nativeGraphics = false, shapeSprites = false, nativeText, nativeBatching = true, sampledTextures = true, pixiBitmapDraw = true, retainPaths = 4096, retainGeometry = 4096, pixiEventsScopedPress = true, pixiEventsCull = false, effectTextures = false, directMultiBlend = true, antialias = true, bezierSmoothness, reuseLinear = true, arrivalBudgetMs = 12, arrivalMaxFrames = 8, arrivalFreezeMs = 60, arrivalHide = false, instancedTransforms = true, isolateNeighbors = 12000, maskGroups = false } = {},
+  { onStatus = () => {}, cacheEffects = true, directObjects = false, cacheScenery = true, vectorBatching = true, boundedBlends = true, partialUploads = true, renderGroups = true, groupVertexLimit = 6000, reuseFilters = true, isolateTopology = true, sparseUploads = true, skipUnchanged = true, idleHoverHz = 0, retainedHover = true, pixiPickBounds = false, pixiEvents = false, catchUp = false, reuseTranslations = true, retainContent = true, retainMaskedContent = true, skipUnchangedColors = true, nativeGraphics = false, shapeSprites = false, nativeText, nativeBatching = true, sampledTextures = true, pixiBitmapDraw = true, retainPaths = 4096, retainGeometry = 4096, pixiEventsScopedPress = true, pixiEventsCull = false, effectTextures = false, directMultiBlend = true, antialias = true, bezierSmoothness, reuseLinear = true, arrivalBudgetMs = 12, arrivalMaxFrames = 8, arrivalFreezeMs = 60, arrivalHide = false, instancedTransforms = true, isolateNeighbors = 12000, maskGroups = false, gpuReadback = true } = {},
 ) {
   const useNativeText = nativeText ?? nativeGraphics;
   const native = player._renderer;
@@ -211,6 +211,8 @@ export async function startDisplayList(
   let arrivalSpent = 0, arrivalRoot = null, arrivalFreeze = false;
   stats.arrivalDeferred = 0; stats.arrivalHidden = 0; stats.arrivalRoots = 0; stats.arrivalFrozen = 0;
   stats.filterAreaUpdates = 0;
+  stats.gpuReadbacks = 0;
+  const pendingReadbacks = new WeakSet();
   function nothingDrawsBeneath(node) {
     for (let n = node; n?.parent; n = n.parent) {
       const siblings = n.parent._children || [];
@@ -308,11 +310,28 @@ export async function startDisplayList(
   function imageTexture(image, sampler, sampleOffset = null) {
     if (!image || image.isDisposed || image.width <= 0 || image.height <= 0)
       return null;
-    // BitmapData.draw still belongs to the Flash runtime. Never silently read
-    // its GPU-only result back to the CPU (or upload a stale CPU copy).
+    // BitmapData.draw results AwayFL rendered on its GPU side have no CPU copy.
+    // Never upload a stale one: skip this frame and read the pixels back once
+    // after it (AwayFL's syncData). Synchronously: the async read waits on
+    // AwayFL's render loop, which is paused while Pixi draws. These are
+    // one-off snapshots (the "Smooth Background" room, part rasters) that
+    // otherwise stayed black.
     const version = tracker.version(image, "invalidateGPU", bindings ? "_imageDataDirty" : null, sampleOffset === null);
     if (image._imageDataDirty) {
       missing("gpu-bitmap");
+      if (gpuReadback && typeof image.syncData === "function" && !pendingReadbacks.has(image)) {
+        pendingReadbacks.add(image);
+        setTimeout(() => {
+          if (stopped || image.isDisposed || !image._imageDataDirty) { pendingReadbacks.delete(image); return; }
+          Promise.resolve(image.syncData(false)).then(() => {
+            pendingReadbacks.delete(image);
+            if (stopped || image.isDisposed) return;
+            stats.gpuReadbacks++;
+            image.invalidate?.();
+            visualDirty = true;
+          }, error => { pendingReadbacks.delete(image); stats.gpuReadbackError = String(error); });
+        }, 0);
+      }
       return null;
     }
     // Keep native upload flags untouched; edits may coalesce until AwayFL

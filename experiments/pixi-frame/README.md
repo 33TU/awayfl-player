@@ -456,6 +456,13 @@ rewrites the table row rather than every vertex, and the instanced vertex is
 (sticky custom): flipping back at the end of a hit flash or fade disposed and
 recreated it in the other batcher, rebuilding its render group each time.
 
+A bitmap that AwayFL rendered on its GPU side (a BitmapData.draw the Pixi
+bridge declined) is read back once, synchronously, after the frame that met
+it, then shown (`gpuReadback=0` disables; `stats.gpuReadbacks` counts). The
+async read never finished because it waits on AwayFL's paused render loop.
+With the game's "Smooth Background" off, the room is such a snapshot and
+rendered black; it now matches AwayFL's own renderer.
+
 `npm run build:native:profile` writes the same `native-runtime.js` without
 minification, so a DevTools trace names the parse, symbol construction, JIT
 and tessellation functions instead of one-letter aliases. Use it to record a
