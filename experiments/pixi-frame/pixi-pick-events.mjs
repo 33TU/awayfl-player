@@ -36,7 +36,7 @@ export function meshContainsPoint(mesh, x, y) {
 // Pixi owns the broad target choice; AwayFL still creates PickingCollision and
 // dispatches Flash mouse events. Retry the full tree when a visual Pixi target
 // does not correspond to a Flash hit (e.g. a button with a custom hit area).
-export function installPixiPickEvents(player, scene, records, owners, renderer, stats, { nativePress = false, hitStates = null } = {}) {
+export function installPixiPickEvents(player, scene, records, owners, renderer, stats, { nativePress = false, hitStates = null, cull = true } = {}) {
   const picker = player?._mousePicker;
   const prototype = picker && Object.getPrototypeOf(picker);
   if (!prototype || typeof picker.getViewCollision !== "function" ||
@@ -87,8 +87,34 @@ export function installPixiPickEvents(player, scene, records, owners, renderer, 
     return false;
   };
   boundary.hitTestFn = containsPoint;
+  // Pixi's boundary has no bounds culling: for a point over the floor it
+  // visits every avatar leaf before reaching the map. AwayFL keeps a cached
+  // box per node in root space (what width/height read), so prune a record's
+  // branch when the point is outside that box, with a small margin. A wrong
+  // prune only costs the fallback pick, never a wrong target.
+  const pickGroup = cull ? picker.pickGroup : null;
+  const rootNode = picker.node;
+  const CULL_MARGIN = 2;
+  stats.pixiEventCulls = 0;
+  const culled = (container, location) => {
+    if (!pickGroup || !rootNode) return false;
+    const node = owners.get(container);
+    const children = node?._children;
+    if (!children || children.length < 4) return false;
+    let containerNode = null;
+    for (const key in node._containerNodes) { containerNode = node._containerNodes[key]; break; }
+    if (!containerNode || containerNode._asset === null) return false;
+    let box;
+    try { box = pickGroup.getBoundsPicker(containerNode).getBoxBounds(rootNode, false, true); }
+    catch { return false; }
+    if (!box || !(box.width >= 0)) return false;
+    const p = localPointOf(scene, location);
+    return p.x < box.x - CULL_MARGIN || p.x > box.x + box.width + CULL_MARGIN ||
+      p.y < box.y - CULL_MARGIN || p.y > box.y + box.height + CULL_MARGIN;
+  };
   const prune = boundary.hitPruneFn;
   boundary.hitPruneFn = (container, location) => {
+    if (culled(container, location)) { stats.pixiEventCulls++; return true; }
     // A Flash mask stays in the display list but is never drawn or picked;
     // Pixi marks every mask container non-measurable. A full-stage mask at the
     // top of the game timeline would otherwise be the target of every click,
@@ -115,6 +141,7 @@ export function installPixiPickEvents(player, scene, records, owners, renderer, 
   stats.pixiEventFallbacks = 0;
   stats.configuration.pixiEvents = true;
   stats.configuration.pixiEventsNativePress = nativePress;
+  stats.configuration.pixiEventsCull = !!pickGroup;
   function viewCollision(x, y, ...args) {
     const manager = player._mouseManager;
     // Dragging keeps exact native routing. Press, release and wheel use the

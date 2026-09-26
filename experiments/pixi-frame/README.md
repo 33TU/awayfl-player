@@ -335,6 +335,11 @@ room: a floor click walks the avatar through the scoped press. A button's timeli
 traversal exactly when its owner is. The scoped native pick tries the candidate's own branch first and
 widens to its parent and grandparent only on a miss: over a room background the
 parent is the whole room, and picking it cost as much as the full tree.
+The boundary prunes a record's branch when the hit location lies outside the
+node's cached AwayFL box in root space (`pixiEventsCull=0` disables it,
+`pixiLive.stats.pixiEventCulls` counts prunes): Pixi's own traversal has no
+bounds culling, so a point over the floor visited every avatar leaf before
+reaching the map. A wrong prune costs only the native fallback pick.
 Three details keep the Pixi candidate honest. Mesh hits use an exact,
 topology-aware triangle test (`meshContainsPoint`): Pixi's own
 `Mesh.containsPoint` walks an indexed triangle list one index at a time, so a
