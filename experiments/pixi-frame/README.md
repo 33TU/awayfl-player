@@ -391,9 +391,15 @@ with a floor of `arrivalBudget` ms (default 12) per branch and frame, and a
 cap of four times that per frame across branches, so an ordinary timeline
 child always completes in its frame, a small branch appears next frame and a
 whole room takes at most a third of a second.
-`arrivalBudget=0` disables gating. `pixiLive.stats.arrivalRoots`,
-`arrivalDeferred` and `arrivalHidden` count gated branches, deferred shapes
-and hidden frames.
+A branch whose remaining work is estimated at `arrivalFreeze` ms or more
+(default 60, a room rather than an avatar) keeps the previous picture on
+screen until it is complete instead of hiding: the game already shows the
+new room, so hidden layers appeared as black areas that then flashed in.
+Timelines, sockets and input keep running during that hold, which the old
+one-frame freeze did not allow. `arrivalBudget=0` disables gating.
+`pixiLive.stats.arrivalRoots`, `arrivalDeferred`, `arrivalHidden` and
+`arrivalFrozen` count gated branches, deferred shapes, hidden frames and
+held frames.
 
 `npm run build:native:profile` writes the same `native-runtime.js` without
 minification, so a DevTools trace names the parse, symbol construction, JIT

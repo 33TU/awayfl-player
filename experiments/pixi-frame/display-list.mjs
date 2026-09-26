@@ -78,7 +78,7 @@ const clamp = (v) => Math.max(0, Math.min(1, v));
 // renderer. Own canvas/context/textures; no render-command capture or GPU readback.
 export async function startDisplayList(
   player,
-  { onStatus = () => {}, cacheEffects = true, directObjects = false, cacheScenery = true, vectorBatching = true, boundedBlends = true, partialUploads = true, renderGroups = true, groupVertexLimit = 6000, reuseFilters = true, isolateTopology = true, sparseUploads = true, skipUnchanged = true, idleHoverHz = 0, retainedHover = true, pixiPickBounds = false, pixiEvents = false, catchUp = false, reuseTranslations = true, retainContent = true, retainMaskedContent = true, skipUnchangedColors = true, nativeGraphics = false, shapeSprites = false, nativeText, nativeBatching = true, sampledTextures = true, pixiBitmapDraw = false, retainPaths = 4096, retainGeometry = 4096, pixiEventsScopedPress = true, pixiEventsCull = false, effectTextures = false, directMultiBlend = true, antialias = true, bezierSmoothness, reuseLinear = true, arrivalBudgetMs = 12, arrivalMaxFrames = 8 } = {},
+  { onStatus = () => {}, cacheEffects = true, directObjects = false, cacheScenery = true, vectorBatching = true, boundedBlends = true, partialUploads = true, renderGroups = true, groupVertexLimit = 6000, reuseFilters = true, isolateTopology = true, sparseUploads = true, skipUnchanged = true, idleHoverHz = 0, retainedHover = true, pixiPickBounds = false, pixiEvents = false, catchUp = false, reuseTranslations = true, retainContent = true, retainMaskedContent = true, skipUnchangedColors = true, nativeGraphics = false, shapeSprites = false, nativeText, nativeBatching = true, sampledTextures = true, pixiBitmapDraw = false, retainPaths = 4096, retainGeometry = 4096, pixiEventsScopedPress = true, pixiEventsCull = false, effectTextures = false, directMultiBlend = true, antialias = true, bezierSmoothness, reuseLinear = true, arrivalBudgetMs = 12, arrivalMaxFrames = 8, arrivalFreezeMs = 60 } = {},
 ) {
   const useNativeText = nativeText ?? nativeGraphics;
   const native = player._renderer;
@@ -131,7 +131,7 @@ export async function startDisplayList(
   const stats = {
     active: true,
     mode: directObjects ? "direct-objects" : "display-list",
-    configuration: { nativeGraphics, retainPaths, retainGeometry, arrivalBudgetMs, arrivalMaxFrames, effectTextures: directObjects && effectTextures, directMultiBlend, antialias, bezierSmoothness: bezierSmoothness ?? null, shapeSprites: nativeGraphics && shapeSprites, nativeText: useNativeText, nativeBatching, sampledTextures, cacheScenery: directObjects && cacheScenery, groupVertexLimit,
+    configuration: { nativeGraphics, retainPaths, retainGeometry, arrivalBudgetMs, arrivalMaxFrames, arrivalFreezeMs, effectTextures: directObjects && effectTextures, directMultiBlend, antialias, bezierSmoothness: bezierSmoothness ?? null, shapeSprites: nativeGraphics && shapeSprites, nativeText: useNativeText, nativeBatching, sampledTextures, cacheScenery: directObjects && cacheScenery, groupVertexLimit,
       retainContent, retainMaskedContent, skipUnchangedColors, reuseTranslations, retainedHover: directObjects && retainedHover, pixiPickBounds: false, pixiEvents: false },
     deferredGeometry: pathSource?.lazyStats ?? null,
     pixiBitmapDraws: 0,
@@ -207,8 +207,8 @@ export async function startDisplayList(
   // stays hidden until every shape in it has a mesh, then appears whole.
   // Five SWFs landing together used to convert in one frame: three tasks
   // of about 200 ms each in a busy room.
-  let arrivalSpent = 0, arrivalRoot = null;
-  stats.arrivalDeferred = 0; stats.arrivalHidden = 0; stats.arrivalRoots = 0;
+  let arrivalSpent = 0, arrivalRoot = null, arrivalFreeze = false;
+  stats.arrivalDeferred = 0; stats.arrivalHidden = 0; stats.arrivalRoots = 0; stats.arrivalFrozen = 0;
   function dirty(r, reason = "appearance") {
     visualDirty = true;
     if (r) { r.revision = ++revision; r.lastChange = reason; }
@@ -1124,6 +1124,12 @@ export async function startDisplayList(
         stats.arrivalHidden++;
         sourceChanged(r, false, false);
         visualDirty = true;
+        // A room-scale arrival would show as black areas while its layers
+        // convert (the game already shows the room). Keep the previous
+        // picture on screen instead; timelines, sockets and input keep
+        // running, which is what the old one-frame freeze did not allow.
+        const remaining = r.arrivalDeferredCount * (r.arrivalPerShapeMs || 0);
+        if (r.arrivalSpent + remaining >= arrivalFreezeMs) arrivalFreeze = true;
       } else if (r.arrivalGated) {
         r.arrivalGated = false;
         r.arrivalFrames = 0;
@@ -1248,6 +1254,7 @@ export async function startDisplayList(
       stats.unsupported = {};
       tracker.epoch = stats.frames;
       arrivalSpent = 0;
+      arrivalFreeze = false;
       textureSamples.flush();
       const width = sourceCanvas.width,
         height = sourceCanvas.height;
@@ -1311,11 +1318,12 @@ export async function startDisplayList(
       // Reuse the completed canvas only when every observable drawing input
       // stayed unchanged. Timelines and input still run, and we still synchronize
       // the display list so mutations trigger a new draw immediately.
-      if (
+      if (arrivalFreeze) stats.arrivalFrozen++;
+      if (!arrivalFreeze && (
         visualDirty ||
         previousBuilds !== stats.geometryBuilds ||
         previousUploads !== stats.textureUploads
-      ) {
+      )) {
         // Diagnostics: stats.traceGroups = true records which render groups
         // rebuild their instructions this frame and how large they are.
         if (stats.traceGroups) {
@@ -1358,7 +1366,7 @@ export async function startDisplayList(
         stats.reusedFrames++;
         stats.pixiMs = 0;
       }
-      visualDirty = false;
+      visualDirty = arrivalFreeze;
       previousBuilds = stats.geometryBuilds;
       previousUploads = stats.textureUploads;
       endPhase = profiler.section("adapterCleanupMs");
