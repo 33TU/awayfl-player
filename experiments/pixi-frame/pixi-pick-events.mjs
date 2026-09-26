@@ -36,7 +36,7 @@ export function meshContainsPoint(mesh, x, y) {
 // Pixi owns the broad target choice; AwayFL still creates PickingCollision and
 // dispatches Flash mouse events. Retry the full tree when a visual Pixi target
 // does not correspond to a Flash hit (e.g. a button with a custom hit area).
-export function installPixiPickEvents(player, scene, records, owners, renderer, stats, { nativePress = false, hitStates = null, cull = true } = {}) {
+export function installPixiPickEvents(player, scene, records, owners, renderer, stats, { nativePress = false, hitStates = null, cull = false } = {}) {
   const picker = player?._mousePicker;
   const prototype = picker && Object.getPrototypeOf(picker);
   if (!prototype || typeof picker.getViewCollision !== "function" ||
@@ -87,11 +87,12 @@ export function installPixiPickEvents(player, scene, records, owners, renderer, 
     return false;
   };
   boundary.hitTestFn = containsPoint;
-  // Pixi's boundary has no bounds culling: for a point over the floor it
-  // visits every avatar leaf before reaching the map. AwayFL keeps a cached
-  // box per node in root space (what width/height read), so prune a record's
-  // branch when the point is outside that box, with a small margin. A wrong
-  // prune only costs the fallback pick, never a wrong target.
+  // Opt-in, and a net loss in a live room: Pixi's boundary has no bounds
+  // culling, but AwayFL's per-node box is only cached while the branch is
+  // still. For animated avatars every lookup re-traverses the subtree and
+  // recomputes each entity's box in root space, which cost 30 percent of a
+  // frame while the mouse moved (t5.json), twice the traversal it replaced.
+  // Kept for measuring against a cheaper bounds source later.
   const pickGroup = cull ? picker.pickGroup : null;
   const rootNode = picker.node;
   const CULL_MARGIN = 2;
