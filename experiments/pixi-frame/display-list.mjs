@@ -78,7 +78,7 @@ const clamp = (v) => Math.max(0, Math.min(1, v));
 // renderer. Own canvas/context/textures; no render-command capture or GPU readback.
 export async function startDisplayList(
   player,
-  { onStatus = () => {}, cacheEffects = true, directObjects = false, cacheScenery = true, vectorBatching = true, boundedBlends = true, partialUploads = true, renderGroups = true, groupVertexLimit = 6000, reuseFilters = true, isolateTopology = true, sparseUploads = true, skipUnchanged = true, idleHoverHz = 0, retainedHover = true, pixiPickBounds = false, pixiEvents = false, catchUp = false, reuseTranslations = true, retainContent = true, retainMaskedContent = true, skipUnchangedColors = true, nativeGraphics = false, shapeSprites = false, nativeText, nativeBatching = true, sampledTextures = true, pixiBitmapDraw = false, retainPaths = 4096, retainGeometry = 4096, pixiEventsScopedPress = true, pixiEventsCull = false, effectTextures = false, directMultiBlend = true, antialias = true, bezierSmoothness, reuseLinear = true } = {},
+  { onStatus = () => {}, cacheEffects = true, directObjects = false, cacheScenery = true, vectorBatching = true, boundedBlends = true, partialUploads = true, renderGroups = true, groupVertexLimit = 6000, reuseFilters = true, isolateTopology = true, sparseUploads = true, skipUnchanged = true, idleHoverHz = 0, retainedHover = true, pixiPickBounds = false, pixiEvents = false, catchUp = false, reuseTranslations = true, retainContent = true, retainMaskedContent = true, skipUnchangedColors = true, nativeGraphics = false, shapeSprites = false, nativeText, nativeBatching = true, sampledTextures = true, pixiBitmapDraw = false, retainPaths = 4096, retainGeometry = 4096, pixiEventsScopedPress = true, pixiEventsCull = false, effectTextures = false, directMultiBlend = true, antialias = true, bezierSmoothness, reuseLinear = true, arrivalBudgetMs = 12, arrivalMaxFrames = 8 } = {},
 ) {
   const useNativeText = nativeText ?? nativeGraphics;
   const native = player._renderer;
@@ -131,7 +131,7 @@ export async function startDisplayList(
   const stats = {
     active: true,
     mode: directObjects ? "direct-objects" : "display-list",
-    configuration: { nativeGraphics, retainPaths, retainGeometry, effectTextures: directObjects && effectTextures, directMultiBlend, antialias, bezierSmoothness: bezierSmoothness ?? null, shapeSprites: nativeGraphics && shapeSprites, nativeText: useNativeText, nativeBatching, sampledTextures, cacheScenery: directObjects && cacheScenery, groupVertexLimit,
+    configuration: { nativeGraphics, retainPaths, retainGeometry, arrivalBudgetMs, arrivalMaxFrames, effectTextures: directObjects && effectTextures, directMultiBlend, antialias, bezierSmoothness: bezierSmoothness ?? null, shapeSprites: nativeGraphics && shapeSprites, nativeText: useNativeText, nativeBatching, sampledTextures, cacheScenery: directObjects && cacheScenery, groupVertexLimit,
       retainContent, retainMaskedContent, skipUnchangedColors, reuseTranslations, retainedHover: directObjects && retainedHover, pixiPickBounds: false, pixiEvents: false },
     deferredGeometry: pathSource?.lazyStats ?? null,
     pixiBitmapDraws: 0,
@@ -202,6 +202,13 @@ export async function startDisplayList(
   const nativePaths = createNativePaths(stats, renderer, { shapeSprites: nativeGraphics && shapeSprites, retain: retainPaths });
   const nativePicking = createNativePicking(pathSource?.Box);
   let revision = 0;
+  // Arrival gating: a branch attached under an existing parent (a player's
+  // gear SWFs, a new room) is prepared under a per-frame time budget and
+  // stays hidden until every shape in it has a mesh, then appears whole.
+  // Five SWFs landing together used to convert in one frame: three tasks
+  // of about 200 ms each in a busy room.
+  let arrivalSpent = 0, arrivalRoot = null;
+  stats.arrivalDeferred = 0; stats.arrivalHidden = 0; stats.arrivalRoots = 0;
   function dirty(r, reason = "appearance") {
     visualDirty = true;
     if (r) { r.revision = ++revision; r.lastChange = reason; }
@@ -362,6 +369,28 @@ export async function startDisplayList(
     geometryCache.release(r.geometryEntry);
   }
   function shapeMesh(shape, node, record, index, color) {
+    if (!arrivalRoot || record.meshes[index]) return shapeMeshInner(shape, node, record, index, color);
+    // The floor is per branch, so an ordinary timeline child (a few shapes)
+    // always completes in its frame; the frame cap bounds several branches
+    // arriving together.
+    if (arrivalRoot.arrivalSpent >= arrivalRoot.arrivalBudget || arrivalSpent >= arrivalBudgetMs * 4) {
+      arrivalRoot.arrivalIncomplete = true;
+      arrivalRoot.arrivalDeferredCount++;
+      stats.arrivalDeferred++;
+      sourceChanged(record, false, true);
+      return null;
+    }
+    const started = performance.now();
+    try { return shapeMeshInner(shape, node, record, index, color); }
+    finally {
+      const spent = performance.now() - started;
+      arrivalSpent += spent;
+      arrivalRoot.arrivalSpent += spent;
+      arrivalRoot.arrivalPreparedMs += spent;
+      arrivalRoot.arrivalPreparedCount++;
+    }
+  }
+  function shapeMeshInner(shape, node, record, index, color) {
     const e = shape.elements;
     const path = pathSource?.get(shape);
     // Text uses atlas/glyph meshes. Skinning and nine-slice geometry may already
@@ -688,13 +717,35 @@ export async function startDisplayList(
     }
     path.add(node);
     const r = bindings ? bindings.own(node) : nodeRecord(node);
+    const firstVisit = r.arrivedFrame === undefined;
+    if (firstVisit) r.arrivedFrame = stats.frames;
     r.epoch = stats.frames;
+    let gateRoot = false;
+    if (arrivalBudgetMs > 0 && bindings && !arrivalRoot) {
+      if (r.arrivalGated) gateRoot = true;
+      else if (firstVisit) {
+        const parentRecord = node.parent && records.get(node.parent);
+        if (parentRecord?.arrivedFrame !== undefined && parentRecord.arrivedFrame < stats.frames) gateRoot = true;
+      }
+      if (gateRoot) {
+        // Spread the estimated remaining work over the frames left, so a
+        // small branch appears next frame and a whole room takes at most
+        // arrivalMaxFrames; the budget floor keeps a frame from stalling.
+        const frames = r.arrivalFrames || 0;
+        const remaining = (r.arrivalDeferredCount || 0) * (r.arrivalPerShapeMs || 0);
+        r.arrivalBudget = frames >= arrivalMaxFrames ? Infinity
+          : Math.max(arrivalBudgetMs, remaining / Math.max(1, arrivalMaxFrames - frames));
+        r.arrivalDeferredCount = 0; r.arrivalPreparedMs = 0; r.arrivalPreparedCount = 0; r.arrivalSpent = 0;
+        arrivalRoot = r; r.arrivalIncomplete = false; stats.arrivalRoots++;
+      }
+    }
     // An ancestor rotated or scaled: only transform-sensitive content and
     // subtrees need another preparation; the rest follows the Pixi hierarchy.
     const linearForce = linear || !!r.linearDirty;
     r.linearDirty = false;
     const linearSensitive = linearForce && r.subtreeTransformSensitive !== false;
     if (bindings && r.summary && !force && !r.branchDirty && !linearSensitive) {
+      if (gateRoot) arrivalRoot = null;
       stats.skippedSubtrees++;
       reuseSummary(r);
       path.delete(node);
@@ -711,6 +762,7 @@ export async function startDisplayList(
     r.outer.visible = visible;
     stats.nodes++;
     if (!r.outer.visible) {
+      if (gateRoot) arrivalRoot = null;
       hitStateNodes.delete(node);
       scenery?.release(r);
       effectTextureCache?.release(r);
@@ -1062,6 +1114,22 @@ export async function startDisplayList(
     scenery?.observe(r);
     effectTextureCache?.observe(r);
     if (before) finishSummary(r, before);
+    if (gateRoot) {
+      arrivalRoot = null;
+      if (r.arrivalPreparedCount) r.arrivalPerShapeMs = r.arrivalPreparedMs / r.arrivalPreparedCount;
+      if (r.arrivalIncomplete) {
+        r.arrivalGated = true;
+        r.arrivalFrames = (r.arrivalFrames || 0) + 1;
+        r.outer.visible = false;
+        stats.arrivalHidden++;
+        sourceChanged(r, false, false);
+        visualDirty = true;
+      } else if (r.arrivalGated) {
+        r.arrivalGated = false;
+        r.arrivalFrames = 0;
+        dirty(r, "arrival");
+      }
+    }
     path.delete(node);
     return r.outer;
   }
@@ -1179,6 +1247,7 @@ export async function startDisplayList(
       stats.batchGroups = 0;
       stats.unsupported = {};
       tracker.epoch = stats.frames;
+      arrivalSpent = 0;
       textureSamples.flush();
       const width = sourceCanvas.width,
         height = sourceCanvas.height;

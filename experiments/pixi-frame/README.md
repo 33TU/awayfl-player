@@ -381,6 +381,20 @@ rebuilt on most frames for the FPS counter and chat lines.
 `stats.traceGroups = true` records per frame which render groups rebuild
 their instructions and how many containers they hold (`stats.groupTrace`).
 
+A branch attached under an existing parent (a player's gear SWFs, a new room,
+a popup) is prepared under a per-frame time budget and stays hidden until
+every shape in it has a mesh, then appears whole. Five SWFs landing together
+used to convert in one frame: three tasks of about 200 ms each in a busy
+room. The budget adapts: the first gated frame measures the cost per shape,
+the remaining work is spread over at most `arrivalFrames` (default 8) frames
+with a floor of `arrivalBudget` ms (default 12) per branch and frame, and a
+cap of four times that per frame across branches, so an ordinary timeline
+child always completes in its frame, a small branch appears next frame and a
+whole room takes at most a third of a second.
+`arrivalBudget=0` disables gating. `pixiLive.stats.arrivalRoots`,
+`arrivalDeferred` and `arrivalHidden` count gated branches, deferred shapes
+and hidden frames.
+
 `npm run build:native:profile` writes the same `native-runtime.js` without
 minification, so a DevTools trace names the parse, symbol construction, JIT
 and tessellation functions instead of one-letter aliases. Use it to record a
