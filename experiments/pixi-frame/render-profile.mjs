@@ -28,13 +28,13 @@ export function createRenderProfiler(renderer, stats, describeGroup = () => ({})
       const updateCounts = new WeakMap();
       for (const batches of Object.values(renderer.renderPipes.batch._batchersByInstructionSet || {}))
         for (const batch of Object.values(batches))
-          updateCounts.set(batch, [batch.unchangedUpdates || 0, batch.packedUpdates || 0]);
+          updateCounts.set(batch, [batch.unchangedUpdates || 0, batch.packedUpdates || 0, batch.matrixUpdates || 0]);
       let updatingGroup, executingGroup;
       function groupInfo(group) {
         const id = group.instructionSet.uid;
         if (!groups.has(id)) groups.set(id, { id, ...describeGroup(group.root),
           updateMs: 0, rebuilds: 0, uploads: 0, uploadBytes: 0, draws: 0, triangles: 0,
-          vertexBytes: 0, changedBytes: 0, unchangedUpdates: 0, packedUpdates: 0 });
+          vertexBytes: 0, changedBytes: 0, unchangedUpdates: 0, packedUpdates: 0, matrixUpdates: 0 });
         return groups.get(id);
       }
       function effectInfo(filter) {
@@ -97,7 +97,7 @@ export function createRenderProfiler(renderer, stats, describeGroup = () => ({})
             return !values.length ? null : values.length % 2 ? values[middle]
               : (values[middle - 1] + values[middle]) / 2;
           };
-          const metrics = ["syncMs", "renderMs", "batchUpdateMs", "gpuMs", "draws", "triangles", "uploadBytes", "blitPixels", "filterTargetPixels", "filterQuadPixels", "filterPasses", "sceneryCaches", "batchGroups", "preparedContents", "retainedContents", "unchangedUpdates", "packedUpdates", "frameWorkMs", "runtimeMs", "adapterMs", "frameIntervalMs"];
+          const metrics = ["syncMs", "renderMs", "batchUpdateMs", "gpuMs", "draws", "triangles", "uploadBytes", "blitPixels", "filterTargetPixels", "filterQuadPixels", "filterPasses", "sceneryCaches", "batchGroups", "preparedContents", "retainedContents", "unchangedUpdates", "packedUpdates", "matrixUpdates", "frameWorkMs", "runtimeMs", "adapterMs", "frameIntervalMs"];
           const tickMetrics = ["frameWorkMs", "runtimeMs", "adapterMs", "frameIntervalMs"];
           const summarize = (samples, keys, fraction) => Object.fromEntries(keys.map(k => [k, percentile(samples, k, fraction)]));
           const mean = (samples, keys) => Object.fromEntries(keys.map(k => {
@@ -318,9 +318,9 @@ export function createRenderProfiler(renderer, stats, describeGroup = () => ({})
               batchOwners.set(batch, updatingGroup);
               if (batch.name === "flash-vectors" ||
                   (batch.name === "default" && Number.isFinite(batch.packedUpdates))) {
-                const previous = updateCounts.get(batch) || [0, 0];
-                const next = [batch.unchangedUpdates || 0, batch.packedUpdates || 0];
-                for (const [i, key] of ["unchangedUpdates", "packedUpdates"].entries()) {
+                const previous = updateCounts.get(batch) || [0, 0, 0];
+                const next = [batch.unchangedUpdates || 0, batch.packedUpdates || 0, batch.matrixUpdates || 0];
+                for (const [i, key] of ["unchangedUpdates", "packedUpdates", "matrixUpdates"].entries()) {
                   const count = next[i] - previous[i];
                   current[key] += count;
                   updatingGroup[key] += count;
@@ -346,7 +346,7 @@ export function createRenderProfiler(renderer, stats, describeGroup = () => ({})
             cpu: activeTick?.cpu || activeAdapter?.cpu || newCpu(),
             frameWorkMs: null, runtimeMs: null, adapterMs: null, frameIntervalMs: null,
             draws: 0, triangles: 0, uploadBytes: 0, blitPixels: 0,
-            filterTargetPixels: 0, filterQuadPixels: 0, filterPasses: 0, unchangedUpdates: 0,
+            filterTargetPixels: 0, filterQuadPixels: 0, filterPasses: 0, unchangedUpdates: 0, matrixUpdates: 0,
             packedUpdates: 0, sceneryCaches: stats.sceneryCaches || 0, batchGroups: stats.batchGroups || 0 };
           frames.push(frame); current = frame;
           if (activeTick) { activeTick.frames.push(frame); activeTick.draws++; }

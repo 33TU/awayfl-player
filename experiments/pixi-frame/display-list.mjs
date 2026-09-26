@@ -78,7 +78,7 @@ const clamp = (v) => Math.max(0, Math.min(1, v));
 // renderer. Own canvas/context/textures; no render-command capture or GPU readback.
 export async function startDisplayList(
   player,
-  { onStatus = () => {}, cacheEffects = true, directObjects = false, cacheScenery = true, vectorBatching = true, boundedBlends = true, partialUploads = true, renderGroups = true, groupVertexLimit = 6000, reuseFilters = true, isolateTopology = true, sparseUploads = true, skipUnchanged = true, idleHoverHz = 0, retainedHover = true, pixiPickBounds = false, pixiEvents = false, catchUp = false, reuseTranslations = true, retainContent = true, retainMaskedContent = true, skipUnchangedColors = true, nativeGraphics = false, shapeSprites = false, nativeText, nativeBatching = true, sampledTextures = true, pixiBitmapDraw = false, retainPaths = 4096, retainGeometry = 4096, pixiEventsScopedPress = true, pixiEventsCull = false, effectTextures = false, directMultiBlend = true, antialias = true, bezierSmoothness, reuseLinear = true, arrivalBudgetMs = 12, arrivalMaxFrames = 8, arrivalFreezeMs = 60 } = {},
+  { onStatus = () => {}, cacheEffects = true, directObjects = false, cacheScenery = true, vectorBatching = true, boundedBlends = true, partialUploads = true, renderGroups = true, groupVertexLimit = 6000, reuseFilters = true, isolateTopology = true, sparseUploads = true, skipUnchanged = true, idleHoverHz = 0, retainedHover = true, pixiPickBounds = false, pixiEvents = false, catchUp = false, reuseTranslations = true, retainContent = true, retainMaskedContent = true, skipUnchangedColors = true, nativeGraphics = false, shapeSprites = false, nativeText, nativeBatching = true, sampledTextures = true, pixiBitmapDraw = false, retainPaths = 4096, retainGeometry = 4096, pixiEventsScopedPress = true, pixiEventsCull = false, effectTextures = false, directMultiBlend = true, antialias = true, bezierSmoothness, reuseLinear = true, arrivalBudgetMs = 12, arrivalMaxFrames = 8, arrivalFreezeMs = 60, instancedTransforms = true } = {},
 ) {
   const useNativeText = nativeText ?? nativeGraphics;
   const native = player._renderer;
@@ -93,7 +93,7 @@ export async function startDisplayList(
   canvas.style.cssText = "position:fixed;pointer-events:none;z-index:1;";
   const renderer = new WebGLRenderer();
   const paused = player.isPaused;
-  let restoreVectorBatcher;
+  let restoreVectorBatcher, instanced = false;
   player.isPaused = true;
   try {
     await renderer.init({
@@ -108,7 +108,8 @@ export async function startDisplayList(
       useBackBuffer: true,
     });
     renderer.events?.setTargetElement(null);
-    if (vectorBatching) restoreVectorBatcher = installVectorBatcher(renderer, partialUploads, sparseUploads, skipUnchanged, nativeGraphics && nativeBatching);
+    if (vectorBatching) restoreVectorBatcher = installVectorBatcher(renderer, partialUploads, sparseUploads, skipUnchanged, nativeGraphics && nativeBatching, instancedTransforms);
+    instanced = !!restoreVectorBatcher?.instanced;
   } catch (error) {
     renderer.destroy();
     throw error;
@@ -131,7 +132,7 @@ export async function startDisplayList(
   const stats = {
     active: true,
     mode: directObjects ? "direct-objects" : "display-list",
-    configuration: { nativeGraphics, retainPaths, retainGeometry, arrivalBudgetMs, arrivalMaxFrames, arrivalFreezeMs, effectTextures: directObjects && effectTextures, directMultiBlend, antialias, bezierSmoothness: bezierSmoothness ?? null, shapeSprites: nativeGraphics && shapeSprites, nativeText: useNativeText, nativeBatching, sampledTextures, cacheScenery: directObjects && cacheScenery, groupVertexLimit,
+    configuration: { nativeGraphics, retainPaths, retainGeometry, arrivalBudgetMs, arrivalMaxFrames, arrivalFreezeMs, instancedTransforms: instanced, effectTextures: directObjects && effectTextures, directMultiBlend, antialias, bezierSmoothness: bezierSmoothness ?? null, shapeSprites: nativeGraphics && shapeSprites, nativeText: useNativeText, nativeBatching, sampledTextures, cacheScenery: directObjects && cacheScenery, groupVertexLimit,
       retainContent, retainMaskedContent, skipUnchangedColors, reuseTranslations, retainedHover: directObjects && retainedHover, pixiPickBounds: false, pixiEvents: false },
     deferredGeometry: pathSource?.lazyStats ?? null,
     pixiBitmapDraws: 0,
@@ -532,7 +533,9 @@ export async function startDisplayList(
       const mesh = new Mesh({ geometry, texture });
       // Ordinary geometry can share Pixi's default batch with native Graphics.
       // Reserve the wider Flash vertex format for curves/radial fills/offsets.
-      mesh.flashVectorBatch = vectorBatching && (custom || !nativeGraphics || !nativeBatching);
+      // With instanced transforms every mesh goes to the Flash batcher: a
+      // moved mesh then rewrites one matrix row instead of its vertices.
+      mesh.flashVectorBatch = vectorBatching && (instanced || custom || !nativeGraphics || !nativeBatching);
       r = record.meshes[index] = {
         shape,
         mesh,
@@ -1457,6 +1460,8 @@ export async function startDisplayList(
     profile: (count, options) => stopped ? Promise.reject(Error("Pixi is stopped")) : profiler.sample(count, options),
     inspectScenery: () => scenery?.inspect() || [],
     getDisplayObject: (node) => records.get(node?.adaptee || node)?.outer,
+    // Diagnostics: the Pixi renderer, for GL-level probes from the console.
+    get renderer() { return renderer; },
     inspectText(search) {
       const result = [];
       for (const [node, r] of records) {

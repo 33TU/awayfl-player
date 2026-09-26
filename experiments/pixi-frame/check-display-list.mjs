@@ -782,8 +782,9 @@ try {
     const dirtyBefore=await sample(true,false,true),dirtyAfter=await sample(true,true,true);
     let dirtyDelta=0;for(let i=0;i<dirtyBefore.pixels.length;i++)dirtyDelta=Math.max(dirtyDelta,Math.abs(dirtyBefore.pixels[i]-dirtyAfter.pixels[i]));
     const redundant={before:compact(dirtyBefore),after:compact(dirtyAfter),pixelDelta:dirtyDelta};
+    const instanced=!!pixiLive.stats.configuration.instancedTransforms;
     g.$BgremoveChild(parent);pixiLiveControls.stop();await pixiLiveControls.enable();p._renderer.render();
-    return {before:compact(before),after:compact(after),pixelDelta,redundant};
+    return {before:compact(before),after:compact(after),pixelDelta,redundant,instanced};
   })()`);
   assert.equal(report.sparseUploads.redundant.pixelDelta,0,'redundant updates preserve pixels');
   assert.equal(report.sparseUploads.redundant.after.glError,0);
@@ -791,6 +792,12 @@ try {
   assert.ok(report.sparseUploads.redundant.after.median.unchangedUpdates>=20,'profile counts skipped updates');
   assert.equal(report.sparseUploads.pixelDelta,0,'sparse uploads preserve all pixels');
   assert.equal(report.sparseUploads.after.glError,0);
+  if (report.sparseUploads.instanced) {
+    // With instanced transforms a moved mesh rewrites its matrix row, not
+    // its vertices: neither sample uploads vertex data for the markers.
+    assert.ok(report.sparseUploads.before.median.uploadBytes<=report.sparseUploads.after.median.uploadBytes*4+4096,'instanced transforms leave vertices in place for both samples: '+JSON.stringify([report.sparseUploads.before.median.uploadBytes,report.sparseUploads.after.median.uploadBytes]));
+    assert.ok(report.sparseUploads.after.median.matrixUpdates>=2,'moved markers update their matrix rows: '+report.sparseUploads.after.median.matrixUpdates);
+  } else
   assert.ok(report.sparseUploads.after.median.uploadBytes<report.sparseUploads.before.median.uploadBytes/100,'distant edits leave untouched middle vertices uploaded');
   assert.ok(report.sparseUploads.after.groups.every(g=>g.rebuilds===0),'sparse edits keep batch layout');
   report.changingTopology = await evaluate(`(async()=>{
@@ -916,7 +923,12 @@ try {
   assert.equal(report.profile.result.frames.length,3);
   const groupUploads = report.profile.result.groups.reduce((n,g)=>n+g.uploadBytes,0);
   const totalUploads = report.profile.result.frames.reduce((n,f)=>n+f.uploadBytes,0);
-  assert.ok(groupUploads>0 && groupUploads<=totalUploads,'group uploads count actual GL traffic without duplication');
+  if (report.sparseUploads.instanced) {
+    // A moved marker rewrites its matrix row: no vertex traffic at all.
+    assert.equal(totalUploads,0,'instanced transforms move the marker without vertex uploads');
+    assert.ok(report.profile.result.frames.every(f=>f.matrixUpdates>=1),'each frame updates the marker matrix');
+  } else
+  assert.ok(groupUploads>0 && groupUploads<=totalUploads,'group uploads count actual GL traffic without duplication: '+JSON.stringify({groupUploads,totalUploads,groups:report.profile.result.groups.map(g=>[g.path,g.uploadBytes,g.rebuilds]).slice(0,6),frames:report.profile.result.frames.map(f=>[f.uploadBytes,f.packedUpdates,f.matrixUpdates])}));
   const groupUpdates = report.profile.result.groups.reduce((n,g)=>n+g.updateMs,0);
   const totalUpdates = report.profile.result.frames.reduce((n,f)=>n+f.batchUpdateMs,0);
   assert.ok(Math.abs(groupUpdates-totalUpdates)<0.01,'exclusive group timings sum to total batch time');
@@ -924,8 +936,8 @@ try {
   assert.ok(report.profile.topology.groups.some(g=>g.path.includes('scene')),'profiles identify native object branches');
   assert.ok(report.profile.result.median.draws>100);
   assert.ok(report.profile.result.median.triangles>1000);
-  assert.ok(report.profile.result.median.uploadBytes>0);
-  assert.ok(report.profile.result.median.uploadBytes<report.profile.fullUploads/10,'moving one mesh does not re-upload static scenery');
+  if (!report.sparseUploads.instanced) assert.ok(report.profile.result.median.uploadBytes>0);
+  assert.ok(report.profile.result.median.uploadBytes<report.profile.fullUploads/10||(report.sparseUploads.instanced&&report.profile.result.median.uploadBytes===0),'moving one mesh does not re-upload static scenery');
   assert.equal(report.profile.pixelDelta,0,'partial uploads preserve pixels');
   assert.ok(report.profile.topology.grouped.uploadBytes<report.profile.topology.ungrouped.uploadBytes/10,'animated topology rebuilds only its group: '+JSON.stringify(report.profile.topology));
   assert.ok(report.profile.topology.meanError<0.2&&report.profile.topology.changedPercent<0.5,'render groups preserve pixels: '+JSON.stringify(report.profile.topology));
