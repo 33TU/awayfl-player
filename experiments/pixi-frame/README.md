@@ -401,6 +401,13 @@ one-frame freeze did not allow. `arrivalBudget=0` disables gating.
 `arrivalFrozen` count gated branches, deferred shapes, hidden frames and
 held frames.
 
+Each filtered record hands Pixi a `filterArea` taken from the container's
+cached local bounds, refreshed only when the record's visual revision or the
+inherited transform changed. Pixi otherwise measures the whole filtered
+subtree on every frame to size the filter texture, 10 percent of a
+filter-heavy frame (t7.json); in a live room about 18 of 160 filtered groups
+refresh per frame. `stats.filterAreaUpdates` counts refreshes.
+
 `npm run build:native:profile` writes the same `native-runtime.js` without
 minification, so a DevTools trace names the parse, symbol construction, JIT
 and tessellation functions instead of one-letter aliases. Use it to record a

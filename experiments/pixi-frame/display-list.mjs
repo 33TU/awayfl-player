@@ -209,6 +209,7 @@ export async function startDisplayList(
   // of about 200 ms each in a busy room.
   let arrivalSpent = 0, arrivalRoot = null, arrivalFreeze = false;
   stats.arrivalDeferred = 0; stats.arrivalHidden = 0; stats.arrivalRoots = 0; stats.arrivalFrozen = 0;
+  stats.filterAreaUpdates = 0;
   function dirty(r, reason = "appearance") {
     visualDirty = true;
     if (r) { r.revision = ++revision; r.lastChange = reason; }
@@ -1109,6 +1110,22 @@ export async function startDisplayList(
       }
       r.filterKey = key;
     }
+    // Pixi measures a filtered container's subtree on every frame to size the
+    // filter texture (10 percent of a filter-heavy frame). Give it the area
+    // from the cached local bounds instead, refreshed only when the subtree's
+    // visual revision changed; Pixi still pads it for the filter.
+    if (r.content.filters) {
+      if (r.filterAreaRevision !== r.revision || r.filterAreaTransform !== transformRevision) {
+        const b = r.content.getLocalBounds();
+        if (b.maxX > b.minX && b.maxY > b.minY) {
+          (r.filterArea ||= new Rectangle()).set(b.minX, b.minY, b.maxX - b.minX, b.maxY - b.minY);
+          if (r.content.filterArea !== r.filterArea) r.content.filterArea = r.filterArea;
+        } else if (r.content.filterArea) r.content.filterArea = null;
+        r.filterAreaRevision = r.revision;
+        r.filterAreaTransform = transformRevision;
+        stats.filterAreaUpdates++;
+      }
+    } else if (r.content.filterArea) r.content.filterArea = null;
     if (r.effectCache)
       r.effectCache.revision = Math.max(r.revision, transformRevision);
     scenery?.observe(r);
