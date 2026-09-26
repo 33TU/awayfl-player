@@ -136,7 +136,11 @@ export function syncNativeText(record, spec, color, world, dirty) {
     const generating = text => Object.values(text?._gpuData || {}).some(g => g?.generatingTexture);
     const busy = record.nativeText && (generating(record.nativeText) ||
       record.nativeText.children?.some(generating));
-    const reusable = record.nativeText && record.nativeLayoutKey === layoutKey && !busy;
+    // HTMLText (multi-colour runs) is never updated in place: its async
+    // texture swap left the previous string on screen after a change (the
+    // room label stayed one room behind). Plain Text renders synchronously.
+    const html = spec.kind === 'html' || (spec.kind === 'lines' && spec.lines.some(l => l.text && l.runs));
+    const reusable = record.nativeText && record.nativeLayoutKey === layoutKey && !busy && !html;
     if (reusable) {
       if (spec.kind === 'lines') {
         let index = 0;
