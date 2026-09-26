@@ -20,6 +20,7 @@
     "check:display-geometry": "node check-display-geometry.mjs",
     "check:direct-bindings": "node check-direct-bindings.mjs",
     "build:native": "node build-native.cjs",
+    "build:native:profile": "PROFILE=1 node build-native.cjs",
     "check:path-source": "node check-path-source.mjs",
     "check:native-picking": "node check-native-picking.mjs",
     "check:texture-samples": "node check-texture-samples.mjs",

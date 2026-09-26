@@ -11,6 +11,11 @@ process.chdir(root);
 const config = require('../../rspack.config.js')({ prod: true });
 const output = path.resolve(root, '../hono-proxy/static/game/gamefiles/pixi-benchmark');
 config.entry = { 'native-runtime': './src/PixiMain.ts' };
+// PROFILE=1 keeps every function name so DevTools traces attribute time to
+// parse, construction, compile and tessellation instead of one-letter names.
+// The bundle is larger and a little slower to load; rebuild without it to play.
+const profile = process.env.PROFILE === '1';
+if (profile) config.optimization = { minimize: false };
 config.output = { path: output, filename: '[name].js' };
 config.plugins = [];
 config.resolve.modules.unshift(dependencies);
@@ -26,5 +31,5 @@ rspack(config, (error, stats) => {
     .replace('runtime: "/awayfl/js/Main.js"',
       `runtime: "/game/gamefiles/pixi-benchmark/native-runtime.js?v=${hash}"`);
   fs.writeFileSync(path.join(output, 'loader-native.html'), loader);
-  console.log('Built experimental authored-path runtime: ' + hash);
+  console.log('Built experimental authored-path runtime: ' + hash + (profile ? ' (profiling build, unminified)' : ''));
 });

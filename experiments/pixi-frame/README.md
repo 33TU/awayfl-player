@@ -345,6 +345,13 @@ a sibling of the content, outside the candidate's ancestor path. Verified in a
 live room: a click on an inventory row selects it through the scoped press,
 with the scoped and full picks resolving to the same row.
 
+`npm run build:native:profile` writes the same `native-runtime.js` without
+minification, so a DevTools trace names the parse, symbol construction, JIT
+and tessellation functions instead of one-letter aliases. Use it to record a
+trace across an asset arrival (a room change, a new player's gear), then run
+`npm run build:native` again before measuring frame times: the profiling
+bundle is larger and loads more slowly.
+
 `morphCache=1` keeps built morph geometry per symbol and ratio and shares it
 between every instance of that symbol, so a looping shape tween tessellates
 each ratio once instead of on every frame. The retained set is bounded
