@@ -123,7 +123,32 @@ export function syncNativeText(record, spec, color, world, dirty) {
     spec.fontStyle, spec.letterSpacing, spec.x, spec.y,
   ]);
   if (record.nativeTextKey !== key) {
+    // Replacing the Pixi Text object is a structural change that makes Pixi
+    // rebuild the whole render group's instructions (the HUD's 6000
+    // containers for an FPS counter or a chat line). Keep the object and
+    // update it in place while its layout kind and font stay the same.
+    const layoutKey = JSON.stringify([spec.kind, spec.fontFamily, spec.fontSize, spec.fontWeight,
+      spec.fontStyle, spec.letterSpacing, spec.kind === 'lines' ? spec.lines.filter(l => l.text).map(l => !!l.runs) : null]);
+    const reusable = record.nativeText && record.nativeLayoutKey === layoutKey;
+    if (reusable) {
+      if (spec.kind === 'lines') {
+        let index = 0;
+        for (const line of spec.lines) {
+          if (!line.text) continue;
+          const text = record.nativeText.children[index++];
+          if (!line.runs && text.text !== line.text) text.text = line.text;
+          text.position.set(line.x, line.y);
+        }
+      } else {
+        if (spec.kind === 'text' && record.nativeText.text !== spec.text) record.nativeText.text = spec.text;
+        record.nativeText.position.set(spec.x, spec.y);
+      }
+      record.nativeTextKey = key;
+      if (spec.kind === 'html') record.nativePaintKey = null;
+      dirty(record, 'text');
+    } else {
     record.nativeText?.destroy({ children: true });
+    record.nativeLayoutKey = layoutKey;
     if (spec.kind === 'lines') {
       record.nativeText = new Container();
       for (const line of spec.lines) {
@@ -141,6 +166,7 @@ export function syncNativeText(record, spec, color, world, dirty) {
     record.nativeTextKey = key;
     record.nativePaintKey = null;
     dirty(record, 'text');
+    }
   }
   // Pixi Text is rasterized into a texture. Flash fields are often scaled by
   // the game and then by the stage, so renderer resolution (1 here) is too low.
@@ -189,5 +215,6 @@ export function retireNativeText(record) {
   record.nativeText.destroy({ children: true });
   record.nativeText = null;
   record.nativeTextKey = null;
+  record.nativeLayoutKey = null;
   record.nativePaintKey = null;
 }

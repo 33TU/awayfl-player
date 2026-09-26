@@ -374,6 +374,13 @@ per frame. `retainGeometry` defaults to 4096 entries (`stats.geometryRetained`
 shows how many unused entries are held); `stats.traceGeometry = true` records
 each build's reason into `stats.geometryTrace`.
 
+A native Pixi Text object is updated in place when only its text or position
+changes; replacing it was a structural change that made Pixi rebuild the whole
+render group's instructions, and the HUD group (about 6000 containers)
+rebuilt on most frames for the FPS counter and chat lines.
+`stats.traceGroups = true` records per frame which render groups rebuild
+their instructions and how many containers they hold (`stats.groupTrace`).
+
 `npm run build:native:profile` writes the same `native-runtime.js` without
 minification, so a DevTools trace names the parse, symbol construction, JIT
 and tessellation functions instead of one-letter aliases. Use it to record a

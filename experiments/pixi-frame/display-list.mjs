@@ -1247,6 +1247,27 @@ export async function startDisplayList(
         previousBuilds !== stats.geometryBuilds ||
         previousUploads !== stats.textureUploads
       ) {
+        // Diagnostics: stats.traceGroups = true records which render groups
+        // rebuild their instructions this frame and how large they are.
+        if (stats.traceGroups) {
+          const dirty = [];
+          let total = 0;
+          for (const r of records.values()) {
+            const group = r.outer.renderGroup;
+            if (!group) continue;
+            total++;
+            if (group.structureDidChange) {
+              let count = 0;
+              const walk = c => { count++; for (const k of c.children) walk(k); };
+              walk(r.outer);
+              const names = [];
+              for (let n = r.node; n && names.length < 4; n = n.parent)
+                names.push(n.name || n.adapter?.axClass?.name?.name || n.assetType);
+              dirty.push({ path: names.join("<"), containers: count, frame: stats.frames });
+            }
+          }
+          (stats.groupTrace ||= []).push({ frame: stats.frames, total, dirty: dirty.length, containers: dirty.reduce((a, d) => a + d.containers, 0), top: dirty.sort((a, b) => b.containers - a.containers).slice(0, 6) });
+        }
         renderer.render({ container: scene, clear: true });
         // Pixi HTMLText creates its SVG texture asynchronously. Its render
         // group becomes dirty on completion, but our unchanged-frame shortcut
