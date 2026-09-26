@@ -260,7 +260,11 @@ covers browser input.
 In `direct-objects`, stationary hover skips native picking while Pixi reuses the
 previously drawn frame. A new Pixi draw triggers a fresh pick on the following
 tick. Add `retainedHover=0` to compare native per-tick picking. Optional hover
-sampling is available with `idleHoverHz=12` on either Pixi backend's play URL, or
+sampling defaults to 12 Hz while the mouse is stationary (`idleHoverHz=0`
+restores a pick on every tick): in an animated room the retained-scene check
+never holds, and a full hover pick per frame cost about 7 percent of a busy
+frame. Objects animating under a still cursor are re-tested at that cadence.
+Another cadence is available with `idleHoverHz=N` on either Pixi backend's play URL, or
 `pixiLiveControls.enable({idleHoverHz:12})` after stopping the current backend.
 That cadence can delay hover changes on animated objects moving under the pointer.
 The retained-frame shortcut can also miss an invisible hit-area change until the
