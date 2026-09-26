@@ -12,6 +12,29 @@ export function createGeometryCache(tracker, stats, { retain = 2048 } = {}) {
   const unused = new Map();
   const retained = Math.max(0, retain | 0);
   stats.geometryEntries = stats.geometryUsers = stats.geometryShares = stats.geometryRetained = 0;
+  // The tracker forgets a buffer two frames after it was last seen, and a
+  // fresh record means a fresh revision: retained geometry for an animation
+  // frame that comes back a cycle later would never match its signature and
+  // was rebuilt every time. Hold the records of the buffers an entry was built
+  // from until the entry itself is destroyed.
+  const holds = new Map();
+  const noop = () => {};
+  function holdBuffers(entry, buffers) {
+    for (const b of entry.buffers || []) {
+      const h = holds.get(b);
+      if (h && --h.count === 0) { h.release(); holds.delete(b); }
+    }
+    entry.buffers = buffers;
+    for (const b of buffers) {
+      let h = holds.get(b);
+      if (!h) holds.set(b, h = { count: 0, release: tracker.listen?.(b, noop) || noop });
+      h.count++;
+    }
+  }
+  function destroyEntry(entry) {
+    holdBuffers(entry, []);
+    entry.geometry.destroy();
+  }
   function release(entry) {
     if (!entry) return;
     entry.users--;
@@ -58,10 +81,12 @@ export function createGeometryCache(tracker, stats, { retain = 2048 } = {}) {
         }
       }
       const signature = [e.numVertices, e.dimension, e.scaleMode];
+      const buffers = [];
       for (const view of [e.positions, e.indices, e.uvs, e.thickness, curves]) {
         signature.push(view);
         if (!view) continue;
         const b = view.attributesBuffer;
+        buffers.push(b);
         signature.push(
           tracker.version(b),
           b.buffer,
@@ -73,6 +98,13 @@ export function createGeometryCache(tracker, stats, { retain = 2048 } = {}) {
         );
       }
       if (!same(entry.signature, signature)) {
+        // Diagnostics: stats.traceGeometry = true records why each build ran.
+        if (stats.traceGeometry) (stats.geometryTrace ||= []).push({
+          type: e.assetType, verts: e.numVertices, scaleMode: e.scaleMode,
+          screen: screenSpaceStroke(e), custom: !!custom, frame: stats.frames,
+          reason: !current ? "new" : current.source !== e ? "source"
+            : !same(current.variant, variant) ? "variant" : entry.signature ? "data" : "first",
+        });
         const data = triangleData(shape, uv, world);
         const geometry = entry.geometry;
         geometry.positions = data.positions;
@@ -92,6 +124,7 @@ export function createGeometryCache(tracker, stats, { retain = 2048 } = {}) {
         }
         entry.signature = signature;
         entry.revision = (entry.revision || 0) + 1;
+        holdBuffers(entry, buffers);
         stats.geometryBuilds++;
       }
       if (current !== entry) {
@@ -114,7 +147,7 @@ export function createGeometryCache(tracker, stats, { retain = 2048 } = {}) {
       for (const [source, variants] of sources) {
         for (const [key, entry] of variants)
           if (!entry.users && !unused.has(entry)) {
-            entry.geometry.destroy();
+            destroyEntry(entry);
             variants.delete(key);
             stats.geometryEntries--;
           }
@@ -126,7 +159,7 @@ export function createGeometryCache(tracker, stats, { retain = 2048 } = {}) {
       unused.clear();
       stats.geometryRetained = 0;
       for (const variants of sources.values())
-        for (const entry of variants.values()) entry.geometry.destroy();
+        for (const entry of variants.values()) destroyEntry(entry);
       sources.clear();
       stats.geometryEntries = stats.geometryUsers = 0;
     },

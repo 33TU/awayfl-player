@@ -65,12 +65,19 @@ a.geometry.on("destroy", () => destroyed++);
 cache.release(a);
 cache.sweep();
 assert.equal(destroyed, 0, "removing one user keeps the geometry alive");
-// Re-registering an asset after tracker retirement must not match an old revision.
+// Geometry in use or retained keeps its buffers' tracker records alive across
+// a sweep: an edit still invalidates through the same record, and a hidden
+// animation frame that returns later does not rebuild.
 tracker.epoch = 10;
 tracker.sweep();
+const buildsAfterSweep = stats.geometryBuilds;
+cache.sync(b, shape, null, false);
+assert.equal(stats.geometryBuilds, buildsAfterSweep, "an unchanged buffer survives the tracker sweep without a rebuild");
 new Float32Array(positions.attributesBuffer.buffer)[2] = 30;
+positions.invalidate();
 cache.sync(b, shape, null, false);
 assert.equal(b.geometry.positions[2], 30);
+assert.equal(stats.geometryBuilds, buildsAfterSweep + 1, "an edit after the sweep still rebuilds once");
 cache.release(b);
 cache.sweep();
 assert.equal(destroyed, 1);

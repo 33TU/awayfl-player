@@ -364,6 +364,16 @@ being tessellated and filling the morph cache.
 `__PIXI_FLASH_PATHS__.lazyStats.morphStrokeFallbacks` and `morphFillFallbacks`
 count why a morph path was tessellated instead of deferred.
 
+Retained mesh geometry keeps a hold on the tracker records of the buffers it
+was built from until the geometry is evicted. The tracker otherwise forgets a
+buffer two frames after it was last seen, and a fresh record means a fresh
+revision, so a hidden animation frame that came back a cycle later never
+matched its retained geometry and was rebuilt: about 10 rebuilds and 16
+thousand converted vertices per frame in a room, now about one small rebuild
+per frame. `retainGeometry` defaults to 4096 entries (`stats.geometryRetained`
+shows how many unused entries are held); `stats.traceGeometry = true` records
+each build's reason into `stats.geometryTrace`.
+
 `npm run build:native:profile` writes the same `native-runtime.js` without
 minification, so a DevTools trace names the parse, symbol construction, JIT
 and tessellation functions instead of one-letter aliases. Use it to record a
