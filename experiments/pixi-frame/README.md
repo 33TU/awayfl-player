@@ -445,7 +445,9 @@ animated branch must protect before it becomes its own render group; with
 `groupVertexLimit` it sets how finely animated avatars and monsters are split.
 Private doomkitten room at idle: default 274 containers re-collected and
 493 KB uploaded per frame; `isolateNeighbors=1000&groupVertexLimit=3000` 46
-containers and 21 KB, for 5 percent more draws. Combat decides the default.
+containers and 21 KB, for 5 percent more draws. In combat the same setting
+was slower (t14.json: median 31 ms, p90 61 ms against 26 to 27 and 49 to 52
+for the default), with more upload traffic, so the default stays at 12000.
 
 `npm run build:native:profile` writes the same `native-runtime.js` without
 minification, so a DevTools trace names the parse, symbol construction, JIT
