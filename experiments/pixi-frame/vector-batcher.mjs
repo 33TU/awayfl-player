@@ -78,6 +78,8 @@ function shaderFor(maxTextures, instanced) {
 // curves as per-vertex inputs so adjacent meshes can share a Pixi batch.
 class VectorBatcher extends DefaultBatcher {
   static extension = { type: ExtensionType.Batcher, name: "flash-vectors" };
+  static traceInputs = false;
+  static inputDiffs = {};
   constructor(options) {
     super(options);
     this.name = "flash-vectors";
@@ -159,11 +161,21 @@ class VectorBatcher extends DefaultBatcher {
     if (element.flashSkipUnchanged) {
       const inputs = vectorInputs(element, this.attributeBuffer.float32View,
         element._attributeStart, element._textureId, this.inputScratch, !this.instanced);
-      if (sameVectorInputs(this.packedInputs.get(element), inputs)) {
+      const previous = this.packedInputs.get(element);
+      if (sameVectorInputs(previous, inputs)) {
         // Only the transform can have changed: rewrite its matrix row.
         if (this.instanced && this.writeMatrix(element)) this.matrixUpdates++;
         this.unchangedUpdates++;
         return;
+      }
+      if (VectorBatcher.traceInputs) {
+        const d = VectorBatcher.inputDiffs;
+        let at = -1;
+        if (!previous) at = "none";
+        else if (previous.length !== inputs.length) at = "length";
+        else for (let i = 0; i < inputs.length; i++) if (previous[i] !== inputs[i]) { at = i; break; }
+        const kind = element.geometry ? "mesh" : "graphics";
+        d[kind + ":" + at] = (d[kind + ":" + at] || 0) + 1;
       }
     }
     this.packedUpdates++;
@@ -357,5 +369,6 @@ export function installVectorBatcher(renderer, partialUploads = true, sparseUplo
     instancedTransforms = false;
   };
   restore.instanced = instancedTransforms;
+  restore.traceInputs = on => { VectorBatcher.traceInputs = on; if (on) VectorBatcher.inputDiffs = {}; return VectorBatcher.inputDiffs; };
   return restore;
 }

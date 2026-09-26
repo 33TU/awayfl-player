@@ -413,7 +413,14 @@ subtree on every frame to size the filter texture, 10 percent of a
 filter-heavy frame (t7.json); in a live room about 18 of 160 filtered groups
 refresh per frame. `stats.filterAreaUpdates` counts refreshes.
 
-Instanced transforms (`instanced=0` disables; WebGL2 only): the Flash vector
+Instanced transforms (opt-in with `instanced=1`; WebGL2 only). Not the
+default: every vertex then uses the 92-byte Flash format, so each render-group
+rebuild repacks about four times the bytes, and combat (constant rebuilds)
+got slower: packAttributes 27 percent and uploads 16 percent of the frame
+against 5 and 6 (t9.json). A compact instanced format for plain vertices is
+the way forward. Headless render timings vary tenfold with the room's
+population between logins, so batcher comparisons need a laptop trace.
+Design: the Flash vector
 batcher keeps every vertex in its mesh's local space, adds a matrix index per
 vertex, and the vertex shader looks the world transform up from a per-batcher
 float texture (two RGBA32F texels per matrix, 128 matrices per row). Pixi's
@@ -424,9 +431,8 @@ slot repacks. Native Graphics batches join the same batcher, so meshes and
 Graphics no longer alternate batchers at every z-order boundary. The program
 is compiled as GLSL ES 3.00 for `texelFetch`; the texture is bound by hand on
 the last sampler unit before each batch draws, since Pixi syncs a batch
-shader's uniforms only on its first bind. Headless spawn room, same code path
-on and off: render 41 ms against 85, uploads 4.2 MB against 8.7 per frame,
-repacks 38 against 220, draws 3079 against 3703. `pixiLive.profile()` reports
+shader's uniforms only on its first bind. A quiet headless room looked faster
+(render 41 ms against 85), but those runs were in different room populations. `pixiLive.profile()` reports
 `matrixUpdates` beside `packedUpdates` and `unchangedUpdates`.
 
 `npm run build:native:profile` writes the same `native-runtime.js` without
