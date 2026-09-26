@@ -1,4 +1,4 @@
-import { EventBoundary } from "pixi.js";
+import { EventBoundary, Matrix } from "pixi.js";
 
 // Pixi owns the broad target choice; AwayFL still creates PickingCollision and
 // dispatches Flash mouse events. Retry the full tree when a visual Pixi target
@@ -11,6 +11,41 @@ export function installPixiPickEvents(player, scene, records, owners, renderer, 
   const originalViewCollision = picker.getViewCollision;
   const originalGetTraverser = prototype.getTraverser;
   const boundary = new EventBoundary(scene);
+  // Pixi skips the transform update of a render group cached as a texture, so
+  // worldTransform inside a scenery-cached branch (the map) is stale or unset
+  // and the default hit test misses it. Derive world transforms from the
+  // local transform chain instead; the cache is cleared per hit test.
+  const worlds = new Map();
+  const worldOf = container => {
+    let m = worlds.get(container);
+    if (m) return m;
+    container.updateLocalTransform?.();
+    m = new Matrix().copyFrom(container.localTransform);
+    if (container.parent && container !== scene) m.prepend(worldOf(container.parent));
+    worlds.set(container, m);
+    return m;
+  };
+  const local = { x: 0, y: 0 };
+  boundary.hitTestFn = (container, location) => {
+    if (container.hitArea) return true;
+    if (!container.containsPoint) return false;
+    worldOf(container).applyInverse(location, local);
+    return container.containsPoint(local);
+  };
+  const prune = boundary.hitPruneFn;
+  boundary.hitPruneFn = (container, location) => {
+    if (container.hitArea) {
+      worldOf(container).applyInverse(location, local);
+      if (!container.hitArea.contains(local.x, local.y)) return true;
+      // The default prune re-tests hitArea with worldTransform; skip to effects.
+      const area = container.hitArea;
+      container.hitArea = null;
+      try { return prune(container, location); } finally { container.hitArea = area; }
+    }
+    return prune(container, location);
+  };
+  const hitTest = boundary.hitTest.bind(boundary);
+  boundary.hitTest = (x, y) => { worlds.clear(); try { return hitTest(x, y); } finally { worlds.clear(); } };
   let allowed = null;
   stats.pixiEventPicks = 0;
   stats.pixiEventTargets = 0;

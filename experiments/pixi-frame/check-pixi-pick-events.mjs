@@ -66,6 +66,25 @@ assert.deepEqual(visited, [flashLeaf, flashSibling], "a visual leaf can route to
 assert.equal(stats.pixiEventPicks, 4);
 assert.equal(stats.pixiEventHits, 2);
 assert.equal(stats.pixiEventFallbacks, 2);
+// Content inside a render group cached as a texture never gets Pixi's
+// transform update; the boundary must still find it through local transforms.
+const cachedGroup = new Container();
+cachedGroup.x = 200; cachedGroup.y = 0;
+cachedGroup.cacheAsTexture(true);
+const cachedLeaf = new Graphics().rect(0, 0, 20, 20).fill(0xff00ff);
+cachedLeaf.eventMode = "static";
+cachedGroup.addChild(cachedLeaf);
+scene.addChild(cachedGroup);
+const flashCached = { parent: flashRoot };
+owners.set(cachedLeaf, flashCached);
+records.set(flashCached, {});
+candidates = [flashCached];
+hits = new Set([flashCached]);
+visited.length = 0;
+assert.equal(picker.getViewCollision(210, 10).rootNode, flashCached, "hit inside a cached render group");
+assert.deepEqual(visited, [flashCached]);
+candidates = [flashSibling, flashLeaf];
+hits = new Set([flashSibling]);
 restore();
 assert.equal(picker.getViewCollision, originalView);
 assert.equal(prototype.getTraverser, originalTraverser);
