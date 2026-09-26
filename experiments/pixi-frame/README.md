@@ -392,8 +392,9 @@ cap of four times that per frame across branches, so an ordinary timeline
 child always completes in its frame, a small branch appears next frame and a
 whole room takes at most a third of a second.
 A branch whose remaining work is estimated at `arrivalFreeze` ms or more
-(default 60, a room rather than an avatar) keeps the previous picture on
-screen until it is complete instead of hiding: the game already shows the
+(default 60, a room rather than an avatar), or beneath which nothing visible
+draws (a room's background layer arriving as its own SWF), keeps the
+previous picture on screen until it is complete instead of hiding: the game already shows the
 new room, so hidden layers appeared as black areas that then flashed in.
 Timelines, sockets and input keep running during that hold, which the old
 one-frame freeze did not allow. `arrivalBudget=0` disables gating.

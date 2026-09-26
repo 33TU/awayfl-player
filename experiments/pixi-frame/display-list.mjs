@@ -210,6 +210,16 @@ export async function startDisplayList(
   let arrivalSpent = 0, arrivalRoot = null, arrivalFreeze = false;
   stats.arrivalDeferred = 0; stats.arrivalHidden = 0; stats.arrivalRoots = 0; stats.arrivalFrozen = 0;
   stats.filterAreaUpdates = 0;
+  function nothingDrawsBeneath(node) {
+    for (let n = node; n?.parent; n = n.parent) {
+      const siblings = n.parent._children || [];
+      for (let i = 0, end = siblings.indexOf(n); i < end; i++) {
+        const sibling = siblings[i];
+        if (sibling.visible !== false && records.get(sibling)?.drawCost > 0) return false;
+      }
+    }
+    return true;
+  }
   function dirty(r, reason = "appearance") {
     visualDirty = true;
     if (r) { r.revision = ++revision; r.lastChange = reason; }
@@ -737,6 +747,10 @@ export async function startDisplayList(
         r.arrivalBudget = frames >= arrivalMaxFrames ? Infinity
           : Math.max(arrivalBudgetMs, remaining / Math.max(1, arrivalMaxFrames - frames));
         r.arrivalDeferredCount = 0; r.arrivalPreparedMs = 0; r.arrivalPreparedCount = 0; r.arrivalSpent = 0;
+        // Hiding a branch that nothing draws beneath (a room's background
+        // layer, arriving as its own SWF) exposes the clear colour. Such a
+        // branch holds the previous picture instead, whatever its size.
+        if (firstVisit) r.arrivalBottom = nothingDrawsBeneath(node);
         arrivalRoot = r; r.arrivalIncomplete = false; stats.arrivalRoots++;
       }
     }
@@ -1146,7 +1160,7 @@ export async function startDisplayList(
         // picture on screen instead; timelines, sockets and input keep
         // running, which is what the old one-frame freeze did not allow.
         const remaining = r.arrivalDeferredCount * (r.arrivalPerShapeMs || 0);
-        if (r.arrivalSpent + remaining >= arrivalFreezeMs) arrivalFreeze = true;
+        if (r.arrivalBottom || r.arrivalSpent + remaining >= arrivalFreezeMs) arrivalFreeze = true;
       } else if (r.arrivalGated) {
         r.arrivalGated = false;
         r.arrivalFrames = 0;
