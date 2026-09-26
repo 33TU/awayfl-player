@@ -1,0 +1,72 @@
+{
+  "scope": "Skip clean descendants on pure 2D translation in direct-object mode. No hardware FPS gain claimed.",
+  "validation": {
+    "translationReuse": {
+      "cases": [
+        {
+          "name": "translate",
+          "maxDelta": 0,
+          "retainedPrepared": 3,
+          "forcedPrepared": 70
+        },
+        {
+          "name": "fractional",
+          "maxDelta": 0,
+          "retainedPrepared": 3,
+          "forcedPrepared": 70
+        },
+        {
+          "name": "scale",
+          "maxDelta": 0,
+          "retainedPrepared": 70,
+          "forcedPrepared": 70
+        },
+        {
+          "name": "rotate",
+          "maxDelta": 0,
+          "retainedPrepared": 70,
+          "forcedPrepared": 70
+        },
+        {
+          "name": "color",
+          "maxDelta": 0,
+          "retainedPrepared": 70,
+          "forcedPrepared": 70
+        },
+        {
+          "name": "child-geometry-and-translation",
+          "maxDelta": 0,
+          "retainedPrepared": 4,
+          "forcedPrepared": 70
+        },
+        {
+          "name": "mask-and-translation",
+          "maxDelta": 0,
+          "retainedPrepared": 4,
+          "forcedPrepared": 70
+        },
+        {
+          "name": "hide",
+          "maxDelta": 0,
+          "retainedPrepared": 3,
+          "forcedPrepared": 3
+        },
+        {
+          "name": "show",
+          "maxDelta": 0,
+          "retainedPrepared": 70,
+          "forcedPrepared": 70
+        }
+      ],
+      "translationReuses": 126
+    },
+    "mouseAndKeyboard": "passed",
+    "idleHover": {
+      "hz": 12,
+      "idleSkips": 8,
+      "periodicCheck": true
+    }
+  },
+  "reference": "Each retained frame was compared byte-for-byte against the same scene after forced full hierarchical invalidation; no frame-rate/timeline advancement between comparisons.",
+  "suite": "Full direct-objects display-list regression with idleHoverHz=12 passed."
+}

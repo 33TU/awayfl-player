@@ -1,0 +1,530 @@
+{
+  "description": "Six native ticks of offline Battleon. Separate loads can differ in animation phase. Counts are diagnostic, not an FPS benchmark.",
+  "before": {
+    "counts": {
+      "8": 496,
+      "16": 89,
+      "32": 502,
+      "64": 6
+    },
+    "colorNoops": 17,
+    "colorChanges": 72,
+    "samples": [
+      {
+        "prepared": 209,
+        "retained": 97
+      },
+      {
+        "prepared": 793,
+        "retained": 77
+      },
+      {
+        "prepared": 225,
+        "retained": 92
+      },
+      {
+        "prepared": 801,
+        "retained": 81
+      },
+      {
+        "prepared": 215,
+        "retained": 103
+      },
+      {
+        "prepared": 801,
+        "retained": 81
+      }
+    ],
+    "nodes": [
+      {
+        "name": "instance_mc_2449",
+        "type": "[asset MovieClip]",
+        "flags": {
+          "8": 9,
+          "16": 3,
+          "32": 9
+        },
+        "children": 35
+      },
+      {
+        "name": "instance_mc_2313",
+        "type": "[asset MovieClip]",
+        "flags": {
+          "8": 6,
+          "32": 6
+        },
+        "children": 12
+      },
+      {
+        "name": "instance_mc_2465",
+        "type": "[asset MovieClip]",
+        "flags": {
+          "8": 9,
+          "16": 3,
+          "32": 9
+        },
+        "children": 9
+      },
+      {
+        "name": "instance_mc_2369",
+        "type": "[asset MovieClip]",
+        "flags": {
+          "8": 9,
+          "16": 6,
+          "32": 9
+        },
+        "children": 6
+      },
+      {
+        "name": "instance_mc_2471",
+        "type": "[asset MovieClip]",
+        "flags": {
+          "8": 6,
+          "32": 6
+        },
+        "children": 5
+      },
+      {
+        "name": "instance_mc_2292",
+        "type": "[asset MovieClip]",
+        "flags": {
+          "8": 6,
+          "32": 6
+        },
+        "children": 4
+      },
+      {
+        "name": "instance_mc_2292",
+        "type": "[asset MovieClip]",
+        "flags": {
+          "8": 6,
+          "32": 6
+        },
+        "children": 4
+      },
+      {
+        "name": "instance_mc_2292",
+        "type": "[asset MovieClip]",
+        "flags": {
+          "8": 6,
+          "32": 6
+        },
+        "children": 4
+      },
+      {
+        "name": "instance_mc_2363",
+        "type": "[asset MovieClip]",
+        "flags": {
+          "8": 9,
+          "16": 3,
+          "32": 9
+        },
+        "children": 4
+      },
+      {
+        "name": "instance_mc_2321",
+        "type": "[asset MovieClip]",
+        "flags": {
+          "8": 9,
+          "16": 6,
+          "32": 9
+        },
+        "children": 4
+      },
+      {
+        "name": "instance_mc_2321",
+        "type": "[asset MovieClip]",
+        "flags": {
+          "8": 9,
+          "16": 6,
+          "32": 9
+        },
+        "children": 4
+      },
+      {
+        "name": "instance_mc_834",
+        "type": "[asset MovieClip]",
+        "flags": {
+          "8": 6,
+          "32": 6
+        },
+        "children": 4
+      },
+      {
+        "name": "instance_mc_834",
+        "type": "[asset MovieClip]",
+        "flags": {
+          "8": 6,
+          "32": 6
+        },
+        "children": 4
+      },
+      {
+        "name": "instance_mc_834",
+        "type": "[asset MovieClip]",
+        "flags": {
+          "8": 6,
+          "32": 6
+        },
+        "children": 4
+      },
+      {
+        "name": "instance_mc_834",
+        "type": "[asset MovieClip]",
+        "flags": {
+          "8": 6,
+          "32": 6
+        },
+        "children": 4
+      },
+      {
+        "name": "instance_mc_2458",
+        "type": "[asset MovieClip]",
+        "flags": {
+          "8": 9,
+          "16": 3,
+          "32": 9
+        },
+        "children": 3
+      },
+      {
+        "name": "instance_mc_2362",
+        "type": "[asset MovieClip]",
+        "flags": {
+          "8": 9,
+          "16": 3,
+          "32": 9
+        },
+        "children": 3
+      },
+      {
+        "name": "instance_mc_2353",
+        "type": "[asset MovieClip]",
+        "flags": {
+          "8": 6,
+          "16": 6,
+          "32": 6
+        },
+        "children": 3
+      },
+      {
+        "name": "instance_mc_2372",
+        "type": "[asset MovieClip]",
+        "flags": {
+          "8": 6,
+          "32": 6
+        },
+        "children": 2
+      },
+      {
+        "name": "instance_mc_2372",
+        "type": "[asset MovieClip]",
+        "flags": {
+          "8": 6,
+          "32": 6
+        },
+        "children": 2
+      }
+    ]
+  },
+  "after": {
+    "counts": {
+      "8": 490,
+      "16": 90,
+      "32": 496,
+      "64": 6
+    },
+    "colorNoops": 17,
+    "colorChanges": 73,
+    "samples": [
+      {
+        "prepared": 704,
+        "retained": 81
+      },
+      {
+        "prepared": 209,
+        "retained": 97
+      },
+      {
+        "prepared": 704,
+        "retained": 81
+      },
+      {
+        "prepared": 225,
+        "retained": 92
+      },
+      {
+        "prepared": 712,
+        "retained": 85
+      },
+      {
+        "prepared": 215,
+        "retained": 103
+      }
+    ],
+    "nodes": [
+      {
+        "name": "instance_mc_2449",
+        "type": "[asset MovieClip]",
+        "flags": {
+          "8": 9,
+          "16": 3,
+          "32": 9
+        },
+        "children": 35
+      },
+      {
+        "name": "instance_mc_2313",
+        "type": "[asset MovieClip]",
+        "flags": {
+          "8": 6,
+          "32": 6
+        },
+        "children": 12
+      },
+      {
+        "name": "instance_mc_2465",
+        "type": "[asset MovieClip]",
+        "flags": {
+          "8": 9,
+          "16": 3,
+          "32": 9
+        },
+        "children": 9
+      },
+      {
+        "name": "instance_mc_2369",
+        "type": "[asset MovieClip]",
+        "flags": {
+          "8": 9,
+          "16": 6,
+          "32": 9
+        },
+        "children": 6
+      },
+      {
+        "name": "instance_mc_2471",
+        "type": "[asset MovieClip]",
+        "flags": {
+          "8": 6,
+          "32": 6
+        },
+        "children": 5
+      },
+      {
+        "name": "instance_mc_2292",
+        "type": "[asset MovieClip]",
+        "flags": {
+          "8": 6,
+          "32": 6
+        },
+        "children": 4
+      },
+      {
+        "name": "instance_mc_2292",
+        "type": "[asset MovieClip]",
+        "flags": {
+          "8": 6,
+          "32": 6
+        },
+        "children": 4
+      },
+      {
+        "name": "instance_mc_2292",
+        "type": "[asset MovieClip]",
+        "flags": {
+          "8": 6,
+          "32": 6
+        },
+        "children": 4
+      },
+      {
+        "name": "instance_mc_2363",
+        "type": "[asset MovieClip]",
+        "flags": {
+          "8": 9,
+          "16": 3,
+          "32": 9
+        },
+        "children": 4
+      },
+      {
+        "name": "instance_mc_2321",
+        "type": "[asset MovieClip]",
+        "flags": {
+          "8": 9,
+          "16": 6,
+          "32": 9
+        },
+        "children": 4
+      },
+      {
+        "name": "instance_mc_2321",
+        "type": "[asset MovieClip]",
+        "flags": {
+          "8": 9,
+          "16": 6,
+          "32": 9
+        },
+        "children": 4
+      },
+      {
+        "name": "instance_mc_834",
+        "type": "[asset MovieClip]",
+        "flags": {
+          "8": 6,
+          "32": 6
+        },
+        "children": 4
+      },
+      {
+        "name": "instance_mc_834",
+        "type": "[asset MovieClip]",
+        "flags": {
+          "8": 6,
+          "32": 6
+        },
+        "children": 4
+      },
+      {
+        "name": "instance_mc_834",
+        "type": "[asset MovieClip]",
+        "flags": {
+          "8": 6,
+          "32": 6
+        },
+        "children": 4
+      },
+      {
+        "name": "instance_mc_834",
+        "type": "[asset MovieClip]",
+        "flags": {
+          "8": 6,
+          "32": 6
+        },
+        "children": 4
+      },
+      {
+        "name": "instance_mc_2353",
+        "type": "[asset MovieClip]",
+        "flags": {
+          "8": 6,
+          "16": 6,
+          "32": 6
+        },
+        "children": 3
+      },
+      {
+        "name": "instance_mc_2458",
+        "type": "[asset MovieClip]",
+        "flags": {
+          "8": 9,
+          "16": 3,
+          "32": 9
+        },
+        "children": 3
+      },
+      {
+        "name": "instance_mc_2362",
+        "type": "[asset MovieClip]",
+        "flags": {
+          "8": 9,
+          "16": 3,
+          "32": 9
+        },
+        "children": 3
+      },
+      {
+        "name": "instance_mc_2372",
+        "type": "[asset MovieClip]",
+        "flags": {
+          "8": 6,
+          "32": 6
+        },
+        "children": 2
+      },
+      {
+        "name": "instance_mc_2372",
+        "type": "[asset MovieClip]",
+        "flags": {
+          "8": 6,
+          "32": 6
+        },
+        "children": 2
+      }
+    ]
+  },
+  "colorRegression": {
+    "cases": [
+      {
+        "name": "same-color",
+        "maxDelta": 0,
+        "prepared": 0,
+        "forced": 33
+      },
+      {
+        "name": "changed-then-repeat",
+        "maxDelta": 0,
+        "prepared": 33,
+        "forced": 33
+      },
+      {
+        "name": "geometry-then-repeat",
+        "maxDelta": 0,
+        "prepared": 32,
+        "forced": 33
+      },
+      {
+        "name": "color-offset",
+        "maxDelta": 0,
+        "prepared": 33,
+        "forced": 33
+      },
+      {
+        "name": "repeat-offset",
+        "maxDelta": 0,
+        "prepared": 0,
+        "forced": 33
+      },
+      {
+        "name": "color-reset",
+        "maxDelta": 0,
+        "prepared": 33,
+        "forced": 33
+      },
+      {
+        "name": "mixed-flags",
+        "maxDelta": 0,
+        "prepared": 33,
+        "forced": 33
+      }
+    ],
+    "unchangedColorUpdates": 5
+  },
+  "completedChecks": [
+    "login",
+    "directObjects",
+    "maskUpdates",
+    "colorUpdates",
+    "translationReuse",
+    "mouseAndKeyboard",
+    "idleHover",
+    "avatarShadow",
+    "pixels",
+    "textOutline",
+    "effectCache",
+    "scenery",
+    "resize",
+    "stop",
+    "restart",
+    "battleon",
+    "sceneryComparison",
+    "blendResolve",
+    "filterUpdates",
+    "sparseUploads",
+    "changingTopology",
+    "animatedFilters",
+    "profile",
+    "failure"
+  ]
+}

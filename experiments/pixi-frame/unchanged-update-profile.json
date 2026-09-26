@@ -1,0 +1,363 @@
+{
+  "scope": "Pixi 8.21 WebGL SwiftShader. Input trace observes 12 native ticks in an offline Battleon fixture and compares actual vector-packing inputs for three map branches, without changing their updates. Controlled regression marks all 22 meshes dirty while moving two; both variants render the same paused fixture and final pixels. This does not reproduce the user's ten player equipment scene or establish its resulting FPS.",
+  "trace": [
+    {
+      "name": "instance_mc_3008",
+      "updates": 272,
+      "unchanged": 272,
+      "reasons": {}
+    },
+    {
+      "name": "instance_mc_2699",
+      "updates": 1057,
+      "unchanged": 1057,
+      "reasons": {}
+    },
+    {
+      "name": "instance_mc_2973",
+      "updates": 370,
+      "unchanged": 370,
+      "reasons": {}
+    }
+  ],
+  "redundantUpdateRegression": {
+    "before": {
+      "median": {
+        "syncMs": 0.5,
+        "renderMs": 6.199999988079071,
+        "batchUpdateMs": 0.9000000059604645,
+        "gpuMs": null,
+        "draws": 1480,
+        "triangles": 1707481,
+        "uploadBytes": 1585056,
+        "blitPixels": 563611,
+        "sceneryCaches": 0,
+        "batchGroups": 137,
+        "unchangedUpdates": 0,
+        "packedUpdates": 22,
+        "frameWorkMs": null,
+        "runtimeMs": null,
+        "adapterMs": 7.200000002980232,
+        "frameIntervalMs": null
+      },
+      "groups": [
+        {
+          "id": 1117,
+          "path": "[asset DisplayObjectContainer]#6/scene/sparse-upload-regression",
+          "kind": "object",
+          "updateMs": 1.2999999970197678,
+          "rebuilds": 0,
+          "uploads": 3,
+          "uploadBytes": 4755168,
+          "draws": 3,
+          "triangles": 18012,
+          "vertexBytes": 1585056,
+          "changedBytes": 4755168,
+          "unchangedUpdates": 0,
+          "packedUpdates": 66
+        }
+      ],
+      "glError": 0
+    },
+    "after": {
+      "median": {
+        "syncMs": 0.7000000029802322,
+        "renderMs": 4.5,
+        "batchUpdateMs": 0.4000000059604645,
+        "gpuMs": null,
+        "draws": 1480,
+        "triangles": 1707479,
+        "uploadBytes": 1056,
+        "blitPixels": 563611,
+        "sceneryCaches": 0,
+        "batchGroups": 137,
+        "unchangedUpdates": 20,
+        "packedUpdates": 2,
+        "frameWorkMs": null,
+        "runtimeMs": null,
+        "adapterMs": 5.600000008940697,
+        "frameIntervalMs": null
+      },
+      "groups": [
+        {
+          "id": 1255,
+          "path": "[asset DisplayObjectContainer]#6/scene/sparse-upload-regression",
+          "kind": "object",
+          "updateMs": 0,
+          "rebuilds": 0,
+          "uploads": 6,
+          "uploadBytes": 3168,
+          "draws": 3,
+          "triangles": 18012,
+          "vertexBytes": 1585056,
+          "changedBytes": 4755168,
+          "unchangedUpdates": 60,
+          "packedUpdates": 6
+        }
+      ],
+      "glError": 0
+    },
+    "pixelDelta": 0
+  },
+  "consecutiveAnimationSample": {
+    "limitation": "Six native frames per variant after six warm-up ticks, different animation phases. Later enabled frames have more topology rebuilds; total uploads/submission time are worse in this short sample. This is not an equivalent-frame speed comparison. GPU timer unavailable. The controlled regression establishes the specific skipped-update benefit; crowded-room hardware performance needs retesting.",
+    "samples": [
+      {
+        "skipUnchanged": false,
+        "median": {
+          "syncMs": 17.600000001490116,
+          "renderMs": 302.79999999701977,
+          "batchUpdateMs": 9,
+          "gpuMs": null,
+          "draws": 1502,
+          "triangles": 1705639.5,
+          "uploadBytes": 11264038,
+          "blitPixels": 566385,
+          "sceneryCaches": 0,
+          "batchGroups": 143,
+          "frameWorkMs": 319.8999999985099,
+          "runtimeMs": 2.800000011920929,
+          "adapterMs": 317,
+          "frameIntervalMs": 104.79999999701977
+        },
+        "groups": [
+          {
+            "id": 18,
+            "path": "[asset DisplayObjectContainer]#6/scene/[asset MovieClip]#35288/scene/instance_mc_3008/instance_mc_2699",
+            "kind": "object",
+            "updateMs": 39.20000000298023,
+            "rebuilds": 0,
+            "uploads": 1,
+            "uploadBytes": 38473864,
+            "draws": 18,
+            "triangles": 881934,
+            "vertexBytes": 38473864,
+            "changedBytes": 38473864
+          },
+          {
+            "id": 67,
+            "path": "[asset DisplayObjectContainer]#6/scene/[asset MovieClip]#35288/scene/instance_mc_3008",
+            "kind": "object",
+            "updateMs": 13.699999988079071,
+            "rebuilds": 0,
+            "uploads": 1,
+            "uploadBytes": 21373352,
+            "draws": 132,
+            "triangles": 509214,
+            "vertexBytes": 21373352,
+            "changedBytes": 21373352
+          },
+          {
+            "id": 75,
+            "path": "[asset DisplayObjectContainer]#6/scene/[asset MovieClip]#35288/scene/instance_mc_3035/instance_mc_2652/instance_mc_2546/instance_mc_2473/instance_mc_2472/instance_mc_2471/instance_mc_2466",
+            "kind": "object",
+            "updateMs": 13.599999994039536,
+            "rebuilds": 0,
+            "uploads": 6,
+            "uploadBytes": 19702848,
+            "draws": 288,
+            "triangles": 80616,
+            "vertexBytes": 3283808,
+            "changedBytes": 19702848
+          },
+          {
+            "id": 48,
+            "path": "[asset DisplayObjectContainer]#6/scene/[asset MovieClip]#35288/scene/instance_mc_3008/instance_mc_2973",
+            "kind": "object",
+            "updateMs": 19.100000008940697,
+            "rebuilds": 0,
+            "uploads": 1,
+            "uploadBytes": 16423264,
+            "draws": 102,
+            "triangles": 409788,
+            "vertexBytes": 16423264,
+            "changedBytes": 16423264
+          },
+          {
+            "id": 90,
+            "path": "[asset DisplayObjectContainer]#6/scene/[asset MovieClip]#35288/scene/instance_mc_3035/instance_mc_2652/instance_mc_2546/instance_mc_934",
+            "kind": "object",
+            "updateMs": 11.299999982118607,
+            "rebuilds": 0,
+            "uploads": 26,
+            "uploadBytes": 14128048,
+            "draws": 828,
+            "triangles": 236328,
+            "vertexBytes": 9568768,
+            "changedBytes": 51645968
+          }
+        ]
+      },
+      {
+        "skipUnchanged": true,
+        "median": {
+          "syncMs": 19.049999997019768,
+          "renderMs": 637,
+          "batchUpdateMs": 16.100000001490116,
+          "gpuMs": null,
+          "draws": 1503,
+          "triangles": 1708442.5,
+          "uploadBytes": 22093210,
+          "blitPixels": 569172,
+          "sceneryCaches": 0,
+          "batchGroups": 144,
+          "frameWorkMs": 665,
+          "runtimeMs": 3.1500000059604645,
+          "adapterMs": 659.8500000014901,
+          "frameIntervalMs": 635.3999999910593
+        },
+        "groups": [
+          {
+            "id": 237,
+            "path": "[asset DisplayObjectContainer]#6/scene/[asset MovieClip]#35288/scene/instance_mc_3035/instance_mc_2652/instance_mc_2546/instance_mc_934",
+            "kind": "object",
+            "updateMs": 21.49999998509884,
+            "rebuilds": 3,
+            "uploads": 21,
+            "uploadBytes": 32926632,
+            "draws": 828,
+            "triangles": 236570,
+            "vertexBytes": 9632656,
+            "changedBytes": 25246320
+          },
+          {
+            "id": 220,
+            "path": "[asset DisplayObjectContainer]#6/scene/[asset MovieClip]#35288/scene/instance_mc_3035/instance_mc_2652/instance_mc_2546/instance_mc_2473/instance_mc_2472/instance_mc_2471/instance_mc_2466",
+            "kind": "object",
+            "updateMs": 13.699999988079071,
+            "rebuilds": 0,
+            "uploads": 6,
+            "uploadBytes": 19401096,
+            "draws": 288,
+            "triangles": 80616,
+            "vertexBytes": 3283808,
+            "changedBytes": 19401096
+          },
+          {
+            "id": 218,
+            "path": "[asset DisplayObjectContainer]#6/scene/[asset MovieClip]#35288/scene/instance_mc_3035/instance_mc_2652/instance_mc_2546/instance_mc_2473/instance_mc_2472/instance_mc_2471/instance_mc_2466/instance_mc_2449",
+            "kind": "object",
+            "updateMs": 12.700000017881393,
+            "rebuilds": 3,
+            "uploads": 15,
+            "uploadBytes": 17324892,
+            "draws": 906,
+            "triangles": 137104,
+            "vertexBytes": 5374600,
+            "changedBytes": 5459520
+          },
+          {
+            "id": 225,
+            "path": "[asset DisplayObjectContainer]#6/scene/[asset MovieClip]#35288/scene/instance_mc_3035/instance_mc_2652/instance_mc_2546/instance_mc_593/instance_mc_592",
+            "kind": "object",
+            "updateMs": 11.099999994039536,
+            "rebuilds": 3,
+            "uploads": 15,
+            "uploadBytes": 16135464,
+            "draws": 504,
+            "triangles": 125870,
+            "vertexBytes": 5061936,
+            "changedBytes": 10358568
+          },
+          {
+            "id": 240,
+            "path": "[asset DisplayObjectContainer]#6/scene/[asset MovieClip]#35288/scene/instance_mc_3035/instance_mc_2652/instance_mc_2559/instance_mc_2558",
+            "kind": "object",
+            "updateMs": 4.200000002980232,
+            "rebuilds": 0,
+            "uploads": 6,
+            "uploadBytes": 7683984,
+            "draws": 6,
+            "triangles": 29106,
+            "vertexBytes": 1280664,
+            "changedBytes": 7683984
+          }
+        ]
+      }
+    ]
+  },
+  "validation": {
+    "unit": "All packed input changes, buffer revisions, equal-valued replacement uniforms, and batch relocation checks passed.",
+    "directObjects": "Full browser suite passed, including pixel comparisons, changing geometry, text, masks, filters, caching, profiles and switch/failure cleanup.",
+    "displayList": "Full reference display-list browser suite passed."
+  },
+  "referenceWalkRegression": {
+    "before": {
+      "median": {
+        "syncMs": 41.70000000298023,
+        "renderMs": 12.899999991059303,
+        "batchUpdateMs": 1.800000011920929,
+        "gpuMs": null,
+        "draws": 1480,
+        "triangles": 1707481,
+        "uploadBytes": 1585056,
+        "blitPixels": 563611,
+        "sceneryCaches": 0,
+        "batchGroups": 137,
+        "unchangedUpdates": 0,
+        "packedUpdates": 22,
+        "frameWorkMs": null,
+        "runtimeMs": null,
+        "adapterMs": 56.20000000298023,
+        "frameIntervalMs": null
+      },
+      "groups": [
+        {
+          "id": 895,
+          "path": "[asset DisplayObjectContainer]#6/scene/sparse-upload-regression",
+          "kind": "object",
+          "updateMs": 2.4000000208616257,
+          "rebuilds": 0,
+          "uploads": 3,
+          "uploadBytes": 4755168,
+          "draws": 3,
+          "triangles": 18012,
+          "vertexBytes": 1585056,
+          "changedBytes": 4755168,
+          "unchangedUpdates": 0,
+          "packedUpdates": 66
+        }
+      ],
+      "glError": 0
+    },
+    "after": {
+      "median": {
+        "syncMs": 37.8999999910593,
+        "renderMs": 6.700000002980232,
+        "batchUpdateMs": 0.7000000029802322,
+        "gpuMs": null,
+        "draws": 1480,
+        "triangles": 1707479,
+        "uploadBytes": 1056,
+        "blitPixels": 563611,
+        "sceneryCaches": 0,
+        "batchGroups": 137,
+        "unchangedUpdates": 20,
+        "packedUpdates": 2,
+        "frameWorkMs": null,
+        "runtimeMs": null,
+        "adapterMs": 44.8999999910593,
+        "frameIntervalMs": null
+      },
+      "groups": [
+        {
+          "id": 1033,
+          "path": "[asset DisplayObjectContainer]#6/scene/sparse-upload-regression",
+          "kind": "object",
+          "updateMs": 0.29999998211860657,
+          "rebuilds": 0,
+          "uploads": 6,
+          "uploadBytes": 3168,
+          "draws": 3,
+          "triangles": 18012,
+          "vertexBytes": 1585056,
+          "changedBytes": 4755168,
+          "unchangedUpdates": 60,
+          "packedUpdates": 6
+        }
+      ],
+      "glError": 0
+    },
+    "pixelDelta": 0
+  }
+}

@@ -1,0 +1,148 @@
+{
+  "scenario": "Paused offline Battleon vectors, 1100x630, moving marker forces each draw; scenery cache enabled",
+  "renderer": "Headless Chrome / SwiftShader (software GPU), not Brave hardware FPS",
+  "completion": "One-pixel readPixels forces GPU completion. First measured frame excluded from medians to omit first-draw compilation.",
+  "results": {
+    "pixi-unbatched": {
+      "drawCalls": 5151,
+      "medianSubmitMs": 543,
+      "medianCompleteMs": 799.4,
+      "samples": [
+        {
+          "submit": 624.1000000014901,
+          "total": 998.7000000029802,
+          "draws": 5151
+        },
+        {
+          "submit": 571.6000000014901,
+          "total": 819.4000000059605,
+          "draws": 5151
+        },
+        {
+          "submit": 542.1000000014901,
+          "total": 798,
+          "draws": 5151
+        },
+        {
+          "submit": 555.2999999970198,
+          "total": 821.8999999985099,
+          "draws": 5151
+        },
+        {
+          "submit": 543,
+          "total": 790.3999999985099,
+          "draws": 5151
+        },
+        {
+          "submit": 541.2999999970198,
+          "total": 799.3999999985099,
+          "draws": 5151
+        },
+        {
+          "submit": 519.2999999970198,
+          "total": 778.5,
+          "draws": 5151
+        },
+        {
+          "submit": 581,
+          "total": 846.1999999955297,
+          "draws": 5151
+        }
+      ]
+    },
+    "pixi": {
+      "drawCalls": 1355,
+      "medianSubmitMs": 50.4,
+      "medianCompleteMs": 770.5,
+      "samples": [
+        {
+          "submit": 1617.5,
+          "total": 2972.89999999851,
+          "draws": 1355
+        },
+        {
+          "submit": 45.70000000298023,
+          "total": 804.6000000014901,
+          "draws": 1355
+        },
+        {
+          "submit": 63.20000000298023,
+          "total": 766.3999999985099,
+          "draws": 1355
+        },
+        {
+          "submit": 50.29999999701977,
+          "total": 791.7999999970198,
+          "draws": 1355
+        },
+        {
+          "submit": 46.600000001490116,
+          "total": 770.5,
+          "draws": 1355
+        },
+        {
+          "submit": 50.399999998509884,
+          "total": 812.8999999985099,
+          "draws": 1355
+        },
+        {
+          "submit": 54.20000000298023,
+          "total": 769,
+          "draws": 1355
+        },
+        {
+          "submit": 69.10000000149012,
+          "total": 762.2999999970198,
+          "draws": 1355
+        }
+      ]
+    },
+    "away": {
+      "drawCalls": 9368,
+      "medianSubmitMs": 527.9,
+      "medianCompleteMs": 527.9,
+      "samples": [
+        {
+          "submit": 532.5,
+          "total": 532.6999999955297,
+          "draws": 9368
+        },
+        {
+          "submit": 518.5,
+          "total": 518.5999999940395,
+          "draws": 9368
+        },
+        {
+          "submit": 527.8999999985099,
+          "total": 527.8999999985099,
+          "draws": 9368
+        },
+        {
+          "submit": 534.2000000029802,
+          "total": 534.2000000029802,
+          "draws": 9368
+        },
+        {
+          "submit": 533.8999999985099,
+          "total": 533.8999999985099,
+          "draws": 9368
+        },
+        {
+          "submit": 693.8999999985099,
+          "total": 694,
+          "draws": 9368
+        },
+        {
+          "submit": 458.19999999552965,
+          "total": 458.19999999552965,
+          "draws": 9368
+        },
+        {
+          "submit": 499.69999999552965,
+          "total": 499.79999999701977,
+          "draws": 9368
+        }
+      ]
+    }
+  }
+}

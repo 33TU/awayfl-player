@@ -1,0 +1,179 @@
+{
+  "description": "Offline direct-object fixture. Retained content compared against forced full preparation at the same state; no live FPS claim.",
+  "translation": {
+    "cases": [
+      {
+        "name": "translate",
+        "maxDelta": 0,
+        "retainedPrepared": 3,
+        "forcedPrepared": 70,
+        "retainedContents": 3,
+        "preparedContents": 0,
+        "forcedContents": 67
+      },
+      {
+        "name": "fractional",
+        "maxDelta": 0,
+        "retainedPrepared": 3,
+        "forcedPrepared": 70,
+        "retainedContents": 3,
+        "preparedContents": 0,
+        "forcedContents": 67
+      },
+      {
+        "name": "scale",
+        "maxDelta": 0,
+        "retainedPrepared": 70,
+        "forcedPrepared": 70,
+        "retainedContents": 2,
+        "preparedContents": 67,
+        "forcedContents": 67
+      },
+      {
+        "name": "rotate",
+        "maxDelta": 0,
+        "retainedPrepared": 70,
+        "forcedPrepared": 70,
+        "retainedContents": 2,
+        "preparedContents": 67,
+        "forcedContents": 67
+      },
+      {
+        "name": "color",
+        "maxDelta": 0,
+        "retainedPrepared": 70,
+        "forcedPrepared": 70,
+        "retainedContents": 2,
+        "preparedContents": 67,
+        "forcedContents": 67
+      },
+      {
+        "name": "child-geometry-and-translation",
+        "maxDelta": 0,
+        "retainedPrepared": 4,
+        "forcedPrepared": 70,
+        "retainedContents": 3,
+        "preparedContents": 1,
+        "forcedContents": 67
+      },
+      {
+        "name": "child-color",
+        "maxDelta": 0,
+        "retainedPrepared": 4,
+        "forcedPrepared": 70,
+        "retainedContents": 3,
+        "preparedContents": 1,
+        "forcedContents": 67
+      },
+      {
+        "name": "child-text",
+        "maxDelta": 0,
+        "retainedPrepared": 6,
+        "forcedPrepared": 70,
+        "retainedContents": 3,
+        "preparedContents": 2,
+        "forcedContents": 67
+      },
+      {
+        "name": "parent-geometry",
+        "maxDelta": 0,
+        "retainedPrepared": 71,
+        "forcedPrepared": 70,
+        "retainedContents": 2,
+        "preparedContents": 68,
+        "forcedContents": 67
+      },
+      {
+        "name": "child-remove",
+        "maxDelta": 0,
+        "retainedPrepared": 3,
+        "forcedPrepared": 69,
+        "retainedContents": 2,
+        "preparedContents": 1,
+        "forcedContents": 66
+      },
+      {
+        "name": "child-reattach",
+        "maxDelta": 0,
+        "retainedPrepared": 4,
+        "forcedPrepared": 70,
+        "retainedContents": 2,
+        "preparedContents": 2,
+        "forcedContents": 67
+      },
+      {
+        "name": "mask-and-translation",
+        "maxDelta": 0,
+        "retainedPrepared": 4,
+        "forcedPrepared": 70,
+        "retainedContents": 4,
+        "preparedContents": 0,
+        "forcedContents": 67
+      },
+      {
+        "name": "hide",
+        "maxDelta": 0,
+        "retainedPrepared": 3,
+        "forcedPrepared": 3,
+        "retainedContents": 2,
+        "preparedContents": 0,
+        "forcedContents": 0
+      },
+      {
+        "name": "show",
+        "maxDelta": 0,
+        "retainedPrepared": 70,
+        "forcedPrepared": 70,
+        "retainedContents": 2,
+        "preparedContents": 67,
+        "forcedContents": 67
+      }
+    ],
+    "translationReuses": 126
+  },
+  "direct": {
+    "retired": true,
+    "readopted": true,
+    "created": true,
+    "immediate": [
+      123,
+      45,
+      2
+    ],
+    "reordered": true,
+    "reparented": true,
+    "removed": true,
+    "retained": true,
+    "visibility": true,
+    "stable": true,
+    "idlePrepared": 0,
+    "totalNodes": 182,
+    "changedPrepared": 4,
+    "skipped": 7,
+    "polled": 0
+  },
+  "referenceBackend": {
+    "mode": "display-list",
+    "geometryReused": true,
+    "texturesReused": true,
+    "completedChecks": [
+      "login",
+      "mouseAndKeyboard",
+      "avatarShadow",
+      "pixels",
+      "textOutline",
+      "effectCache",
+      "resize",
+      "stop",
+      "restart",
+      "battleon",
+      "blendResolve",
+      "filterUpdates",
+      "sparseUploads",
+      "changingTopology",
+      "animatedFilters",
+      "profile",
+      "failure"
+    ]
+  }
+}

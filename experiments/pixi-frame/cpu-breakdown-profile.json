@@ -1,0 +1,54 @@
+{
+  "scope": "Opt-in exclusive CPU phase measurement, no rendering optimization claimed.",
+  "fixture": "Offline Battleon fixture, direct-objects, 900x760 browser viewport, SwiftShader; six manually driven native ticks, scenery caching disabled.",
+  "limits": [
+    "Software GPU timings are not a hardware performance benchmark.",
+    "Manual tick intervals are not normal requestAnimationFrame cadence.",
+    "Profiling adds clock and callback overhead; section clocks are disabled outside profile()."
+  ],
+  "result": {
+    "reason": "complete",
+    "ticks": 6,
+    "cpu": {
+      "basis": "native-ticks",
+      "median": {
+        "inputMs": 0,
+        "timelineMs": 2.600000001490116,
+        "runtimeBindingsMs": 0.6500000208616257,
+        "runtimeOtherMs": 0.10000000149011612,
+        "syncSetupMs": 0.05000000447034836,
+        "syncVisitMs": 30.149999991059303,
+        "syncMasksMs": 0.5499999970197678,
+        "syncRetireMs": 0,
+        "syncSceneryMs": 0,
+        "syncBindingsMs": 0,
+        "pixiRenderMs": 112,
+        "adapterCleanupMs": 0.6499999910593033,
+        "adapterOtherMs": 0.10000000149011612
+      },
+      "p95": {
+        "inputMs": 0,
+        "timelineMs": 11.899999991059303,
+        "runtimeBindingsMs": 1.3999999910593033,
+        "runtimeOtherMs": 0.10000000894069672,
+        "syncSetupMs": 0.10000000894069672,
+        "syncVisitMs": 87.09999999403954,
+        "syncMasksMs": 2.1000000089406967,
+        "syncRetireMs": 0.20000000298023224,
+        "syncSceneryMs": 0,
+        "syncBindingsMs": 0.09999999403953552,
+        "pixiRenderMs": 1496,
+        "adapterCleanupMs": 2.5,
+        "adapterOtherMs": 0.29999998211860657
+      }
+    },
+    "maxPartitionErrorMs": 0.20000000298023224
+  },
+  "validation": [
+    "Deterministic exclusive nested binding attribution",
+    "Reused canvas ticks included",
+    "Manual adapter calls have no native runtime attribution",
+    "Exceptions/cancellation restore instrumentation",
+    "Existing external replacements preserved"
+  ]
+}

@@ -1,0 +1,33 @@
+{
+  "environment": "Headless Chrome, SwiftShader software GPU, offline Battleon vector fixture at 900x515. No authentication or server connection.",
+  "workload": "Paused scene with one child removed and replaced on each of three profiled frames. Initial allocation excluded, scenery caching disabled, partial uploads enabled in both modes. A final full-frame pixel comparison checks grouped against ungrouped rendering.",
+  "limits": "CPU timings include submission and driver waits, not completed GPU time. This is not a gameplay FPS benchmark. Render groups can introduce minor floating-point/antialiasing differences.",
+  "result": {
+    "grouped": {
+      "syncMs": 0.3999999910593033,
+      "renderMs": 5,
+      "batchUpdateMs": 0.5,
+      "gpuMs": null,
+      "draws": 1447,
+      "triangles": 1701298,
+      "uploadBytes": 157140,
+      "blitPixels": 563986,
+      "sceneryCaches": 0,
+      "batchGroups": 98
+    },
+    "ungrouped": {
+      "syncMs": 0.800000011920929,
+      "renderMs": 810.6999999880791,
+      "batchUpdateMs": 274.8999999910593,
+      "gpuMs": null,
+      "draws": 1338,
+      "triangles": 1701300,
+      "uploadBytes": 413370536,
+      "blitPixels": 563067,
+      "sceneryCaches": 0,
+      "batchGroups": 0
+    },
+    "meanError": 0.000709816612729234,
+    "changedPercent": 0.001941747572815534
+  }
+}

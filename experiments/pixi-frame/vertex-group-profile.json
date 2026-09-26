@@ -1,0 +1,68 @@
+{
+  "scope": "Offline Battleon fixture plus three static clusters of 12 shapes, each containing 200 small rectangles; a tiny sibling is replaced on each of three sampled frames. Same paused scene, WebGL SwiftShader, 900x515, scenery caching disabled. Before uses the previous shape-count partition; after also partitions branching subtrees with at least 12000 ungrouped vertices. CPU submission timings include instrumentation and driver waits, and are not hardware gameplay FPS.",
+  "comparison": {
+    "before": {
+      "syncMs": 1.1000000089406967,
+      "renderMs": 12.5,
+      "batchUpdateMs": 3,
+      "gpuMs": null,
+      "draws": 1447,
+      "triangles": 1715686,
+      "uploadBytes": 4105224,
+      "blitPixels": 564078,
+      "sceneryCaches": 0,
+      "batchGroups": 98
+    },
+    "after": {
+      "syncMs": 0.7000000029802322,
+      "renderMs": 5,
+      "batchUpdateMs": 0.800000011920929,
+      "gpuMs": null,
+      "draws": 1484,
+      "triangles": 1715686,
+      "uploadBytes": 127980,
+      "blitPixels": 564247,
+      "sceneryCaches": 0,
+      "batchGroups": 139
+    },
+    "pixelDelta": 6,
+    "meanError": 2.876663070837828e-05,
+    "changedPercent": 0
+  },
+  "profileAttribution": {
+    "groupUploads": 1584,
+    "frameUploads": 1584,
+    "groupUpdateMs": 0.8999999910593033,
+    "frameBatchUpdateMs": 0.8999999910593033
+  },
+  "fullSuiteComparison": {
+    "before": {
+      "syncMs": 24.5,
+      "renderMs": 6,
+      "batchUpdateMs": 1.5999999940395355,
+      "gpuMs": null,
+      "draws": 1447,
+      "triangles": 1715879,
+      "uploadBytes": 4135032,
+      "blitPixels": 563442,
+      "sceneryCaches": 0,
+      "batchGroups": 98
+    },
+    "after": {
+      "syncMs": 27.299999997019768,
+      "renderMs": 6,
+      "batchUpdateMs": 0.7000000029802322,
+      "gpuMs": null,
+      "draws": 1484,
+      "triangles": 1715881,
+      "uploadBytes": 157140,
+      "blitPixels": 563611,
+      "sceneryCaches": 0,
+      "batchGroups": 139
+    },
+    "pixelDelta": 6,
+    "meanError": 2.732829917295937e-05,
+    "changedPercent": 0
+  },
+  "limits": "Both comparisons reduce batch work and uploads. Overall render submission time varies and does not consistently improve in these short software-GPU samples; no gameplay FPS gain is claimed."
+}

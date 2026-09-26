@@ -56,3 +56,10 @@ await build({
   target: "es2022",
   outfile: outdir + "check-filter-browser.js",
 });
+await build({
+  entryPoints: ["check-bitmap-draw-browser.mjs"],
+  bundle: true,
+  format: "esm",
+  target: "es2022",
+  outfile: outdir + "check-bitmap-draw-browser.js",
+});

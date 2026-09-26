@@ -24,7 +24,7 @@ ws.onmessage = ({ data }) => {
       .map((a) => a.value ?? a.description)
       .join(" ");
     if (
-      message.includes("[Pixi display list]") ||
+      message.includes("[Pixi display list]") || message.includes("[Pixi live]") ||
       message.includes("Could not initialize shader") ||
       message.includes("gl.getProgramInfoLog") ||
       (message.includes("textureSource") && message.includes("destroyed"))
@@ -57,6 +57,12 @@ async function until(expression) {
   }
   throw Error("Timeout: " + expression);
 }
+const directObjects = process.env.PIXI_BACKEND === "direct-objects";
+const idleHoverHz = Number(process.env.PIXI_IDLE_HOVER_HZ || 0);
+const pixiPickBounds = process.env.PIXI_PICK_BOUNDS === '1';
+const pixiEvents = process.env.PIXI_EVENTS === '1';
+const nativeGraphics = process.env.PIXI_NATIVE_GRAPHICS === '1';
+const catchUp = process.env.PIXI_CATCH_UP === '1';
 const report = {};
 try {
   await send("Runtime.enable");
@@ -68,7 +74,7 @@ try {
     mobile: false,
   });
   await send("Page.navigate", {
-    url: "https://localhost:4433/game/gamefiles/pixi-benchmark/play.html?autostart=0&renderScale=0&backend=display-list",
+    url: `https://localhost:4433/game/gamefiles/pixi-benchmark/play.html?autostart=0&renderScale=0&backend=${directObjects ? "direct-objects" : "display-list"}&idleHoverHz=${idleHoverHz}&pixiPickBounds=${+pixiPickBounds}&pixiEvents=${+pixiEvents}&nativeGraphics=${+nativeGraphics}&catchUp=${+catchUp}`,
   });
   await until(
     '!!window.pixiLiveControls?.player?.root?._children.find(n=>n.name==="scene")?.adapter?.$BgmcLogin',
@@ -76,6 +82,7 @@ try {
   report.login = await evaluate(`(async()=>{
     const p=pixiLiveControls.player;p.isPaused=true;
     window.originalRootRender=p._renderer.render;
+    window.originalObjectHooks=[p.root._invalidateHierarchicalProperty,p.root._setParent,p.root.addChildAt,p.root.invalidate,p.root._invalidateStyle,p.root._invalidateMaterial,p.root.invalidateElements];
     p._renderer.render=()=>{throw Error('AwayFL root renderer called by direct display list')};
     await pixiLiveControls.enable();
     for(let i=0;i<5;i++)p._renderer.render();
@@ -83,9 +90,85 @@ try {
     for(let i=0;i<5;i++)p._renderer.render();
     return {stats:structuredClone(pixiLive.stats),geometryReused:builds===pixiLive.stats.geometryBuilds,texturesReused:uploads===pixiLive.stats.textureUploads,uniformsReused:uniforms===pixiLive.stats.uniformUpdates};
   })()`);
+  if (directObjects) assert.equal(report.login.stats.retainedHover, true);
+  if (catchUp) assert.equal(report.login.stats.configuration.catchUp, true);
+  if (pixiEvents) assert.equal(report.login.stats.configuration.pixiEvents, true);
+  report.nullFilter = await evaluate(`(()=>{
+    const p=pixiLiveControls.player,node=p.root._children.find(n=>n.name==='scene'),old=node.filters;
+    try {
+      node.filters=[null];
+      p._renderer.render();
+      return node.filters?.length===1 && pixiLive.stats.lastError===null;
+    } finally { node.filters=old; p._renderer.render(); }
+  })()`);
+  assert.equal(report.nullFilter,true,"null Flash filter slots must not pause Pixi rendering");
+  if (directObjects) {
+    report.directObjects = await evaluate(`(()=>{
+      const p=pixiLiveControls.player,g=p.root._children.find(n=>n.name==='scene').adapter,s=g.sec;
+      const parent=s.flash.display.Sprite.axClass.axConstruct([]),other=s.flash.display.Sprite.axClass.axConstruct([]);
+      const a=s.flash.display.Sprite.axClass.axConstruct([]),b=s.flash.display.Sprite.axClass.axConstruct([]);
+      g.$BgaddChild(parent);g.$BgaddChild(other);parent.$BgaddChild(a);parent.$BgaddChild(b);
+      const pa=pixiLive.getDisplayObject(a),pb=pixiLive.getDisplayObject(b);
+      const created=!!pa&&!!pb;
+      a.$Bgx=123;a.$Bgy=45;a.$BgscaleX=2;
+      const immediate=[pa.position.x,pa.position.y,pa.scale.x];
+      parent.$BgsetChildIndex(a,1);
+      const reordered=pa.parent.children[1]===pa;
+      other.$BgaddChild(a);const reparented=pa.parent!==pb.parent;
+      other.$BgremoveChild(a);const removed=pa.parent===null;
+      parent.$BgaddChild(a);const retained=pixiLive.getDisplayObject(a)===pa;
+      a.$Bgvisible=false;const visibility=pa.visible===false;a.$Bgvisible=true;
+      p._renderer.render();const before=pixiLive.stats.directTransformUpdates;
+      for(let i=0;i<4;i++)p._renderer.render();
+      const stable=before===pixiLive.stats.directTransformUpdates;
+      const idlePrepared=pixiLive.stats.preparedNodes;
+      const totalNodes=pixiLive.stats.nodes;
+      a.$Bgx=124;p._renderer.render();
+      const changedPrepared=pixiLive.stats.preparedNodes,skipped=pixiLive.stats.skippedSubtrees;
+      g.$BgremoveChild(parent);g.$BgremoveChild(other);
+      for(let i=0;i<5;i++)p._renderer.render();
+      const retired=!pixiLive.getDisplayObject(a)&&pa.destroyed;
+      g.$BgaddChild(parent);p._renderer.render();
+      const readopted=!!pixiLive.getDisplayObject(a)&&pixiLive.getDisplayObject(a)!==pa;
+      g.$BgremoveChild(parent);
+      return {retired,readopted,created,immediate,reordered,reparented,removed,retained,visibility,stable,idlePrepared,totalNodes,changedPrepared,skipped,polled:pixiLive.stats.polledTransforms};
+    })()`);
+    assert.deepEqual(report.directObjects.immediate,[123,45,2]);
+    for(const key of ['created','reordered','reparented','removed','retained','visibility','stable','retired','readopted'])
+      assert.equal(report.directObjects[key],true,key);
+    assert.equal(report.directObjects.polled,0);
+    assert.equal(report.directObjects.idlePrepared,0,"idle frames skip all preparation");
+    assert.ok(report.directObjects.changedPrepared>0);
+    assert.ok(report.directObjects.changedPrepared<report.directObjects.totalNodes/2,"local changes skip unrelated branches");
+    assert.ok(report.directObjects.skipped>0);
+    report.maskUpdates = await evaluate(`(async()=>{
+      const {checkMaskUpdates}=await import('./check-filter-browser.js?v='+Date.now());
+      return checkMaskUpdates(pixiLiveControls.player,pixiLive);
+    })()`);
+    assert.ok(report.maskUpdates.localMaskUpdates>0);
+    report.colorUpdates = await evaluate(`(async()=>{
+      const {checkColorUpdates}=await import('./check-filter-browser.js?v='+Date.now());
+      return checkColorUpdates(pixiLiveControls.player,pixiLive);
+    })()`);
+    assert.ok(report.colorUpdates.unchangedColorUpdates>=4);
+    report.translationReuse = await evaluate(`(async()=>{
+      const {checkTranslationReuse}=await import('./check-filter-browser.js?v='+Date.now());
+      return checkTranslationReuse(pixiLiveControls.player,pixiLive);
+    })()`);
+    for(const c of report.translationReuse.cases){
+      if(['child-color','child-text','child-remove','child-reattach'].includes(c.name)) {
+        assert.ok(c.retainedContents>0,c.name+' retains ancestor content');
+        assert.ok(c.preparedContents<c.forcedContents,c.name+' prepares less content');
+      }
+      assert.equal(c.maxDelta,0,c.name);
+      if(['translate','fractional'].includes(c.name))assert.ok(c.retainedPrepared<c.forcedPrepared/2,c.name+' skips descendants');
+      if(['scale','rotate','color'].includes(c.name))assert.ok(c.retainedPrepared>=64,c.name+' updates descendants');
+    }
+
+  }
   assert.equal(report.login.stats.active, true);
   assert.equal(report.login.stats.lastError, null);
-  assert.equal(report.login.stats.mode, "display-list");
+  assert.equal(report.login.stats.mode, directObjects ? "direct-objects" : "display-list");
   assert.ok(report.login.stats.meshes > 100);
   assert.equal(report.login.geometryReused, true);
   assert.equal(report.login.texturesReused, true);
@@ -129,6 +212,28 @@ try {
   );
   report.mouseAndKeyboard = "passed";
   await evaluate("pixiLiveControls.player.isPaused=true");
+  report.clearedFocus = await evaluate(`(()=>{
+    const manager=pixiLiveControls.player._mouseManager,previous=manager._focusNode;
+    manager._focusNode={_asset:null,get container(){throw Error('cleared focus asset was read')}};
+    try { manager.setFocus(null); return manager._focusNode===null; }
+    finally { manager._focusNode=previous; }
+  })()`);
+  assert.equal(report.clearedFocus,true,"cleared focus nodes must not be dereferenced");
+  if (idleHoverHz) {
+    report.idleHover = await evaluate(`(async()=>{
+      const p=pixiLiveControls.player,m=p._mouseManager,s=pixiLive.stats;
+      if(s.idleHoverHz!==${idleHoverHz})throw Error('Hover option not enabled');
+      const skipped=s.hoverSkips;
+      for(let i=0;i<8;i++)m.fireMouseEvents(p._mousePicker);
+      const idleSkips=s.hoverSkips-skipped;
+      await new Promise(r=>setTimeout(r,1000/${idleHoverHz}+5));
+      const checked=s.hoverChecks;
+      m.fireMouseEvents(p._mousePicker);
+      return {hz:s.idleHoverHz,idleSkips,periodicCheck:s.hoverChecks===checked+1};
+    })()`);
+    assert.ok(report.idleHover.idleSkips>=7);
+    assert.equal(report.idleHover.periodicCheck,true,'stationary hover still checks animated targets');
+  }
   // Use the actual avatar shadow: a thin ellipse with a broad one-pass blur.
   // At large scale, widely spaced Gaussian samples used to form repeated ovals.
   report.avatarShadow = await evaluate(`(()=>{
@@ -408,8 +513,12 @@ try {
     const p=pixiLiveControls.player,{g,parent}=testDisplayObjects,s=g.sec;
     const marker=s.flash.display.Sprite.axClass.axConstruct([]);g.$BgaddChild(marker);
     marker.$Bggraphics.$BgbeginFill(0xffffff);marker.$Bggraphics.$BgdrawRect(0,0,4,4);marker.$Bggraphics.$BgendFill();
-    const expected=countOutline(),before={...pixiLive.stats};let stable=true;
-    for(let i=0;i<6;i++){marker.$Bgx=i+1;stable &&= JSON.stringify(countOutline())===JSON.stringify(expected);}
+    const expected=countOutline();
+    // Retained effects warm up on actual draws. Idle direct-object frames may
+    // reuse the whole canvas, so move the unrelated marker to force a draw.
+    marker.$Bgx=-1;countOutline();marker.$Bgx=0;countOutline();
+    const before={...pixiLive.stats};let stable=true,skipped=0;
+    for(let i=0;i<6;i++){marker.$Bgx=i+1;stable &&= JSON.stringify(countOutline())===JSON.stringify(expected);skipped+=pixiLive.stats.skippedSubtrees;}
     const hits=pixiLive.stats.effectCacheHits-before.effectCacheHits,builds=pixiLive.stats.effectCacheBuilds-before.effectCacheBuilds;
     parent.$Bgalpha=.5;const faded=countOutline();parent.$Bgalpha=1;const restored=countOutline();
     // A fractional ancestor move can change rasterization without changing the
@@ -418,11 +527,11 @@ try {
     countOutline();const transformBefore=pixiLive.stats.effectPasses;
     holder.$Bgx=.1;countOutline();const transformBuilds=pixiLive.stats.effectPasses-transformBefore;
     g.$BgaddChild(parent);g.$BgremoveChild(holder);g.$BgremoveChild(marker);countOutline();
-    return {stable,hits,builds,faded,restored,expected,transformBuilds,pixels:pixiLive.stats.effectCachePixels};
+    return {stable,skipped,hits,builds,faded,restored,expected,transformBuilds,pixels:pixiLive.stats.effectCachePixels};
   })()`);
   assert.equal(report.effectCache.stable, true);
   assert.ok(
-    report.effectCache.hits >= 6,
+    (directObjects ? report.effectCache.skipped : report.effectCache.hits) >= 6,
     "unrelated changes reuse filter results",
   );
   assert.equal(
@@ -444,6 +553,55 @@ try {
     report.effectCache.pixels <= 16 * 1024 * 1024,
     "retained effect memory is bounded",
   );
+  if (directObjects) {
+    report.scenery = await evaluate(`(()=>{
+      const p=pixiLiveControls.player,{g}=testDisplayObjects,s=g.sec;
+      const scenery=s.flash.display.Sprite.axClass.axConstruct([]);g.$BgaddChild(scenery);
+      scenery.$Bgx=500;scenery.$Bgy=180;
+      let first;
+      for(let i=0;i<80;i++) {
+        const child=s.flash.display.Sprite.axClass.axConstruct([]);scenery.$BgaddChild(child);
+        child.$Bgx=(i%10)*12;child.$Bgy=Math.floor(i/10)*12;
+        child.$Bggraphics.$BgbeginFill(0xff0000);child.$Bggraphics.$BgdrawRect(0,0,10,10);child.$Bggraphics.$BgendFill();
+        first ||= child;
+      }
+      const native=pixiLive.getDisplayObject(scenery),content=native.children[0];
+      const sample=()=>{p._renderer.render();return Array.from(outlinePixel(505,185,readOutlineFrame()));};
+      const before=sample();
+      // Flash may invalidate unchanged timeline objects every tick. These must
+      // not restart cache warmup or discard an already captured picture.
+      function invalidateUnchanged(){scenery.adaptee.invalidate();scenery.adaptee._invalidateHierarchicalProperty(255);}
+      for(let i=0;i<26;i++){invalidateUnchanged();p._renderer.render();}
+      const cached=content.isCachedAsTexture,after=sample(),builds=pixiLive.stats.sceneryBuilds;
+      const draws=pixiLive.stats.drawnFrames;
+      for(let i=0;i<30;i++){invalidateUnchanged();p._renderer.render();}
+      const invalidationReused=content.isCachedAsTexture&&pixiLive.stats.sceneryBuilds===builds&&pixiLive.stats.drawnFrames===draws;
+      // An unrelated moving object forces draws while this texture stays retained.
+      const marker=s.flash.display.Sprite.axClass.axConstruct([]);g.$BgaddChild(marker);
+      for(let i=0;i<5;i++){marker.$Bgx=i;sample();}
+      const reused=pixiLive.stats.sceneryBuilds===builds;
+      first.$Bggraphics.$Bgclear();first.$Bggraphics.$BgbeginFill(0x00ff00);
+      first.$Bggraphics.$BgdrawRect(0,0,10,10);first.$Bggraphics.$BgendFill();
+      const edited=sample(),invalidated=!content.isCachedAsTexture;
+      for(let i=0;i<26;i++)p._renderer.render();
+      const recached=content.isCachedAsTexture;
+      g.$Bgvisible=false;sample();const hiddenReleased=!content.isCachedAsTexture;
+      g.$Bgvisible=true;for(let i=0;i<26;i++)p._renderer.render();
+      scenery.$BgscaleX=2;sample();const resized=!content.isCachedAsTexture;
+      for(let i=0;i<26;i++)p._renderer.render();
+      const oldScale=g.$BgscaleX;g.$BgscaleX=oldScale*1.1;sample();
+      const ancestorResized=!content.isCachedAsTexture;g.$BgscaleX=oldScale;
+      g.$BgremoveChild(scenery);g.$BgremoveChild(marker);
+      for(let i=0;i<5;i++)p._renderer.render();
+      return {before,after,cached,reused,invalidationReused,edited,invalidated,recached,hiddenReleased,resized,ancestorResized,retired:content.destroyed,pixels:pixiLive.stats.sceneryPixels};
+    })()`);
+    assert.deepEqual(report.scenery.before,[255,0,0,255]);
+    assert.deepEqual(report.scenery.after,report.scenery.before);
+    assert.deepEqual(report.scenery.edited,[0,255,0,255]);
+    for(const name of ['cached','reused','invalidationReused','invalidated','recached','hiddenReleased','resized','ancestorResized','retired'])
+      assert.equal(report.scenery[name],true,name);
+    assert.ok(report.scenery.pixels<=8*1024*1024);
+  }
   await send("Emulation.setDeviceMetricsOverride", {
     width: 1800,
     height: 1000,
@@ -461,8 +619,10 @@ try {
   report.stop =
     await evaluate(`(()=>{const p=pixiLiveControls.player;pixiLiveControls.stop();const restored=p._renderer.render!==originalRootRender;p._renderer.render=originalRootRender;
     const {g,parent,mask}=testDisplayObjects;g.$BgremoveChild(parent);g.$BgremoveChild(mask);for(const c of g.adaptee._children)c.visible=true;
-    p._renderer.render();return {canvasRemoved:!p._view.stage.context._gl.canvas.ownerDocument.querySelector('[data-pixi-display-list]'),restored,active:pixiLive.stats.active,cachePixels:pixiLive.stats.effectCachePixels};})()`);
+    p._renderer.render();return {canvasRemoved:!p._view.stage.context._gl.canvas.ownerDocument.querySelector('[data-pixi-display-list]'),restored,active:pixiLive.stats.active,cachePixels:pixiLive.stats.effectCachePixels,hooksRestored:[p.root._invalidateHierarchicalProperty,p.root._setParent,p.root.addChildAt,p.root.invalidate,p.root._invalidateStyle,p.root._invalidateMaterial,p.root.invalidateElements].every((f,i)=>f===originalObjectHooks[i]),ownershipReleased:!pixiLive.getDisplayObject(p.root)};})()`);
   assert.equal(report.stop.canvasRemoved, true);
+  assert.equal(report.stop.hooksRestored, true);
+  assert.equal(report.stop.ownershipReleased, true);
   assert.equal(report.stop.active, false);
   assert.equal(report.stop.restored, true);
   assert.equal(
@@ -489,14 +649,328 @@ try {
     const fixture=await pixiLiveControls.loadFixture();p.isPaused=true;
     for(let i=0;i<4;i++)p._renderer.render();const gpuReported=pixiLive.stats.unsupported['gpu-bitmap'];
     const map=fixture.map.adaptee;map._children[0].visible=true;map._children[1].visible=false;
-    for(let i=0;i<4;i++)p._renderer.render();
+    for(let i=0;i<30;i++)p._renderer.render();
     return {gpuReported,stats:structuredClone(pixiLive.stats)};
   })()`);
   assert.ok(report.battleon.gpuReported > 0);
   assert.equal(report.battleon.stats.active, true);
   assert.equal(report.battleon.stats.lastError, null);
   assert.ok(report.battleon.stats.meshes > 1000);
+  if (directObjects) {
+    report.sceneryComparison = await evaluate(`(async()=>{
+      const p=pixiLiveControls.player,g=p.root._children.find(n=>n.name==='scene').adapter;
+      const marker=g.sec.flash.display.Sprite.axClass.axConstruct([]);g.$BgaddChild(marker);
+      let lastDraws=0;
+      function pixels(){
+        // Read in the same task as a real draw: WebGL does not preserve the
+        // drawing buffer after browser presentation. Leave cached map branches alone.
+        const canvas=p._view.stage.context._gl.canvas.ownerDocument.querySelector('[data-pixi-display-list]');
+        const gl=canvas.getContext('webgl2')||canvas.getContext('webgl');
+        const hooks={};lastDraws=0;
+        for(const name of ['drawElements','drawArrays','drawElementsInstanced','drawArraysInstanced']) {
+          hooks[name]=gl[name];gl[name]=function(...args){lastDraws++;return hooks[name].apply(this,args)};
+        }
+        try { marker.$Bgx++;p._renderer.render(); }
+        finally { for(const [name,fn] of Object.entries(hooks))gl[name]=fn; }
+        const data=new Uint8Array(canvas.width*canvas.height*4);
+        gl.readPixels(0,0,canvas.width,canvas.height,gl.RGBA,gl.UNSIGNED_BYTE,data);return data;
+      }
+      const cached=pixels(),groups=pixiLive.stats.sceneryCaches,meshes=pixiLive.stats.sceneryMeshesCached;
+      pixiLiveControls.stop();await pixiLiveControls.enable({cacheScenery:false});
+      for(let i=0;i<3;i++)p._renderer.render();
+      const reference=pixels();let difference=0,changed=0;
+      for(let i=0;i<cached.length;i+=4){let delta=0;for(let j=0;j<3;j++){const d=Math.abs(cached[i+j]-reference[i+j]);difference+=d;delta=Math.max(delta,d);}if(delta>16)changed++;}
+      const batchedDraws=lastDraws,vectorMeshes=pixiLive.stats.vectorBatchedMeshes;
+      pixiLiveControls.stop();await pixiLiveControls.enable({cacheScenery:false,vectorBatching:false});
+      for(let i=0;i<3;i++)p._renderer.render();
+      const unbatched=pixels();let vectorError=0,vectorChanged=0;
+      for(let i=0;i<reference.length;i+=4){let delta=0;for(let j=0;j<3;j++){const d=Math.abs(reference[i+j]-unbatched[i+j]);vectorError+=d;delta=Math.max(delta,d);}if(delta>16)vectorChanged++;}
+      const batching={meshes:vectorMeshes,batchedDraws,unbatchedDraws:lastDraws,meanError:vectorError/(reference.length/4*3),changedPercent:vectorChanged/(reference.length/4)*100};
+      g.$BgremoveChild(marker);
+      return {groups,meshes,batching,meanError:difference/(cached.length/4*3),changedPercent:changed/(cached.length/4)*100};
+    })()`);
+    assert.ok(report.sceneryComparison.groups>0,'real map has cached scenery');
+    assert.ok(report.sceneryComparison.meanError<2,'cache preserves map colors: '+JSON.stringify(report.sceneryComparison));
+    assert.ok(report.sceneryComparison.changedPercent<5,'cache preserves map geometry');
+    const batching=report.sceneryComparison.batching;
+    assert.ok(batching.meshes>1000,'color-transformed vectors join batches');
+    // This ratio tests the old all-mesh workload. Native Graphics uses Pixi's
+    // default batcher and introduces different batch boundaries; record its
+    // draw counts without promising the same speedup. Pixel checks still apply.
+    if (!nativeGraphics)
+      assert.ok(batching.batchedDraws<batching.unbatchedDraws/2,'vector batching reduces actual WebGL draws');
+    assert.ok(batching.meanError<0.2&&batching.changedPercent<0.5,'batched vectors preserve pixels: '+JSON.stringify(batching));
+  }
+  // Backdrop reads should resolve only their rectangle, while the final
+  // presentation and chained offscreen filters retain their complete output.
+  report.blendResolve = await evaluate(`(async()=>{
+    const p=pixiLiveControls.player,g=p.root._children.find(n=>n.name==='scene').adapter;
+    const marker=g.sec.flash.display.Sprite.axClass.axConstruct([]);g.$BgaddChild(marker);
+    const s=g.sec,edges=[];
+    // Nested MSAA filter targets and clipped backdrop reads on both canvas edges.
+    for(const x of [-25,940]){
+      const outer=s.flash.display.Sprite.axClass.axConstruct([]),inner=s.flash.display.Sprite.axClass.axConstruct([]);
+      g.$BgaddChild(outer);outer.$Bgx=x;outer.$Bgy=80;outer.$BgaddChild(inner);
+      outer.$Bggraphics.$BgbeginFill(0x668899);outer.$Bggraphics.$BgdrawRect(0,0,60,60);outer.$Bggraphics.$BgendFill();
+      outer.$Bgfilters=s.createArray([new s.flash.filters.BlurFilter(4,4,1)]);
+      inner.$Bggraphics.$BgbeginFill(0x80ffff,.7);inner.$Bggraphics.$BgdrawRect(-10,5,45,35);inner.$Bggraphics.$BgendFill();
+      inner.$BgblendMode='overlay';edges.push(outer);
+    }
+    async function sample(boundedBlends){
+      pixiLiveControls.stop();await pixiLiveControls.enable({boundedBlends,cacheScenery:false});
+      p._renderer.render();
+      const canvas=p._view.stage.context._gl.canvas.ownerDocument.querySelector('[data-pixi-display-list]');
+      const gl=canvas.getContext('webgl2')||canvas.getContext('webgl');
+      const original=gl.blitFramebuffer;let blits=0,texels=0;
+      gl.blitFramebuffer=function(...a){blits++;texels+=Math.abs((a[2]-a[0])*(a[3]-a[1]));return original.apply(this,a)};
+      try {marker.$Bgx++;p._renderer.render();} finally {gl.blitFramebuffer=original;}
+      const pixels=new Uint8Array(canvas.width*canvas.height*4);
+      gl.readPixels(0,0,canvas.width,canvas.height,gl.RGBA,gl.UNSIGNED_BYTE,pixels);
+      return {pixels,blits,texels};
+    }
+    const before=await sample(false),after=await sample(true);
+    let difference=0,maxDifference=0;
+    for(let i=0;i<before.pixels.length;i++){
+      const delta=Math.abs(before.pixels[i]-after.pixels[i]);difference+=delta;maxDifference=Math.max(maxDifference,delta);
+    }
+    g.$BgremoveChild(marker);for(const edge of edges)g.$BgremoveChild(edge);
+    return {before:{blits:before.blits,texels:before.texels},after:{blits:after.blits,texels:after.texels},meanError:difference/before.pixels.length,maxDifference};
+  })()`);
+  assert.ok(report.blendResolve.after.texels < report.blendResolve.before.texels / 4, 'backdrop resolve area reduced');
+  assert.ok(report.blendResolve.meanError < 0.01 && report.blendResolve.maxDifference <= 4, 'bounded resolves preserve pixels: '+JSON.stringify(report.blendResolve));
+  report.filterUpdates = await evaluate(`(async()=>{
+    const {checkFilterUpdates}=await import('./check-filter-browser.js?test='+Date.now());
+    return checkFilterUpdates();
+  })()`);
+  assert.equal(report.filterUpdates.results.length,20);
+  assert.equal(report.filterUpdates.retainedPixels,0);
+  assert.equal(report.filterUpdates.glError,0);
+  report.sparseUploads = await evaluate(`(async()=>{
+    const p=pixiLiveControls.player,g=p.root._children.find(n=>n.name==='scene').adapter,s=g.sec;
+    const parent=s.flash.display.Sprite.axClass.axConstruct([]);parent.adaptee.name='sparse-upload-regression';g.$BgaddChild(parent);
+    function child(){const c=s.flash.display.Sprite.axClass.axConstruct([]);parent.$BgaddChild(c);return c;}
+    function marker(){const c=child();c.$Bggraphics.$BgbeginFill(0xff7700);c.$Bggraphics.$BgdrawRect(0,0,4,4);c.$Bggraphics.$BgendFill();return c;}
+    const first=marker();
+    for(let i=0;i<20;i++){
+      const c=child();c.$Bggraphics.$BgbeginFill(0x55ccee);
+      for(let q=0;q<150;q++)c.$Bggraphics.$BgdrawRect(q%15*0.3,i*3+10+Math.floor(q/15)*0.3,0.2,0.2);
+      c.$Bggraphics.$BgendFill();
+    }
+    const last=marker();last.$Bgy=80;
+    async function sample(sparseUploads,skipUnchanged=true,redundant=false){
+      first.$Bgx=last.$Bgx=0;pixiLiveControls.stop();await pixiLiveControls.enable({sparseUploads,skipUnchanged,cacheScenery:false});p._renderer.render();
+      const pending=pixiLive.profile(3);
+      for(let i=0;i<3;i++){
+        first.$Bgx=last.$Bgx=10+i;
+        if(redundant){
+          function mark(o){if(o.renderPipeId==='mesh')o.onViewUpdate();for(const c of o.children||[])mark(c);}
+          mark(pixiLive.getDisplayObject(parent.adaptee));
+        }
+        p._renderer.render();
+      }
+      const result=await pending,canvas=p._view.stage.context._gl.canvas.ownerDocument.querySelector('[data-pixi-display-list]');
+      const gl=canvas.getContext('webgl2')||canvas.getContext('webgl'),pixels=new Uint8Array(canvas.width*canvas.height*4);
+      gl.readPixels(0,0,canvas.width,canvas.height,gl.RGBA,gl.UNSIGNED_BYTE,pixels);
+      return {result,pixels,glError:gl.getError()};
+    }
+    const before=await sample(false),after=await sample(true);
+    let pixelDelta=0;for(let i=0;i<before.pixels.length;i++)pixelDelta=Math.max(pixelDelta,Math.abs(before.pixels[i]-after.pixels[i]));
+    const compact=x=>({median:x.result.median,groups:x.result.groups.filter(g=>g.path.includes('sparse-upload-regression')),glError:x.glError});
+    const dirtyBefore=await sample(true,false,true),dirtyAfter=await sample(true,true,true);
+    let dirtyDelta=0;for(let i=0;i<dirtyBefore.pixels.length;i++)dirtyDelta=Math.max(dirtyDelta,Math.abs(dirtyBefore.pixels[i]-dirtyAfter.pixels[i]));
+    const redundant={before:compact(dirtyBefore),after:compact(dirtyAfter),pixelDelta:dirtyDelta};
+    g.$BgremoveChild(parent);pixiLiveControls.stop();await pixiLiveControls.enable();p._renderer.render();
+    return {before:compact(before),after:compact(after),pixelDelta,redundant};
+  })()`);
+  assert.equal(report.sparseUploads.redundant.pixelDelta,0,'redundant updates preserve pixels');
+  assert.equal(report.sparseUploads.redundant.after.glError,0);
+  assert.ok(report.sparseUploads.redundant.after.median.uploadBytes<report.sparseUploads.redundant.before.median.uploadBytes/100,'redundant invalidations do not repack static neighbors');
+  assert.ok(report.sparseUploads.redundant.after.median.unchangedUpdates>=20,'profile counts skipped updates');
+  assert.equal(report.sparseUploads.pixelDelta,0,'sparse uploads preserve all pixels');
+  assert.equal(report.sparseUploads.after.glError,0);
+  assert.ok(report.sparseUploads.after.median.uploadBytes<report.sparseUploads.before.median.uploadBytes/100,'distant edits leave untouched middle vertices uploaded');
+  assert.ok(report.sparseUploads.after.groups.every(g=>g.rebuilds===0),'sparse edits keep batch layout');
+  report.changingTopology = await evaluate(`(async()=>{
+    const p=pixiLiveControls.player,g=p.root._children.find(n=>n.name==='scene').adapter,s=g.sec;
+    const parent=s.flash.display.Sprite.axClass.axConstruct([]);parent.adaptee.name='morph-batch-regression';g.$BgaddChild(parent);
+    for(let i=0;i<20;i++){
+      const child=s.flash.display.Sprite.axClass.axConstruct([]);parent.$BgaddChild(child);
+      child.$Bggraphics.$BgbeginFill(0x55ccee);
+      for(let q=0;q<150;q++)child.$Bggraphics.$BgdrawRect(q%15*0.3,i*3+Math.floor(q/15)*0.3,0.2,0.2);
+      child.$Bggraphics.$BgendFill();
+    }
+    const morph=s.flash.display.Sprite.axClass.axConstruct([]);morph.adaptee.name='changing-shape';parent.$BgaddChild(morph);
+    function draw(count){
+      const graphics=morph.$Bggraphics;graphics.$Bgclear();graphics.$BgbeginFill(0xff7700);
+      for(let i=0;i<count;i++)graphics.$BgdrawRect(70+i*4,5,3,3);
+      graphics.$BgendFill();
+    }
+    async function sample(isolateTopology){
+      draw(1);pixiLiveControls.stop();await pixiLiveControls.enable({isolateTopology,cacheScenery:false});p._renderer.render();
+      // Learn that this persistent object changes geometry size, then measure
+      // subsequent changes. Its many small static neighbors stay in one group.
+      draw(2);p._renderer.render();
+      const pending=pixiLive.profile(3);
+      for(let i=0;i<3;i++){draw(i+3);p._renderer.render();}
+      const result=await pending,canvas=p._view.stage.context._gl.canvas.ownerDocument.querySelector('[data-pixi-display-list]');
+      const gl=canvas.getContext('webgl2')||canvas.getContext('webgl'),pixels=new Uint8Array(canvas.width*canvas.height*4);
+      gl.readPixels(0,0,canvas.width,canvas.height,gl.RGBA,gl.UNSIGNED_BYTE,pixels);
+      const isolated=result.groups.some(g=>g.path.endsWith('/changing-shape'));
+      return {result,pixels,isolated,glError:gl.getError()};
+    }
+    const before=await sample(false),after=await sample(true);
+    let delta=0,sum=0;for(let i=0;i<before.pixels.length;i++){const d=Math.abs(before.pixels[i]-after.pixels[i]);delta=Math.max(delta,d);sum+=d;}
+    const compact=x=>({median:x.result.median,groups:x.result.groups.filter(g=>g.path.includes('morph-batch-regression')),isolated:x.isolated,glError:x.glError});
+    g.$BgremoveChild(parent);pixiLiveControls.stop();await pixiLiveControls.enable();p._renderer.render();
+    return {before:compact(before),after:compact(after),pixelDelta:delta,meanError:sum/before.pixels.length};
+  })()`);
+  assert.equal(report.changingTopology.before.isolated,false);
+  assert.equal(report.changingTopology.after.isolated,true);
+  assert.equal(report.changingTopology.after.glError,0);
+  assert.ok(report.changingTopology.after.median.uploadBytes < report.changingTopology.before.median.uploadBytes/10,'changing shape leaves dense neighbors uploaded: '+JSON.stringify(report.changingTopology));
+  assert.ok(report.changingTopology.after.groups.every(g=>g.path.endsWith('/changing-shape')||g.rebuilds===0),'only changing shape rebuilds');
+  assert.ok(report.changingTopology.meanError<0.01&&report.changingTopology.pixelDelta<=8,'topology isolation preserves pixels');
+  report.animatedFilters = await evaluate(`(async()=>{
+    const p=pixiLiveControls.player,g=p.root._children.find(n=>n.name==='scene').adapter,s=g.sec;
+    const parent=s.flash.display.Sprite.axClass.axConstruct([]);parent.adaptee.name='filter-update-regression';g.$BgaddChild(parent);
+    let filtered;
+    for(let i=0;i<70;i++){
+      const child=s.flash.display.Sprite.axClass.axConstruct([]);parent.$BgaddChild(child);
+      child.$Bggraphics.$BgbeginFill(0x55ccee);child.$Bggraphics.$BgdrawRect(i%10*8,Math.floor(i/10)*8,5,5);child.$Bggraphics.$BgendFill();
+      if(i===0)filtered=child;
+    }
+    async function sample(reuseFilters){
+      pixiLiveControls.stop();await pixiLiveControls.enable({reuseFilters,cacheScenery:false});
+      filtered.$Bgfilters=s.createArray([new s.flash.filters.BlurFilter(2,5,1)]);p._renderer.render();
+      const pending=pixiLive.profile(3);
+      for(let i=0;i<3;i++){
+        filtered.$Bgfilters=s.createArray([new s.flash.filters.BlurFilter(3+i,5,1)]);p._renderer.render();
+      }
+      const result=await pending;
+      const groups=result.groups.filter(g=>g.path.includes('filter-update-regression'));
+      return {median:result.median,rebuilds:groups.reduce((n,g)=>n+g.rebuilds,0),groups};
+    }
+    const before=await sample(false),after=await sample(true);
+    g.$BgremoveChild(parent);pixiLiveControls.stop();await pixiLiveControls.enable();p._renderer.render();
+    return {before,after};
+  })()`);
+  assert.ok(report.animatedFilters.before.rebuilds>=3,'reference recreates effect attachments');
+  assert.equal(report.animatedFilters.after.rebuilds,0,'uniform changes preserve native branch batches');
+  report.profile = await evaluate(`(async()=>{
+    const p=pixiLiveControls.player,g=p.root._children.find(n=>n.name==='scene').adapter;
+    const marker=g.sec.flash.display.Sprite.axClass.axConstruct([]);g.$BgaddChild(marker);
+    marker.$Bggraphics.$BgbeginFill(0xff0000);marker.$Bggraphics.$BgdrawRect(0,0,8,8);marker.$Bggraphics.$BgendFill();
+    let animatedChild;
+    async function sample(partialUploads,renderGroups=false,topology=false,groupVertexLimit=12000){
+      if(animatedChild){marker.$BgremoveChild(animatedChild);animatedChild=null;}
+      pixiLiveControls.stop();await pixiLiveControls.enable({partialUploads,cacheScenery:false,renderGroups,groupVertexLimit});
+      marker.$Bgx=10;p._renderer.render();
+      const canvas=p._view.stage.context._gl.canvas.ownerDocument.querySelector('[data-pixi-display-list]');
+      const gl=canvas.getContext('webgl2')||canvas.getContext('webgl'),original=gl.drawElements;
+      const pending=pixiLive.profile(3);
+      for(let i=0;i<3;i++){
+        marker.$Bgx=20+i;
+        if(topology){
+          if(animatedChild)marker.$BgremoveChild(animatedChild);
+          animatedChild=g.sec.flash.display.Sprite.axClass.axConstruct([]);marker.$BgaddChild(animatedChild);
+          animatedChild.$Bggraphics.$BgbeginFill(0x00ff00);animatedChild.$Bggraphics.$BgdrawRect(0,0,8+i,8);animatedChild.$Bggraphics.$BgendFill();
+        }
+        p._renderer.render();
+      }
+      const pixels=new Uint8Array(canvas.width*canvas.height*4);
+      gl.readPixels(0,0,canvas.width,canvas.height,gl.RGBA,gl.UNSIGNED_BYTE,pixels);
+      const result=await pending;
+      return {result,pixels,restored:gl.drawElements===original,gl,original};
+    }
+    const after=await sample(true),before=await sample(false);
+    let pixelDelta=0;for(let i=0;i<before.pixels.length;i++)pixelDelta=Math.max(pixelDelta,Math.abs(before.pixels[i]-after.pixels[i]));
+    const grouped=await sample(true,true,true),ungrouped=await sample(true,false,true);
+    let groupError=0,groupChanged=0;
+    for(let i=0;i<grouped.pixels.length;i+=4){let delta=0;for(let j=0;j<3;j++){const d=Math.abs(grouped.pixels[i+j]-ungrouped.pixels[i+j]);groupError+=d;delta=Math.max(delta,d);}if(delta>16)groupChanged++;}
+    const topology={grouped:grouped.result.median,ungrouped:ungrouped.result.median,groups:grouped.result.groups,meanError:groupError/(grouped.pixels.length/4*3),changedPercent:groupChanged/(grouped.pixels.length/4)*100};
+    // Under 64 shapes, but tens of thousands of vertices. Replacing the tiny
+    // animated sibling must not resend all three static clusters.
+    const clusters=[];
+    for(let k=0;k<3;k++){
+      const cluster=g.sec.flash.display.Sprite.axClass.axConstruct([]);marker.$BgaddChild(cluster);clusters.push(cluster);
+      for(let j=0;j<12;j++){
+        const shape=g.sec.flash.display.Sprite.axClass.axConstruct([]);cluster.$BgaddChild(shape);
+        shape.$Bggraphics.$BgbeginFill(0x3388cc);
+        for(let q=0;q<200;q++)shape.$Bggraphics.$BgdrawRect(q%20*0.2,j*3+Math.floor(q/20)*0.2,0.15,0.15);
+        shape.$Bggraphics.$BgendFill();
+      }
+    }
+    const denseAfter=await sample(true,true,true),denseBefore=await sample(true,true,true,0);
+    let denseError=0,denseSum=0,denseChanged=0;
+    for(let i=0;i<denseAfter.pixels.length;i+=4){let delta=0;for(let j=0;j<3;j++){const d=Math.abs(denseAfter.pixels[i+j]-denseBefore.pixels[i+j]);denseSum+=d;delta=Math.max(delta,d);}denseError=Math.max(denseError,delta);if(delta>16)denseChanged++;}
+    const vertexGroups={before:denseBefore.result.median,after:denseAfter.result.median,pixelDelta:denseError,meanError:denseSum/(denseAfter.pixels.length/4*3),changedPercent:denseChanged/(denseAfter.pixels.length/4)*100};
+    for(const cluster of clusters)marker.$BgremoveChild(cluster);
+    const cancelled=pixiLive.profile(3);pixiLiveControls.stop();const stopped=await cancelled;
+    g.$BgremoveChild(marker);await pixiLiveControls.enable();p._renderer.render();
+    return {result:after.result,fullUploads:before.result.median.uploadBytes,pixelDelta,topology,vertexGroups,restored:after.restored&&before.restored,cancelled:stopped.reason,cancelRestored:before.gl.drawElements===before.original};
+  })()`);
+  assert.equal(report.profile.result.reason,'complete');
+  assert.equal(report.profile.result.frames.length,3);
+  const groupUploads = report.profile.result.groups.reduce((n,g)=>n+g.uploadBytes,0);
+  const totalUploads = report.profile.result.frames.reduce((n,f)=>n+f.uploadBytes,0);
+  assert.ok(groupUploads>0 && groupUploads<=totalUploads,'group uploads count actual GL traffic without duplication');
+  const groupUpdates = report.profile.result.groups.reduce((n,g)=>n+g.updateMs,0);
+  const totalUpdates = report.profile.result.frames.reduce((n,f)=>n+f.batchUpdateMs,0);
+  assert.ok(Math.abs(groupUpdates-totalUpdates)<0.01,'exclusive group timings sum to total batch time');
+  assert.ok(report.profile.topology.groups.some(g=>g.rebuilds>0&&g.uploadBytes>0),'structural uploads attributed to rebuilt group');
+  assert.ok(report.profile.topology.groups.some(g=>g.path.includes('scene')),'profiles identify native object branches');
+  assert.ok(report.profile.result.median.draws>100);
+  assert.ok(report.profile.result.median.triangles>1000);
+  assert.ok(report.profile.result.median.uploadBytes>0);
+  assert.ok(report.profile.result.median.uploadBytes<report.profile.fullUploads/10,'moving one mesh does not re-upload static scenery');
+  assert.equal(report.profile.pixelDelta,0,'partial uploads preserve pixels');
+  assert.ok(report.profile.topology.grouped.uploadBytes<report.profile.topology.ungrouped.uploadBytes/10,'animated topology rebuilds only its group: '+JSON.stringify(report.profile.topology));
+  assert.ok(report.profile.topology.meanError<0.2&&report.profile.topology.changedPercent<0.5,'render groups preserve pixels: '+JSON.stringify(report.profile.topology));
+  assert.ok(report.profile.vertexGroups.after.uploadBytes<report.profile.vertexGroups.before.uploadBytes/5,'dense static siblings retain their vertex buffers: '+JSON.stringify(report.profile.vertexGroups));
+  assert.ok(report.profile.vertexGroups.meanError<0.2&&report.profile.vertexGroups.changedPercent<0.5,'vertex grouping preserves pixels: '+JSON.stringify(report.profile.vertexGroups));
+  assert.equal(report.profile.restored,true);
+  assert.equal(report.profile.cancelled,'renderer stopped');
+  assert.equal(report.profile.cancelRestored,true);
   assert.deepEqual(errors, []);
+  report.failure = await evaluate(`(async()=>{
+    const p=pixiLiveControls.player,canvas=p._view.stage.context._gl.canvas;
+    const measure=canvas.getBoundingClientRect;
+    canvas.getBoundingClientRect=()=>{throw Error('intentional-render-failure')};
+    p.isPaused=false;p._renderer.render();canvas.getBoundingClientRect=measure;
+    const blocked=p._renderer.render;
+    for(let i=0;i<3;i++)p._renderer.render();
+    const held={failed:pixiLive.stats.failed,paused:p.isPaused,selected:pixiLive.active,blocked:p._renderer.render===blocked};
+    pixiLiveControls.stop();const restored=p._renderer.render===originalRootRender&&!p.isPaused;
+    p.isPaused=true;await pixiLiveControls.enable();
+    const pixiCanvas=canvas.ownerDocument.querySelector('[data-pixi-display-list]');
+    const event=new Event('webglcontextlost',{cancelable:true});pixiCanvas.dispatchEvent(event);
+    p._renderer.render();
+    const context={prevented:event.defaultPrevented,paused:p.isPaused,selected:pixiLive.active,failed:pixiLive.stats.failed};
+    pixiLiveControls.stop();
+    let nativeCalls=0;
+    p._renderer.render=()=>{nativeCalls++;throw Error('intentional-bridge-failure');};
+    await pixiLiveControls.enable({backend:'bridge'});p._renderer.render();p._renderer.render();
+    const bridge={failed:pixiLive.stats.failed,selected:pixiLive.active,paused:p.isPaused,nativeCalls};
+    pixiLiveControls.stop();p._renderer.render=originalRootRender;
+    const doc=canvas.ownerDocument,create=doc.createElement;
+    doc.createElement=function(tag,...args){if(tag==='canvas')throw Error('intentional-init-failure');return create.call(this,tag,...args);};
+    p.isPaused=false;await pixiLiveControls.enable({backend:'direct-objects'});doc.createElement=create;
+    const init={paused:p.isPaused,blocked:p._renderer.render!==originalRootRender,message:document.getElementById('status').textContent};
+    document.getElementById('toggle').click();init.restored=p._renderer.render===originalRootRender&&!p.isPaused;p.isPaused=true;
+    return {held,restored,context,bridge,init};
+  })()`);
+  assert.deepEqual(report.failure.held,{failed:true,paused:true,selected:true,blocked:true});
+  assert.equal(report.failure.restored,true);
+  assert.deepEqual(report.failure.context,{prevented:true,paused:true,selected:true,failed:true});
+  assert.deepEqual(report.failure.bridge,{failed:true,selected:true,paused:true,nativeCalls:1});
+  assert.equal(report.failure.init.paused,true);
+  assert.equal(report.failure.init.blocked,true);
+  assert.equal(report.failure.init.restored,true);
+  assert.ok(report.failure.init.message.includes('intentional-init-failure'));
+  assert.equal(errors.length,3);
+  assert.ok(errors[0].includes('intentional-render-failure'));
+  assert.ok(errors[1].includes('Pixi graphics context lost'));
+  assert.ok(errors[2].includes('intentional-bridge-failure'));
   console.log(JSON.stringify(report, null, 2));
   await writeFile(
     "/tmp/pixi-display-list-check.json",

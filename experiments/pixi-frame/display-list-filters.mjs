@@ -39,6 +39,7 @@ class SmoothDropShadowFilter extends DropShadowFilter {
 // Visual equivalents, intentionally not Flash shader emulation. Descriptors are
 // also cache keys: stable effects retain their filter objects across frames.
 export function describeFilter(f, sx = 1, sy = 1, text = false) {
+  if (!f) return null;
   const blurX = Math.max(0, f.blurX ?? 4);
   const blurY = Math.max(0, f.blurY ?? 4);
   const radius = Math.max(blurX * sx, blurY * sy) / 2;
@@ -188,6 +189,56 @@ export function describeFilter(f, sx = 1, sy = 1, text = false) {
     }
     default:
       return null;
+  }
+}
+
+// Only shader-compiled constants require a replacement. Uniforms, pass counts,
+// padding and resolution can change while the container's effect stays attached.
+export function filterProgramKey(d) {
+  switch (d.kind) {
+    case "glow": return [d.kind, d.options.distance, d.options.quality];
+    case "outline": return [d.kind, d.options.quality];
+    case "blur": return [d.kind, d.options.kernelSize];
+    case "shadow": return [d.kind, d.blur.kernelSize];
+    default: return [d.kind];
+  }
+}
+
+function updateBlur(filter, options) {
+  filter.strengthX = options.strengthX;
+  filter.strengthY = options.strengthY;
+  filter.quality = options.quality;
+  filter.resolution = options.resolution;
+  filter.blurXFilter.resolution = filter.blurYFilter.resolution = options.resolution;
+}
+
+export function updateFilter(filter, d) {
+  switch (d.kind) {
+    case "shadow":
+      // DropShadow's offset/blur setters assume a symmetric Kawase blur.
+      // Our Gaussian shadow can be asymmetric, so update its owned passes
+      // explicitly and use the descriptor's scene-space padding.
+      filter.uniforms.uOffset = { ...d.options.offset };
+      filter.color = d.options.color;
+      filter.alpha = d.options.alpha;
+      filter.shadowOnly = d.options.shadowOnly;
+      updateBlur(filter._blurFilter, d.blur);
+      filter.shadowResolution = d.blur.resolution;
+      filter.padding = d.padding;
+      break;
+    case "blur":
+      updateBlur(filter, d.options);
+      filter.padding = d.padding;
+      break;
+    case "colorMatrix":
+      filter.matrix = d.matrix;
+      break;
+    case "outline":
+    case "glow":
+    case "bevel":
+      Object.assign(filter, d.options);
+      break;
+    default: throw Error("Unsupported filter update: " + d.kind);
   }
 }
 

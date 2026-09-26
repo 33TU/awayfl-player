@@ -38,6 +38,7 @@ export async function startLive(
   const filters = pixiFilters
     ? createFilterPasses(player._view.stage, live, transport)
     : null;
+  let failed = false, pauseBeforeFailure;
   let stopped = false,
     inFrame = false,
     frames = 0,
@@ -62,6 +63,7 @@ export async function startLive(
     if (stopped) return;
     stopped = true;
     stats.active = false;
+    if (failed) player.isPaused = pauseBeforeFailure;
     root.render = original;
     const restore = saveGL(gl);
     try {
@@ -77,7 +79,8 @@ export async function startLive(
     onStatus("AwayFL renderer active", stats);
   }
   root.render = function (...args) {
-    if (inFrame || stopped) return original.apply(this, args);
+    if (stopped || failed) return;
+    if (inFrame) return original.apply(this, args);
     inFrame = true;
     try {
       const begin = performance.now();
@@ -139,13 +142,13 @@ export async function startLive(
     } catch (error) {
       console.error("[Pixi live]", error);
       stats.lastError = error.message;
-      // A capture can throw before an AwayFL draw reaches its deferred VAO
-      // unbind. Reset that state before fallback material activation can clear
-      // attributes on the interrupted mesh's VAO.
+      // Leave the native context usable for an explicit renderer switch.
       player._view.stage.context._vaoContext?.unbindVertexArrays();
-      stop();
-      original.apply(this, args);
-      onStatus("Pixi stopped: " + error.message, stats);
+      failed = true;
+      stats.failed = true;
+      pauseBeforeFailure = player.isPaused;
+      player.isPaused = true;
+      onStatus("Pixi paused: " + error.message + ". Reload to retry or select Use AwayFL.", stats);
     } finally {
       inFrame = false;
     }

@@ -26,14 +26,31 @@ const advancedBlends = {
   lighten: LightenBlend,
   difference: DifferenceBlend,
 };
+import { installVectorBatcher } from "./vector-batcher.mjs";
+import { installBlendResolve } from "./blend-resolve.mjs";
+import { createRenderProfiler } from "./render-profile.mjs";
+import { installIdleHover } from "./idle-hover.mjs";
+import { installCatchUp } from "./catch-up.mjs";
+import { createSceneryCache } from "./scenery-cache.mjs";
 import { RetainedEffects } from "./display-list-effect-cache.mjs";
 import { createGeometryCache } from "./display-list-geometry.mjs";
+import { createNativePaths } from "./native-paths.mjs";
+import { createNativePicking } from "./native-picking.mjs";
+import { describeNativeText, syncNativeText, retireNativeText } from "./native-text.mjs";
+import { retirePixiTexture } from "./retire-pixi-texture.mjs";
+import { constantTextureOffset, createTextureSamples } from "./texture-samples.mjs";
+import { createDirectObjectBindings } from "./direct-object-bindings.mjs";
+import { createBitmapDraw } from "./bitmap-draw.mjs";
 import {
   describeFilter,
   createFilter,
+  filterProgramKey,
+  updateFilter,
   destroyFilter,
 } from "./display-list-filters.mjs";
 import { createAssetTracker, combineColor } from "./display-list-data.mjs";
+import { installPixiPickBounds } from "./pixi-pick-bounds.mjs";
+import { installPixiPickEvents } from "./pixi-pick-events.mjs";
 
 const IDENTITY_COLOR = new Float32Array([1, 1, 1, 1, 0, 0, 0, 0]);
 const vertex = `
@@ -66,22 +83,29 @@ void main() {
   gl_FragColor = vec4(c.rgb * c.a, c.a);
 }`;
 const same = (a, b) => a?.length === b.length && b.every((v, i) => v === a[i]);
+const SUMMARY_COUNTERS = ["nodes", "meshes", "batchedMeshes", "customMeshes", "vectorBatchedMeshes", "nativeGraphics", "nativeGradients", "nativeBitmaps", "nativeCompounds", "nativeTexts", "directBlendGroups", "isolatedBlendGroups", "batchGroups"];
 const clamp = (v) => Math.max(0, Math.min(1, v));
 
 // Experimental backend: walks display objects, never invokes AwayFL's root
 // renderer. Own canvas/context/textures; no render-command capture or GPU readback.
 export async function startDisplayList(
   player,
-  { onStatus = () => {}, cacheEffects = true } = {},
+  { onStatus = () => {}, cacheEffects = true, directObjects = false, cacheScenery = true, vectorBatching = true, boundedBlends = true, partialUploads = true, renderGroups = true, groupVertexLimit = 6000, reuseFilters = true, isolateTopology = true, sparseUploads = true, skipUnchanged = true, idleHoverHz = 0, retainedHover = true, pixiPickBounds = false, pixiEvents = false, catchUp = false, reuseTranslations = true, retainContent = true, retainMaskedContent = true, skipUnchangedColors = true, nativeGraphics = false, shapeSprites = false, nativeText, nativeBatching = true, sampledTextures = true, pixiBitmapDraw = false, retainPaths = 4096, retainGeometry = 2048, pixiEventsScopedPress = false } = {},
 ) {
+  const useNativeText = nativeText ?? nativeGraphics;
   const native = player._renderer;
   const original = native.render;
   const sourceCanvas = player._view.stage.context._gl.canvas;
+  const pathSource = nativeGraphics ? sourceCanvas.ownerDocument.defaultView.__PIXI_FLASH_PATHS__ : null;
+  if (nativeGraphics && typeof pathSource?.get !== "function") throw Error("Native graphics requires the experimental path runtime; reload with nativeGraphics=1");
+  // Pixi's federated event mixin is an opt-in module in v8.
+  if (directObjects && pixiEvents) await import("pixi.js/events");
   const canvas = sourceCanvas.ownerDocument.createElement("canvas");
   canvas.dataset.pixiDisplayList = "";
   canvas.style.cssText = "position:fixed;pointer-events:none;z-index:1;";
   const renderer = new WebGLRenderer();
   const paused = player.isPaused;
+  let restoreVectorBatcher;
   player.isPaused = true;
   try {
     await renderer.init({
@@ -95,6 +119,7 @@ export async function startDisplayList(
       useBackBuffer: true,
     });
     renderer.events?.setTargetElement(null);
+    if (vectorBatching) restoreVectorBatcher = installVectorBatcher(renderer, partialUploads, sparseUploads, skipUnchanged, nativeGraphics && nativeBatching);
   } catch (error) {
     renderer.destroy();
     throw error;
@@ -103,24 +128,51 @@ export async function startDisplayList(
   }
   sourceCanvas.ownerDocument.body.append(canvas);
   const scene = new Container();
+  const groupOwners = new WeakMap();
   const records = new Map(),
     textures = new Map();
-  const tracker = createAssetTracker();
+  const observedHTMLTextures = new WeakSet();
+  const tracker = createAssetTracker((r) => sourceChanged(r));
+  const textureSamples = createTextureSamples(tracker);
+  const detachedRecords = new Map();
   const stats = {
     active: true,
-    mode: "display-list",
+    mode: directObjects ? "direct-objects" : "display-list",
+    configuration: { nativeGraphics, retainPaths, retainGeometry, shapeSprites: nativeGraphics && shapeSprites, nativeText: useNativeText, nativeBatching, sampledTextures, cacheScenery: directObjects && cacheScenery, groupVertexLimit,
+      retainContent, retainMaskedContent, skipUnchangedColors, reuseTranslations, retainedHover: directObjects && retainedHover, pixiPickBounds: false, pixiEvents: false },
+    deferredGeometry: pathSource?.lazyStats ?? null,
+    pixiBitmapDraws: 0,
+    batchGroups: 0,
+    directTransformUpdates: 0,
+    translationReuses: 0,
+    localMaskUpdates: 0,
+    unchangedColorUpdates: 0,
+    directHierarchyUpdates: 0,
+    polledTransforms: 0,
+    preparedNodes: 0,
+    preparedContents: 0,
+    retainedContents: 0,
+    skippedSubtrees: 0,
+    preparationPasses: 0,
+    reusedPreparations: 0,
     frames: 0,
     fps: 0,
+    idleHoverHz: 0,
+    retainedHover: false,
+    hoverChecks: 0,
+    hoverSkips: 0,
     syncMs: 0,
     pixiMs: 0,
     nodes: 0,
     meshes: 0,
     batchedMeshes: 0,
     customMeshes: 0,
+    vectorBatchedMeshes: 0,
     directBlendGroups: 0,
     isolatedBlendGroups: 0,
     geometryBuilds: 0,
     textureUploads: 0,
+    nativeTexts: 0,
     uniformUpdates: 0,
     effectCacheHits: 0,
     effectCacheBuilds: 0,
@@ -132,16 +184,49 @@ export async function startDisplayList(
     unsupported: {},
     lastError: null,
   };
-  const geometryCache = createGeometryCache(tracker, stats);
+  const restoreBlendResolve = boundedBlends ? installBlendResolve(renderer, stats) : null;
+  const profiler = createRenderProfiler(renderer, stats, root => {
+    const node = groupOwners.get(root);
+    const path = [];
+    for (let n = node; n && path.length < 12; n = n.parent)
+      path.unshift(n.name || `${n.assetType || "object"}#${n.id}`);
+    return { path: path.join("/"), kind: node ? (records.get(node)?.outer === root ? "object" : "cache") : "stage" };
+  }, player);
+  const restoreIdleHover = installIdleHover(player, stats, idleHoverHz,
+    undefined, directObjects && retainedHover ? () => stats.drawnFrames : null);
+  const restoreCatchUp = directObjects && catchUp ? installCatchUp(player, stats) : null;
+  const restorePixiPickEvents = directObjects && pixiEvents
+    ? installPixiPickEvents(player, scene, records, groupOwners, renderer, stats, { nativePress: !pixiEventsScopedPress }) : null;
+  const restorePixiPickBounds = directObjects && pixiPickBounds && !pixiEvents
+    ? installPixiPickBounds(player, records, stats, renderer) : null;
+  const scenery = directObjects && cacheScenery
+    ? createSceneryCache(stats, () => { visualDirty = true; }) : null;
+  const geometryCache = createGeometryCache(tracker, stats, { retain: retainGeometry });
+  const nativePaths = createNativePaths(stats, renderer, { shapeSprites: nativeGraphics && shapeSprites, retain: retainPaths });
+  const nativePicking = createNativePicking(pathSource?.Box);
   let revision = 0;
-  function dirty(r) {
+  function dirty(r, reason = "appearance") {
     visualDirty = true;
-    if (r) r.revision = ++revision;
+    if (r) { r.revision = ++revision; r.lastChange = reason; }
   }
+  let needsSweep = false;
   let visualDirty = true,
     previousProjection,
     previousBuilds = -1,
     previousUploads = -1;
+  const bindings = directObjects ? createDirectObjectBindings({
+    record: nodeRecord,
+    update: updateObject,
+    changed: sourceChanged,
+    hierarchyChanged: (r) => { if (r) dirty(r, "hierarchy"); },
+    detached: (r) => detachedRecords.set(r, stats.frames),
+    stats,
+    profiler,
+    reuseTranslations,
+    retainMaskedContent,
+    skipUnchangedColors,
+  }) : null;
+  let failed = false, pauseBeforeFailure;
   let stopped = false,
     statusTime = performance.now(),
     statusFrames = 0;
@@ -149,18 +234,63 @@ export async function startDisplayList(
   const missing = (reason) => {
     stats.unsupported[reason] = (stats.unsupported[reason] || 0) + 1;
   };
-  function imageTexture(image, sampler) {
+  function sourceChanged(r, descendants = false, content = true) {
+    if (!r) return;
+    r.selfDirty ||= content;
+    r.descendantsDirty ||= descendants;
+    // Invalidation requests a comparison, not necessarily a new picture.
+    // Actual transform/paint/filter changes below advance visual revisions.
+    for (let node = r.node; node; node = node.parent) {
+      const parent = records.get(node);
+      if (!parent || parent.branchDirty) break;
+      parent.branchDirty = true;
+    }
+  }
+  function summaryStart() {
+    return { counts: SUMMARY_COUNTERS.map((k) => stats[k]), unsupported: { ...stats.unsupported } };
+  }
+  function finishSummary(r, before) {
+    r.summary = {
+      counts: SUMMARY_COUNTERS.map((k, i) => stats[k] - before.counts[i]),
+      unsupported: Object.fromEntries(Object.entries(stats.unsupported)
+        .map(([k, v]) => [k, v - (before.unsupported[k] || 0)]).filter(([, v]) => v)),
+    };
+  }
+  function reuseSummary(r) {
+    SUMMARY_COUNTERS.forEach((k, i) => stats[k] += r.summary.counts[i]);
+    for (const [k, v] of Object.entries(r.summary.unsupported))
+      stats.unsupported[k] = (stats.unsupported[k] || 0) + v;
+  }
+  function retireDetached() {
+    function attached(node) {
+      for (; node; node = node.parent) if (node === player.root) return true;
+      return false;
+    }
+    function retire(node) {
+      for (const child of node._children || []) retire(child);
+      const r = records.get(node);
+      if (!r) return;
+      destroyRecord(r);
+      records.delete(node);
+      detachedRecords.delete(r);
+    }
+    for (const [r, frame] of detachedRecords) {
+      if (attached(r.node)) detachedRecords.delete(r);
+      else if (frame < stats.frames - 2) retire(r.node);
+    }
+  }
+  function imageTexture(image, sampler, sampleOffset = null) {
     if (!image || image.isDisposed || image.width <= 0 || image.height <= 0)
       return null;
     // BitmapData.draw still belongs to the Flash runtime. Never silently read
     // its GPU-only result back to the CPU (or upload a stale CPU copy).
+    const version = tracker.version(image, "invalidateGPU", bindings ? "_imageDataDirty" : null, sampleOffset === null);
     if (image._imageDataDirty) {
       missing("gpu-bitmap");
       return null;
     }
     // Keep native upload flags untouched; edits may coalesce until AwayFL
     // next uploads this bitmap, even though Pixi owns a separate texture.
-    const version = tracker.version(image, "invalidateGPU");
     let r = textures.get(image);
     const key = `${!!sampler?.repeat}:${sampler?.smooth !== false}`;
     if (!r) {
@@ -176,7 +306,7 @@ export async function startDisplayList(
       }
       r.sourceData = data;
       r.data = data;
-      r.version = tracker.version(image);
+      r.version = tracker.version(image, undefined, undefined, sampleOffset === null);
       if (image.unpackPMA) {
         r.data = new Uint8Array(data.length);
         for (let i = 0; i < data.length; i += 4) {
@@ -217,13 +347,72 @@ export async function startDisplayList(
   }
   function disposeMesh(r) {
     dirty(r.owner);
+    if (r.pickingElements) nativePicking.release(r.pickingElements, r.pathEntry.context);
     r.mesh.removeFromParent();
     r.mesh.destroy();
+    if (r.pathEntry) nativePaths.release(r.pathEntry);
     r.shader?.destroy();
     geometryCache.release(r.geometryEntry);
   }
   function shapeMesh(shape, node, record, index, color) {
     const e = shape.elements;
+    const path = pathSource?.get(shape);
+    // Text uses atlas/glyph meshes. Skinning and nine-slice geometry may already
+    // have been deformed by Flash; retain their mesh representation.
+    const bitmapImage = path?.bitmap?.image;
+    const bitmapTexture = bitmapImage && imageTexture(bitmapImage,
+      { repeat: true, smooth: path.bitmap.smooth });
+    if (path && nativePaths.supports(path) && (!bitmapImage || (bitmapTexture &&
+        bitmapImage.width === path.bitmap.width && bitmapImage.height === path.bitmap.height)) &&
+        !node.animator && !shape.particleCollection && !e?.scale9Grid &&
+        ((!path.gradient && !path.bitmap) || color.slice(4).every(v => v === 0)) &&
+        typeof node.text !== "string") {
+      tracker.version(e);
+      tracker.version(e.positions?.attributesBuffer);
+      if (path.stroke) tracker.version(e.thickness?.attributesBuffer);
+      let r = record.meshes[index];
+      if (r?.pathEntry?.path !== path) {
+        if (r) disposeMesh(r);
+        const { entry, graphics } = nativePaths.acquire(path, bitmapTexture);
+        r = record.meshes[index] = { shape, mesh: graphics, pathEntry: entry, owner: record };
+        // Pixi handles the path test only when one contour maps unambiguously
+        // to the same AwayFL element. Compound fills retain native picking.
+        if (path.contours === 1 && nativePicking.bind(e, entry.context))
+          r.pickingElements = e;
+        dirty(record, "paint");
+      }
+      const baseColor = path.gradient || path.bitmap ? 0xffffff : path.color;
+      const rgb = [(baseColor >> 16) & 255, (baseColor >> 8) & 255, baseColor & 255]
+        .map((v, i) => Math.round(clamp(v / 255 * color[i] + color[i + 4] / 255) * 255));
+      const tint = (rgb[0] << 16) | (rgb[1] << 8) | rgb[2];
+      const alpha = clamp((path.alpha ?? 1) * color[3] + color[7] / 255);
+      if (r.mesh.tint !== tint || r.mesh.alpha !== alpha) dirty(record, "paint");
+      r.mesh.tint = tint; r.mesh.alpha = alpha; r.mesh.visible = true;
+      stats.nativeGraphics++;
+      if (path.gradient) stats.nativeGradients++;
+      if (path.bitmap) stats.nativeBitmaps++;
+      if (path.contours > 1 && !path.stroke) stats.nativeCompounds++;
+      return r.mesh;
+    }
+    if (record.meshes[index]?.pathEntry) {
+      disposeMesh(record.meshes[index]); record.meshes[index] = null;
+    }
+    // Report why an authored path stays on the mesh route: each reason is a
+    // candidate for the native renderer, and a deferred shape pays a full
+    // tessellation here.
+    if (path) {
+      missing("native-fallback:" + (!nativePaths.supports(path) ? "contours"
+        : bitmapImage && !(bitmapTexture && bitmapImage.width === path.bitmap.width &&
+            bitmapImage.height === path.bitmap.height) ? "bitmap-size"
+        : node.animator || shape.particleCollection ? "animator"
+        : e?.scale9Grid ? "scale9"
+        : (path.gradient || path.bitmap) && !color.slice(4).every(v => v === 0) ? "paint-offset"
+        : typeof node.text === "string" ? "text" : "other"));
+    } else if (pathSource?.deferred?.(shape)) missing("native-fallback:no-snapshot");
+    // A native path can temporarily require the compatibility mesh (for
+    // example, after a color offset or texture change). Build its real Flash
+    // triangles before the mesh adapter reads the deferred buffer.
+    pathSource?.ensureGeometry(shape);
     if (
       !e ||
       !["[asset TriangleElements]", "[asset LineElements]"].includes(
@@ -234,7 +423,8 @@ export async function startDisplayList(
       return null;
     }
     if (node.animator || shape.particleCollection) missing("animator");
-    if (e.assetType === "[asset LineElements]") missing("stroke-extrusion");
+    if (e.assetType === "[asset LineElements]" && ![1, 2, 4].includes(e.scaleMode))
+      missing("stroke-scale-mode:" + e.scaleMode);
     const material = shape.material || node.material;
     const style = shape.style || node.style;
     const tex = material?.getTextureAt?.(0);
@@ -253,12 +443,17 @@ export async function startDisplayList(
     // originalFillStyle survives Shape pooling and may describe a previous
     // object (notably text constructed after graphics are retired). The active
     // material, image and UV mapping are the authoritative paint source.
-    const texture = tex ? imageTexture(image, sampler) : Texture.WHITE;
-    if (!texture) return null;
     const uv =
       style?.uvMatrix || node.style?.uvMatrix || material?.style?.uvMatrix;
     const curves = e.getCustomAtributes?.("curves");
     const radial = tex?.mappingMode === 1;
+    const sampleOffset = bindings && sampledTextures ? constantTextureOffset(image, uv, radial) : null;
+    // Register before uploading: even a GPU-only/disposed image must wake the
+    // owner when it becomes CPU-readable again.
+    const imageRevision = image && sampleOffset !== null
+      ? textureSamples.version(image, sampleOffset) : null;
+    const texture = tex ? imageTexture(image, sampler, sampleOffset) : Texture.WHITE;
+    if (!texture) return null;
     const custom =
       !!curves ||
       radial ||
@@ -272,11 +467,22 @@ export async function startDisplayList(
       r?.geometryEntry,
       shape,
       uv,
-      custom,
+      custom || !!curves,
+      record.world,
     );
     const geometry = geometryEntry.geometry;
+    // Entries can mutate the same geometry in place. Retain primitive counts,
+    // not the previous geometry reference, to detect a batch layout change.
+    const vertexCount = geometry.positions.length / 2;
+    const indexCount = geometry.indices.length;
+    if (r && (r.vertexCount !== vertexCount || r.indexCount !== indexCount))
+      record.changingTopology = true;
+    if (!custom || vectorBatching) geometry.batchMode = "batch";
     if (!r) {
       const mesh = new Mesh({ geometry, texture });
+      // Ordinary geometry can share Pixi's default batch with native Graphics.
+      // Reserve the wider Flash vertex format for curves/radial fills/offsets.
+      mesh.flashVectorBatch = vectorBatching && (custom || !nativeGraphics || !nativeBatching);
       r = record.meshes[index] = {
         shape,
         mesh,
@@ -284,7 +490,7 @@ export async function startDisplayList(
         custom,
         owner: record,
       };
-      if (custom) {
+      if (custom && !vectorBatching) {
         program ||= GlProgram.from({
           vertex,
           fragment,
@@ -307,7 +513,7 @@ export async function startDisplayList(
       geometry,
       geometryEntry.revision,
       texture,
-      image ? tracker.version(image) : 0,
+      image ? (imageRevision ?? tracker.version(image)) : 0,
       radial,
       sampler?.imageRect?.width,
       sampler?.imageRect?.height,
@@ -318,30 +524,44 @@ export async function startDisplayList(
     ];
     const paintChanged = !same(r.paintKey, paintKey);
     if (paintChanged) {
-      dirty(record);
+      dirty(record, "paint");
       r.paintKey = paintKey;
     }
     r.shape = shape;
+    r.vertexCount = vertexCount;
+    r.indexCount = indexCount;
     r.geometryEntry = geometryEntry;
     r.mesh.geometry = geometry;
     const mesh = r.mesh;
     mesh.texture = texture;
     mesh.visible = true;
+    if (mesh.flashVectorBatch) {
+      mesh.flashRect = custom ? sampler?.imageRect : null;
+      if (paintChanged) mesh.onViewUpdate();
+    }
     if (custom) {
       if (paintChanged || record.colorChanged) {
-        r.shader.resources.uTexture = texture.source;
-        const u = r.uniforms.uniforms;
-        u.uMultiply.set(color.subarray(0, 4));
-        for (let i = 0; i < 4; i++) u.uOffset[i] = color[i + 4] / 255;
-        u.uRadial = +radial;
-        const rect = sampler?.imageRect;
-        u.uRect.set(
-          rect ? [rect.width, rect.height, rect.x, rect.y] : [1, 1, 0, 0],
-        );
-        r.uniforms.update();
+        if (vectorBatching) {
+          mesh.flashMultiply = color.slice(0, 4);
+          mesh.flashOffset = Float32Array.from(color.subarray(4), v => v / 255);
+          mesh.flashRadial = +radial;
+          mesh.onViewUpdate();
+        } else {
+          r.shader.resources.uTexture = texture.source;
+          const u = r.uniforms.uniforms;
+          u.uMultiply.set(color.subarray(0, 4));
+          for (let i = 0; i < 4; i++) u.uOffset[i] = color[i + 4] / 255;
+          u.uRadial = +radial;
+          const rect = sampler?.imageRect;
+          u.uRect.set(
+            rect ? [rect.width, rect.height, rect.x, rect.y] : [1, 1, 0, 0],
+          );
+          r.uniforms.update();
+        }
         stats.uniformUpdates++;
       }
-      stats.customMeshes++;
+      if (vectorBatching) stats.vectorBatchedMeshes++;
+      else stats.customMeshes++;
     } else {
       if (paintChanged || record.colorChanged) {
         const base = !tex ? (material?.style?.color ?? 0xffffff) : 0xffffff;
@@ -353,8 +573,8 @@ export async function startDisplayList(
         mesh.tint = (rgb[0] << 16) | (rgb[1] << 8) | rgb[2];
         mesh.alpha = clamp(alpha * color[3] + color[7] / 255);
       }
-      stats.batchedMeshes++;
     }
+    if (vectorBatching || !custom) stats.batchedMeshes++;
     stats.meshes++;
     return mesh;
   }
@@ -374,6 +594,8 @@ export async function startDisplayList(
     let r = records.get(node);
     if (!r) {
       r = {
+        node,
+        childLayer: directObjects ? new Container() : null,
         outer: new Container(),
         content: new Container(),
         meshes: [],
@@ -385,32 +607,24 @@ export async function startDisplayList(
         revision: ++revision,
       };
       r.outer.addChild(r.content);
+      if (r.childLayer) r.content.addChild(r.childLayer);
+      if (pixiEvents && directObjects) r.outer.eventMode = "passive";
       records.set(node, r);
+      groupOwners.set(r.outer, node);
+      groupOwners.set(r.content, node);
     }
     return r;
   }
-  function visit(
-    node,
-    inherited,
-    path = new Set(),
-    parentMatrix = scene.localTransform,
-    parentTransformRevision = 0,
-  ) {
-    if (path.has(node)) {
-      missing("cyclic-display-list");
-      return null;
+  function updateObject(node, r) {
+    if (pixiEvents && directObjects) {
+      r.outer.eventMode = "passive";
+      // Flash routes hits on mouse-disabled art and on mouseChildren=false
+      // subtrees to an ancestor. Keep every branch hittable so Pixi still
+      // reports the topmost art; the scoped native pick applies those rules.
+      r.outer.interactiveChildren = true;
     }
-    path.add(node);
-    const r = nodeRecord(node);
-    r.epoch = stats.frames;
     if (r.outer.visible !== (node.visible !== false)) dirty(r);
     r.outer.visible = node.visible !== false;
-    stats.nodes++;
-    if (!r.outer.visible) {
-      path.delete(node);
-      return r.outer;
-    }
-    const entity = node.getEntity?.(); // Text glyph construction and lazy graphics only.
     const m = node.transform.matrix3D;
     const local = node._registrationMatrix3D ? m.clone() : m;
     if (node._registrationMatrix3D) {
@@ -422,24 +636,63 @@ export async function startDisplayList(
       }
     }
     const a = local._rawData;
-    const world = r.world || (r.world = new Matrix());
-    world.set(
-      parentMatrix.a * a[0] + parentMatrix.c * a[1],
-      parentMatrix.b * a[0] + parentMatrix.d * a[1],
-      parentMatrix.a * a[4] + parentMatrix.c * a[5],
-      parentMatrix.b * a[4] + parentMatrix.d * a[5],
-      0,
-      0,
-    );
-    if (a[2] || a[6] || a[3] || a[7]) missing("3d-transform");
+    r.is3D = !!(a[2] || a[6] || a[3] || a[7]);
     const transform = [a[0], a[1], a[4], a[5], a[12], a[13]];
     if (!same(r.transform, transform)) {
-      dirty(r);
+      dirty(r, "transform");
       r.transformRevision = r.revision;
       r.matrix.set(...transform);
       r.outer.setFromMatrix(r.matrix);
       r.transform = transform;
+      if (directObjects) stats.directTransformUpdates++;
     }
+  }
+  function visit(
+    node,
+    inherited,
+    path = new Set(),
+    parentMatrix = scene.localTransform,
+    parentTransformRevision = 0,
+    force = false,
+  ) {
+    if (path.has(node)) {
+      missing("cyclic-display-list");
+      return null;
+    }
+    path.add(node);
+    const r = bindings ? bindings.own(node) : nodeRecord(node);
+    r.epoch = stats.frames;
+    if (bindings && r.summary && !force && !r.branchDirty) {
+      stats.skippedSubtrees++;
+      reuseSummary(r);
+      path.delete(node);
+      return r.outer;
+    }
+    const before = bindings ? summaryStart() : null;
+    const prepareContent = !bindings || !retainContent || !r.ownContent || force || r.selfDirty || r.descendantsDirty;
+    const forceChildren = force || r.descendantsDirty;
+    r.branchDirty = r.selfDirty = r.descendantsDirty = false;
+    stats.preparedNodes++;
+    if (r.outer.visible !== (node.visible !== false)) dirty(r);
+    r.outer.visible = node.visible !== false;
+    stats.nodes++;
+    if (!r.outer.visible) {
+      scenery?.release(r);
+      if (before) finishSummary(r, before);
+      path.delete(node);
+      return r.outer;
+    }
+    if (!bindings) { stats.polledTransforms++; updateObject(node, r); }
+    const a = r.transform;
+    if (r.is3D) missing("3d-transform");
+    const world = r.world || (r.world = new Matrix());
+    world.set(
+      parentMatrix.a * a[0] + parentMatrix.c * a[1],
+      parentMatrix.b * a[0] + parentMatrix.d * a[1],
+      parentMatrix.a * a[2] + parentMatrix.c * a[3],
+      parentMatrix.b * a[2] + parentMatrix.d * a[3],
+      0, 0,
+    );
     const transformRevision = Math.max(
       parentTransformRevision,
       r.transformRevision || 0,
@@ -447,70 +700,132 @@ export async function startDisplayList(
     combineColor(inherited, node.transform.colorTransform?._rawData, r.color);
     r.colorChanged = !same(r.previousColor, r.color);
     if (r.colorChanged) {
-      dirty(r);
+      dirty(r, "color");
       r.previousColor = r.color.slice();
     }
-    const children = [];
-    let shapeIndex = 0;
-    if (entity?.assetType === "[asset Billboard]") {
-      // Billboard geometry is generated on the CPU independently of render entities.
-      const b = entity.billboardRect;
-      const key = [entity.billboardWidth, entity.billboardHeight, b?.x, b?.y];
-      if (!same(r.billboardKey, key)) {
-        dirty(r);
-        r.billboard?.destroy();
-        r.billboard = new Sprite();
-        r.billboardKey = key;
+    let children, ownVertices;
+    if (!prepareContent && !r.colorChanged) {
+      // A descendant mutation does not change this object's own retained meshes.
+      // Asset subscriptions remain attached until the content actually changes.
+      children = r.ownContent.children.slice();
+      ownVertices = r.ownContent.vertices;
+      reuseSummary(r.ownContent);
+      stats.retainedContents++;
+    } else {
+      stats.preparedContents++;
+      const contentBefore = bindings ? summaryStart() : null;
+      // Native getters/traversers can tessellate dirty graphics or lay out text.
+      // Keep that cost separate from converting their output to Pixi objects.
+      let entity;
+      const endEntity = profiler.section("syncNativeMs");
+      try { entity = node.getEntity?.(); }
+      finally { endEntity?.(); }
+      children = [];
+      if (bindings) tracker.beginOwner(r);
+      let shapeIndex = 0;
+      const nativeTextSpec = useNativeText ? describeNativeText(node) : null;
+      if (nativeTextSpec) {
+        for (const old of r.meshes) if (old) disposeMesh(old);
+        r.meshes.length = 0;
+        children.push(syncNativeText(r, nativeTextSpec, r.color, world, dirty));
+        const textCount = nativeTextSpec.lines?.filter(line => line.text).length || 1;
+        stats.nativeTexts += textCount;
+        stats.meshes += textCount;
+      } else if (entity?.assetType === "[asset Billboard]") {
+        retireNativeText(r);
+        // Billboard geometry is generated on the CPU independently of render entities.
+        const b = entity.billboardRect;
+        const key = [entity.billboardWidth, entity.billboardHeight, b?.x, b?.y];
+        if (!same(r.billboardKey, key)) {
+          dirty(r);
+          r.billboard?.destroy();
+          r.billboard = new Sprite();
+          r.billboardKey = key;
+        }
+        const texture = imageTexture(entity.image, entity.style?.sampler);
+        if (texture) {
+          if (r.billboard.texture !== texture) dirty(r);
+          const imageRevision = tracker.version(entity.image);
+          if (r.imageRevision !== imageRevision) dirty(r);
+          r.imageRevision = imageRevision;
+          r.billboard.texture = texture;
+          r.billboard.position.set(-(b?.x || 0), -(b?.y || 0));
+          r.billboard.width = key[0];
+          r.billboard.height = key[1];
+          r.billboard.alpha = clamp(r.color[3]);
+          children.push(r.billboard);
+          stats.meshes++;
+          if (r.color.some((v, i) => (i === 3 ? false : v !== IDENTITY_COLOR[i])))
+            missing("bitmap-color-transform");
+        }
+      } else {
+        retireNativeText(r);
+        const endNative = profiler.section("syncNativeMs");
+        try {
+          entity?._acceptTraverser?.({
+            applyTraversable(shape) {
+              const endShape = profiler.section("syncShapeMs");
+              try {
+                const mesh = shapeMesh(shape, node, r, shapeIndex++, r.color);
+                if (mesh) children.push(mesh);
+                else if (r.meshes[shapeIndex - 1]) {
+                  disposeMesh(r.meshes[shapeIndex - 1]);
+                  r.meshes[shapeIndex - 1] = null;
+                }
+              } finally { endShape?.(); }
+            },
+          });
+        } finally { endNative?.(); }
       }
-      const texture = imageTexture(entity.image, entity.style?.sampler);
-      if (texture) {
-        if (r.billboard.texture !== texture) dirty(r);
-        const imageRevision = tracker.version(entity.image);
-        if (r.imageRevision !== imageRevision) dirty(r);
-        r.imageRevision = imageRevision;
-        r.billboard.texture = texture;
-        r.billboard.position.set(-(b?.x || 0), -(b?.y || 0));
-        r.billboard.width = key[0];
-        r.billboard.height = key[1];
-        r.billboard.alpha = clamp(r.color[3]);
-        children.push(r.billboard);
-        stats.meshes++;
-        if (r.color.some((v, i) => (i === 3 ? false : v !== IDENTITY_COLOR[i])))
-          missing("bitmap-color-transform");
+      if (r.shapeCount !== undefined && r.shapeCount !== shapeIndex)
+        r.changingTopology = true;
+      r.shapeCount = shapeIndex;
+      while (r.meshes.length > shapeIndex) {
+        const old = r.meshes.pop();
+        if (old) disposeMesh(old);
       }
-    } else
-      entity?._acceptTraverser?.({
-        applyTraversable(shape) {
-          const mesh = shapeMesh(shape, node, r, shapeIndex++, r.color);
-          if (mesh) children.push(mesh);
-          else if (r.meshes[shapeIndex - 1]) {
-            disposeMesh(r.meshes[shapeIndex - 1]);
-            r.meshes[shapeIndex - 1] = null;
-          }
-        },
-      });
-    while (r.meshes.length > shapeIndex) {
-      const old = r.meshes.pop();
-      if (old) disposeMesh(old);
+      if (bindings) tracker.endOwner();
+      ownVertices = r.meshes.reduce((n, m) => n + (m?.mesh.geometry?.positions?.length || 0) / 2, 0);
+      if (bindings) {
+        r.ownContent = { children: children.slice(), vertices: ownVertices };
+        finishSummary(r.ownContent, contentBefore);
+      }
     }
     r.hasText = typeof node.text === "string";
-    let cacheSafe = true;
+    let cacheSafe = true, rasterSafe = true;
+    let drawCost = children.length;
+    let batchVertices = ownVertices;
+    let drawingChildren = 0;
     let singleDraws = children.length;
     for (const child of node._children || []) {
-      const object = visit(child, r.color, path, world, transformRevision);
+      const object = visit(child, r.color, path, world, transformRevision, forceChildren);
       if (object) {
-        children.push(object);
+        if (!bindings) children.push(object);
         const childRecord = records.get(child);
-        r.revision = Math.max(r.revision, childRecord.revision);
+        if (childRecord.revision > r.revision) {
+          r.revision = childRecord.revision;
+          r.lastChange = childRecord.lastChange;
+        }
         if (childRecord.outer.visible) {
+          if (childRecord.drawCost) drawingChildren++;
           singleDraws += childRecord.singleDraws ?? 2;
+          drawCost += childRecord.drawCost || 0;
+          // Existing child groups already own separate buffers.
+          if (!childRecord.batchGroup) batchVertices += childRecord.batchVertices || 0;
+          rasterSafe &&= childRecord.rasterSafe;
           r.hasText ||= childRecord.hasText;
         }
         if (childRecord.outer.visible && !childRecord.cacheSafe)
           cacheSafe = false;
       }
     }
+    if (bindings) children.push(r.childLayer);
     arrange(r.content, children, r);
+    if (directObjects && pixiEvents) for (const child of children) {
+      if (child === r.childLayer) continue;
+      child.eventMode = "static";
+      groupOwners.set(child, node);
+    }
     const scroll = node.scrollRect;
     const scrollState = scroll
       ? [scroll.x, scroll.y, scroll.width, scroll.height]
@@ -549,8 +864,11 @@ export async function startDisplayList(
     const filters = node.filters || [];
     const sx = Math.hypot(world.a, world.b),
       sy = Math.hypot(world.c, world.d);
+    let hasFilter = false;
     const descriptions = filters
       .map((f) => {
+        if (!f) return null;
+        hasFilter = true;
         const d = describeFilter(f, sx, sy, r.hasText);
         if (!d) missing("filter:" + f.filterName);
         else if (f.filterName !== "colorMatrix")
@@ -565,7 +883,39 @@ export async function startDisplayList(
     // An unfiltered, unmasked single draw needs no offscreen group for fixed
     // blend modes. Keep multi-draw groups isolated so overlapping children are
     // composited together before blending against the backdrop.
-    const simple = !filters.length && !maskNodes.length && !scroll;
+    const simple = !hasFilter && !maskNodes.length && !scroll;
+    r.rasterSafe = rasterSafe && simple && !node.maskMode && ["normal", ""].includes(blend);
+    r.drawCost = drawCost;
+    r.batchVertices = batchVertices;
+    // A small morph/timeline shape can invalidate a huge parent's batch even
+    // though it never reaches the normal grouping threshold. Isolate it once
+    // it changes layout, but only if this protects a substantial neighbor set.
+    // Consult the nearest existing group's previous budget; promoting a child
+    // below will remove it from the parent's budget during this same walk.
+    let protectNeighbors = false;
+    if (renderGroups && isolateTopology && !r.batchGroup && r.changingTopology) {
+      for (let parent = node.parent; parent; parent = parent.parent) {
+        const owner = records.get(parent);
+        if (owner?.batchGroup || !parent.parent) {
+          protectNeighbors = (owner?.batchVertices || 0) - batchVertices >= 12000;
+          break;
+        }
+      }
+    }
+    // Bound rebuilds caused by animated topology to a branch's instruction set.
+    // Count vertices as well as draws: a few detailed shapes can otherwise
+    // rebuild multi-megabyte buffers. Child groups are excluded from this budget.
+    // Unary wrappers need no extra group; large standalone geometry does.
+    // Promotion is persistent so animation does not toggle grouping every frame.
+    if (renderGroups && !r.batchGroup && (
+      (drawingChildren >= 2 && (drawCost >= 64 || (groupVertexLimit > 0 && batchVertices >= groupVertexLimit))) ||
+      ownVertices >= 12000 || protectNeighbors
+    )) {
+      r.outer.enableRenderGroup();
+      r.batchGroup = true;
+      visualDirty = true;
+    }
+    if (r.batchGroup) stats.batchGroups++;
     const directBlend =
       simple &&
       singleDraws === 1 &&
@@ -583,48 +933,57 @@ export async function startDisplayList(
     ]);
     if (r.filterKey !== key) {
       dirty(r);
-      r.content.filters = null;
-      r.effectCache?.destroy();
-      r.effectCache = null;
-      for (const f of r.filters) destroyFilter(f);
-      r.filters = descriptions.map(createFilter);
-      r.content.blendMode = directBlend ? blend : "inherit";
-      if (!directBlend && !["normal", "layer", ""].includes(blend)) {
-        const mapped = blend === "hardlight" ? "hard-light" : blend;
-        if (
-          [
-            "add",
-            "multiply",
-            "screen",
-            "overlay",
-            "hard-light",
-            "darken",
-            "lighten",
-            "difference",
-          ].includes(mapped)
-        ) {
-          const AdvancedBlend = advancedBlends[mapped];
-          const isolate = AdvancedBlend
-            ? new AdvancedBlend()
-            : new AlphaFilter({ alpha: 1 });
-          if (!AdvancedBlend) isolate.blendMode = mapped;
-          r.filters.push(isolate);
-        } else missing("blend:" + blend);
+      const layout = JSON.stringify([blend, descriptions.map(filterProgramKey), r.cacheSafe, directBlend, r.hasText]);
+      if (reuseFilters && r.filterLayout === layout) {
+        descriptions.forEach((d, i) => updateFilter(r.filters[i], d));
+        r.effectCache?.refresh();
+      } else {
+        r.content.filters = null;
+        r.effectCache?.destroy();
+        r.effectCache = null;
+        for (const f of r.filters) destroyFilter(f);
+        r.filters = descriptions.map(createFilter);
+        r.content.blendMode = directBlend ? blend : "inherit";
+        if (!directBlend && !["normal", "layer", ""].includes(blend)) {
+          const mapped = blend === "hardlight" ? "hard-light" : blend;
+          if (
+            [
+              "add",
+              "multiply",
+              "screen",
+              "overlay",
+              "hard-light",
+              "darken",
+              "lighten",
+              "difference",
+            ].includes(mapped)
+          ) {
+            const AdvancedBlend = advancedBlends[mapped];
+            const isolate = AdvancedBlend
+              ? new AdvancedBlend()
+              : new AlphaFilter({ alpha: 1 });
+            if (!AdvancedBlend) isolate.blendMode = mapped;
+            r.filters.push(isolate);
+          } else missing("blend:" + blend);
+        }
+        // Text must be antialiased before sampling it into an effect texture.
+        // Pixi filters default to non-MSAA inputs, unlike the main canvas.
+        if (r.hasText) for (const f of r.filters) f.antialias = "on";
+        if (cacheEffects && r.cacheSafe && r.filters.length)
+          r.effectCache = new RetainedEffects(r.filters, stats);
+        r.content.filters = r.effectCache
+          ? [r.effectCache]
+          : r.filters.length
+            ? r.filters
+            : null;
+        r.filterLayout = layout;
       }
-      // Text must be antialiased before sampling it into an effect texture.
-      // Pixi filters default to non-MSAA inputs, unlike the main canvas.
-      if (r.hasText) for (const f of r.filters) f.antialias = "on";
-      if (cacheEffects && r.cacheSafe && r.filters.length)
-        r.effectCache = new RetainedEffects(r.filters, stats);
-      r.content.filters = r.effectCache
-        ? [r.effectCache]
-        : r.filters.length
-          ? r.filters
-          : null;
       r.filterKey = key;
     }
     if (r.effectCache)
       r.effectCache.revision = Math.max(r.revision, transformRevision);
+    scenery?.observe(r);
+    if (before) finishSummary(r, before);
     path.delete(node);
     return r.outer;
   }
@@ -654,6 +1013,12 @@ export async function startDisplayList(
       }
   }
   function destroyRecord(r) {
+    scenery?.release(r);
+    needsSweep = true;
+    bindings?.release(r.node);
+    tracker.releaseOwner(r);
+    r.childLayer?.removeChildren();
+    r.childLayer?.destroy();
     for (const w of r.wrappers) w.mask = null;
     visualDirty = true;
     r.content.mask = null;
@@ -669,6 +1034,7 @@ export async function startDisplayList(
       w.destroy();
     }
     r.billboard?.destroy();
+    retireNativeText(r);
     r.scrollMask?.destroy();
     r.content.destroy();
     r.outer.destroy();
@@ -676,31 +1042,63 @@ export async function startDisplayList(
   function stop() {
     if (stopped) return;
     stopped = true;
+    profiler.stop();
+    restoreCatchUp?.();
+    restoreIdleHover?.();
+    restorePixiPickBounds?.();
+    restorePixiPickEvents?.();
+    bindings?.destroy();
+    detachedRecords.clear();
     stats.active = false;
+    if (failed) player.isPaused = pauseBeforeFailure;
     if (native.render === render) native.render = original;
+    scenery?.destroy();
     scene.removeChildren();
     for (const r of records.values()) for (const w of r.wrappers) w.mask = null;
     for (const r of records.values()) destroyRecord(r);
     records.clear();
     geometryCache.destroy();
+    nativePaths.destroy();
+    nativePicking.destroy();
+    if (pixiBitmapDraw) pathSource?.setBitmapDrawHandler(null);
+    pathSource?.setLiteGeometry(false);
     for (const r of textures.values())
-      for (const t of r.variants.values()) t.destroy(true);
+      for (const t of r.variants.values()) retirePixiTexture(t);
     textures.clear();
+    textureSamples.destroy();
     tracker.destroy();
     scene.destroy();
     canvas.removeEventListener("webglcontextlost", contextLost);
+    restoreBlendResolve?.();
+    restoreVectorBatcher?.();
     renderer.destroy();
     canvas.remove();
     onStatus("AwayFL renderer active", stats);
   }
-  function render(...args) {
-    if (stopped) return original.apply(this, args);
+  function fail(error) {
+    if (stopped || failed) return;
+    failed = true;
+    stats.failed = true;
+    stats.lastError = error.message;
+    pauseBeforeFailure = player.isPaused;
+    player.isPaused = true;
+    console.error("[Pixi display list]", error);
+    onStatus("Pixi paused: " + error.message + ". Reload to retry or select Use AwayFL.", stats);
+  }
+  function render() {
+    if (stopped || failed) return;
+    let endPhase;
     try {
       const start = performance.now();
-      stats.nodes = stats.meshes = stats.batchedMeshes = stats.customMeshes = 0;
+      endPhase = profiler.section("syncSetupMs");
+      stats.preparedNodes = stats.skippedSubtrees = 0;
+      stats.preparedContents = stats.retainedContents = 0;
+      stats.nativeGraphics = stats.nativeGradients = stats.nativeBitmaps = stats.nativeCompounds = stats.nativeTexts = stats.nodes = stats.meshes = stats.batchedMeshes = stats.customMeshes = stats.vectorBatchedMeshes = 0;
       stats.directBlendGroups = stats.isolatedBlendGroups = 0;
+      stats.batchGroups = 0;
       stats.unsupported = {};
       tracker.epoch = stats.frames;
+      textureSamples.flush();
       const width = sourceCanvas.width,
         height = sourceCanvas.height;
       const rect = sourceCanvas.getBoundingClientRect();
@@ -736,18 +1134,27 @@ export async function startDisplayList(
       ];
       if (!same(previousProjection, projectionKey)) {
         visualDirty = true;
-        for (const r of records.values()) dirty(r);
+        if (bindings) sourceChanged(records.get(player.root), true);
+        else for (const r of records.values()) dirty(r);
       }
       previousProjection = projectionKey;
       scene.setFromMatrix(projection);
+      endPhase?.(); endPhase = profiler.section("syncVisitMs");
       const root = visit(player.root, IDENTITY_COLOR, new Set(), projection);
       if (root.parent !== scene) scene.addChild(root);
-      resolveMasks();
-      for (const [node, r] of records)
+      endPhase?.(); endPhase = profiler.section("syncMasksMs");
+      if (stats.preparedNodes) { stats.preparationPasses++; resolveMasks(); }
+      else stats.reusedPreparations++;
+      endPhase?.(); endPhase = profiler.section("syncRetireMs");
+      if (bindings) retireDetached();
+      else for (const [node, r] of records)
         if (r.epoch < stats.frames - 2) {
           destroyRecord(r);
           records.delete(node);
         }
+      endPhase?.(); endPhase = profiler.section("syncSceneryMs");
+      scenery?.prepare();
+      endPhase?.(); endPhase = undefined;
       stats.syncMs = performance.now() - start;
       const draw = performance.now();
       // Reuse the completed canvas only when every observable drawing input
@@ -759,6 +1166,20 @@ export async function startDisplayList(
         previousUploads !== stats.textureUploads
       ) {
         renderer.render({ container: scene, clear: true });
+        // Pixi HTMLText creates its SVG texture asynchronously. Its render
+        // group becomes dirty on completion, but our unchanged-frame shortcut
+        // also needs to request one more render to put it on the canvas.
+        for (const r of records.values()) {
+          const texts = r.nativeText?.children?.length ? r.nativeText.children : [r.nativeText];
+          for (const text of texts) {
+            if (text?.renderPipeId !== "htmlText") continue;
+            const promise = text._gpuData[renderer.uid]?.texturePromise;
+            if (promise && !observedHTMLTextures.has(promise)) {
+              observedHTMLTextures.add(promise);
+              promise.then(() => { if (!stopped) visualDirty = true; }).catch(() => {});
+            }
+          }
+        }
         stats.drawnFrames++;
         stats.pixiMs = performance.now() - draw;
       } else {
@@ -768,14 +1189,21 @@ export async function startDisplayList(
       visualDirty = false;
       previousBuilds = stats.geometryBuilds;
       previousUploads = stats.textureUploads;
+      endPhase = profiler.section("adapterCleanupMs");
       // Retirement happens after render instructions release last frame's textures.
       for (const [image, r] of textures)
-        if (r.epoch < stats.frames - 2) {
-          for (const t of r.variants.values()) t.destroy(true);
+        if (!tracker.retained(image) && !textureSamples.retained(image) &&
+            ![...r.variants.values()].some(nativePaths.usesTexture) && r.epoch < stats.frames - 2) {
+          for (const t of r.variants.values()) retirePixiTexture(t);
           textures.delete(image);
         }
-      geometryCache.sweep();
-      tracker.sweep();
+      if (!bindings || stats.preparedNodes || detachedRecords.size || needsSweep) {
+        geometryCache.sweep();
+        nativePaths.sweep();
+        textureSamples.sweep();
+        tracker.sweep();
+        needsSweep = false;
+      }
       stats.frames++;
       if (performance.now() - statusTime > 1000) {
         const now = performance.now();
@@ -783,7 +1211,7 @@ export async function startDisplayList(
         statusFrames = stats.frames;
         statusTime = now;
         onStatus(
-          "Pixi display list — " +
+          (directObjects ? "Pixi direct objects — " : "Pixi display list — ") +
             stats.fps.toFixed(1) +
             " FPS · prototype (" +
             Object.keys(stats.unsupported).length +
@@ -792,24 +1220,32 @@ export async function startDisplayList(
         );
       }
     } catch (error) {
-      stats.lastError = error.message;
-      console.error("[Pixi display list]", error);
-      stop();
-      original.apply(this, args);
-      onStatus("Pixi stopped: " + error.message, stats);
+      fail(error);
+    } finally {
+      endPhase?.();
     }
   }
   function contextLost(event) {
     event.preventDefault();
-    stats.lastError = "Pixi graphics context lost";
-    stop();
+    fail(Error("Pixi graphics context lost"));
   }
   canvas.addEventListener("webglcontextlost", contextLost);
+  try {
+    if (bindings) bindings.own(player.root);
+  } catch (error) {
+    stop();
+    throw error;
+  }
   native.render = render;
-  onStatus("Pixi display list — prototype", stats);
+  if (nativeGraphics) pathSource.setLiteGeometry(true);
+  if (pixiBitmapDraw && pathSource) pathSource.setBitmapDrawHandler(createBitmapDraw(renderer, records, stats));
+  onStatus(directObjects ? "Pixi direct objects — prototype" : "Pixi display list — prototype", stats);
   return {
     stop,
     stats,
+    profile: (count, options) => stopped ? Promise.reject(Error("Pixi is stopped")) : profiler.sample(count, options),
+    inspectScenery: () => scenery?.inspect() || [],
+    getDisplayObject: (node) => records.get(node?.adaptee || node)?.outer,
     inspectText(search) {
       const result = [];
       for (const [node, r] of records) {
@@ -846,7 +1282,7 @@ export async function startDisplayList(
             offset: m.uniforms && Array.from(m.uniforms.uniforms.uOffset),
             fill: m.shape.originalFillStyle,
             uv: m.shape.style?.uvMatrix,
-            texture: [m.mesh.texture.width, m.mesh.texture.height],
+            texture: [m.mesh.texture?.width, m.mesh.texture?.height],
           })),
         });
       }

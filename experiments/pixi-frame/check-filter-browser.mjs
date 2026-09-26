@@ -5,6 +5,13 @@ import { createFilterPasses } from "./filter-passes.mjs";
 import { saveGL, mirrorGL, createTransport } from "./shared-gl.mjs";
 export { checkRenderer } from "./check-renderer-browser.mjs";
 export { checkFlashBlend } from "./check-blend-browser.mjs";
+export { checkTranslationReuse } from "./check-translation-browser.mjs";
+export { checkNativePaths } from "./check-native-paths-browser.mjs";
+export { checkNativeText } from "./check-native-text-browser.mjs";
+export { checkLinearGradient } from "./check-linear-gradient-browser.mjs";
+export { checkRadialGradient } from "./check-radial-gradient-browser.mjs";
+export { checkBitmapFill } from "./check-bitmap-fill-browser.mjs";
+export { checkCompoundFill } from "./check-compound-fill-browser.mjs";
 
 export async function checkFilters(player) {
   const stage = player._view.stage,
@@ -166,3 +173,9 @@ export async function checkFilters(player) {
 }
 
 export { checkBatchRendering } from "./check-batch-browser.mjs";
+
+export { checkFilterUpdates } from "./check-filter-updates-browser.mjs";
+
+export { checkMaskUpdates } from "./check-mask-updates-browser.mjs";
+
+export { checkColorUpdates } from "./check-color-updates-browser.mjs";

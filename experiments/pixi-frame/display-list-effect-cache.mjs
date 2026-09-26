@@ -19,6 +19,16 @@ export class RetainedEffects extends AlphaFilter {
     this.revision = 0;
   }
 
+  refresh() {
+    this.release();
+    // A new parameter set starts a fresh cache history, just like constructing
+    // the replacement wrapper. Keep its target resolution/composite behavior.
+    this.lastInputKey = undefined;
+    this.antialias = this.effects.every(f => f.antialias === "on") ? "on" : "off";
+    this.padding = this.effects.reduce((n, f) => n + f.padding, 0);
+    this.resolution = this.effects.reduce((n, f) => f.resolution === "inherit" ? n : Math.min(n, f.resolution), 1);
+  }
+
   release() {
     if (!this.cached) return;
     this.stats.effectCachePixels -= this.pixels;

@@ -1,20 +1,25 @@
 import { MeshGeometry } from "pixi.js";
-import { triangleData, readAttribute } from "./display-list-data.mjs";
+import { triangleData, readAttribute, screenSpaceStroke } from "./display-list-data.mjs";
 
 const same = (a, b) => a?.length === b.length && b.every((v, i) => v === a[i]);
 
 // One geometry per source element/range/UV mapping/shader layout. Meshes retain
 // independent transforms, textures and colors. No hashing of vertex contents.
-export function createGeometryCache(tracker, stats) {
+export function createGeometryCache(tracker, stats, { retain = 2048 } = {}) {
   const sources = new Map();
-  stats.geometryEntries = stats.geometryUsers = stats.geometryShares = 0;
+  // Unused geometries, oldest first. Cached morph ratios bring the same
+  // elements back a few frames later; keep a bounded set instead of rebuilding.
+  const unused = new Map();
+  const retained = Math.max(0, retain | 0);
+  stats.geometryEntries = stats.geometryUsers = stats.geometryShares = stats.geometryRetained = 0;
   function release(entry) {
     if (!entry) return;
     entry.users--;
     stats.geometryUsers--;
+    if (!entry.users && retained) unused.set(entry, true);
   }
   return {
-    sync(current, shape, uv, custom) {
+    sync(current, shape, uv, custom, world) {
       const e = shape.elements;
       const curves = e.getCustomAtributes?.("curves");
       const variant = [
@@ -28,6 +33,11 @@ export function createGeometryCache(tracker, stats) {
         uv?.tx,
         uv?.ty,
       ];
+      if (screenSpaceStroke(e)) {
+        // Translation does not change stroke extrusion. Instances at the same
+        // linear transform can still share their cached geometry.
+        variant.push(e.scaleMode, world?.a, world?.b, world?.c, world?.d);
+      }
       // Most retained meshes keep the same source/range/UV layout. Check that
       // tuple directly instead of serializing and looking it up every frame.
       let entry =
@@ -47,7 +57,7 @@ export function createGeometryCache(tracker, stats) {
           stats.geometryEntries++;
         }
       }
-      const signature = [e.numVertices, e.dimension];
+      const signature = [e.numVertices, e.dimension, e.scaleMode];
       for (const view of [e.positions, e.indices, e.uvs, e.thickness, curves]) {
         signature.push(view);
         if (!view) continue;
@@ -63,7 +73,7 @@ export function createGeometryCache(tracker, stats) {
         );
       }
       if (!same(entry.signature, signature)) {
-        const data = triangleData(shape, uv);
+        const data = triangleData(shape, uv, world);
         const geometry = entry.geometry;
         geometry.positions = data.positions;
         geometry.uvs = data.uvs;
@@ -86,6 +96,7 @@ export function createGeometryCache(tracker, stats) {
       }
       if (current !== entry) {
         if (entry.users) stats.geometryShares++;
+        else unused.delete(entry);
         entry.users++;
         stats.geometryUsers++;
         release(current);
@@ -96,17 +107,24 @@ export function createGeometryCache(tracker, stats) {
     sweep() {
       // Run after rendering: old render instructions can still reference meshes
       // retired during synchronization. Other instances keep their geometry alive.
+      for (const entry of unused.keys()) {
+        if (unused.size <= retained) break;
+        unused.delete(entry);
+      }
       for (const [source, variants] of sources) {
         for (const [key, entry] of variants)
-          if (!entry.users) {
+          if (!entry.users && !unused.has(entry)) {
             entry.geometry.destroy();
             variants.delete(key);
             stats.geometryEntries--;
           }
         if (!variants.size) sources.delete(source);
       }
+      stats.geometryRetained = unused.size;
     },
     destroy() {
+      unused.clear();
+      stats.geometryRetained = 0;
       for (const variants of sources.values())
         for (const entry of variants.values()) entry.geometry.destroy();
       sources.clear();

@@ -1,0 +1,205 @@
+{
+  "environment": "Headless Chrome, SwiftShader software GPU; not the user Intel GPU",
+  "workload": "Paused offline Battleon vector fixture, 2044x1171; scenery cache disabled; marker movement forces each draw. Eight samples per mode; exclude first sample from medians. One-pixel readPixels waits for GPU completion. No login or server connection.",
+  "modes": {
+    "pixiOriginalResolves": {
+      "medianSubmitMs": 97.5,
+      "medianCompleteMs": 2590.3999999910593,
+      "samples": [
+        {
+          "submit": 131.8999999910593,
+          "total": 6687.5,
+          "draws": 1338,
+          "blits": 480,
+          "blitPixels": 1134645064
+        },
+        {
+          "submit": 97.5,
+          "total": 2705.5,
+          "draws": 1338,
+          "blits": 480,
+          "blitPixels": 1134645064
+        },
+        {
+          "submit": 111.3999999910593,
+          "total": 2590.3999999910593,
+          "draws": 1338,
+          "blits": 480,
+          "blitPixels": 1134645064
+        },
+        {
+          "submit": 72.79999999701977,
+          "total": 2513,
+          "draws": 1338,
+          "blits": 480,
+          "blitPixels": 1134645064
+        },
+        {
+          "submit": 81.59999999403954,
+          "total": 2600.9000000059605,
+          "draws": 1338,
+          "blits": 480,
+          "blitPixels": 1134645064
+        },
+        {
+          "submit": 94.59999999403954,
+          "total": 2992.0999999940395,
+          "draws": 1338,
+          "blits": 480,
+          "blitPixels": 1134645064
+        },
+        {
+          "submit": 126,
+          "total": 2484.5,
+          "draws": 1338,
+          "blits": 480,
+          "blitPixels": 1134645064
+        },
+        {
+          "submit": 109,
+          "total": 2151.7000000029802,
+          "draws": 1338,
+          "blits": 480,
+          "blitPixels": 1134645064
+        }
+      ]
+    },
+    "pixiBoundedResolves": {
+      "medianSubmitMs": 74.5,
+      "medianCompleteMs": 920.2999999970198,
+      "samples": [
+        {
+          "submit": 122,
+          "total": 3213.6000000089407,
+          "draws": 1338,
+          "blits": 148,
+          "blitPixels": 2862835
+        },
+        {
+          "submit": 74.5,
+          "total": 926,
+          "draws": 1338,
+          "blits": 148,
+          "blitPixels": 2862835
+        },
+        {
+          "submit": 84.3999999910593,
+          "total": 920.2999999970198,
+          "draws": 1338,
+          "blits": 148,
+          "blitPixels": 2862835
+        },
+        {
+          "submit": 53.400000005960464,
+          "total": 913,
+          "draws": 1338,
+          "blits": 148,
+          "blitPixels": 2862835
+        },
+        {
+          "submit": 53.5,
+          "total": 924.0999999940395,
+          "draws": 1338,
+          "blits": 148,
+          "blitPixels": 2862835
+        },
+        {
+          "submit": 83.29999999701977,
+          "total": 930.0999999940395,
+          "draws": 1338,
+          "blits": 148,
+          "blitPixels": 2862835
+        },
+        {
+          "submit": 55.5,
+          "total": 894,
+          "draws": 1338,
+          "blits": 148,
+          "blitPixels": 2862835
+        },
+        {
+          "submit": 79,
+          "total": 913.3999999910593,
+          "draws": 1338,
+          "blits": 148,
+          "blitPixels": 2862835
+        }
+      ]
+    },
+    "awayfl": {
+      "medianSubmitMs": 831.5999999940395,
+      "medianCompleteMs": 831.5999999940395,
+      "samples": [
+        {
+          "submit": 757.4000000059605,
+          "total": 757.5,
+          "draws": 9368,
+          "blits": 113,
+          "blitPixels": 22499328
+        },
+        {
+          "submit": 734.9000000059605,
+          "total": 734.9000000059605,
+          "draws": 9368,
+          "blits": 113,
+          "blitPixels": 22499328
+        },
+        {
+          "submit": 771.2999999970198,
+          "total": 771.2999999970198,
+          "draws": 9368,
+          "blits": 113,
+          "blitPixels": 22499328
+        },
+        {
+          "submit": 846.9000000059605,
+          "total": 847.1000000089407,
+          "draws": 9368,
+          "blits": 113,
+          "blitPixels": 22499328
+        },
+        {
+          "submit": 831.5999999940395,
+          "total": 831.5999999940395,
+          "draws": 9368,
+          "blits": 113,
+          "blitPixels": 22499328
+        },
+        {
+          "submit": 999.0999999940395,
+          "total": 999.2000000029802,
+          "draws": 9368,
+          "blits": 113,
+          "blitPixels": 22499328
+        },
+        {
+          "submit": 672.7000000029802,
+          "total": 672.7000000029802,
+          "draws": 9368,
+          "blits": 113,
+          "blitPixels": 22499328
+        },
+        {
+          "submit": 883.1000000089407,
+          "total": 883.2000000029802,
+          "draws": 9368,
+          "blits": 113,
+          "blitPixels": 22499328
+        }
+      ]
+    }
+  },
+  "animatedSmokeCheck": {
+    "description": "Same offline fixture at 2044x1171, timelines unpaused for 50 frames; not a controlled FPS comparison.",
+    "stats": {
+      "frames": 51,
+      "sceneryCaches": 12,
+      "sceneryPixels": 5603840,
+      "sceneryBuilds": 12,
+      "sceneryCandidates": 18,
+      "sceneryWarming": 0,
+      "sceneryRejected": 0,
+      "lastError": null
+    }
+  }
+}

@@ -1,0 +1,57 @@
+{
+  "scope": "Optional stationary-pointer hover sampling; no default input semantics changed.",
+  "nativeTrace": {
+    "fixture": "Offline Battleon map, paused runtime, 900x760 browser viewport, 49 pick queries over a screen grid.",
+    "queries": 45,
+    "methodTotals": {
+      "traverse": {
+        "ms": 172.5000005364418,
+        "calls": 107284
+      },
+      "getTraverser": {
+        "ms": 133.5999999344349,
+        "calls": 225223
+      },
+      "enterNode": {
+        "ms": 70.30000001192093,
+        "calls": 225272
+      },
+      "applyEntity": {
+        "ms": 187.499999538064,
+        "calls": 222932
+      },
+      "_collectEntities": {
+        "ms": 0.7000000029802322,
+        "calls": 865
+      },
+      "_getPickingCollision": {
+        "ms": 5.19999997317791,
+        "calls": 49
+      }
+    }
+  },
+  "interpretation": "Most measured picking cost is traversal, not final shape collision. Per-method clocks add substantial overhead; this trace is not an FPS benchmark.",
+  "policy": {
+    "defaultHz": 0,
+    "trialHz": 12,
+    "immediate": [
+      "queued input",
+      "pointer coordinate change",
+      "drag",
+      "pressed buttons",
+      "touch",
+      "viewport resize"
+    ],
+    "tradeoff": "Animation-driven hover changes under a stationary pointer may be delayed until the next scheduled check, quantized to game ticks."
+  },
+  "unitChecks": "Passed cadence, immediate input, drag, touch, resize, profiler composition and hook restoration.",
+  "browserChecks": {
+    "mouseAndKeyboard": "passed",
+    "idleHover": {
+      "hz": 12,
+      "idleSkips": 8,
+      "periodicCheck": true
+    }
+  },
+  "browserRegression": "Full direct-objects display-list regression passed with idleHoverHz=12."
+}

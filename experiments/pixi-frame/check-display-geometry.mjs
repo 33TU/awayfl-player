@@ -35,7 +35,7 @@ const shape = {
 };
 const stats = { geometryBuilds: 0 },
   tracker = createAssetTracker();
-const cache = createGeometryCache(tracker, stats);
+const cache = createGeometryCache(tracker, stats, { retain: 0 });
 const a = cache.sync(null, shape, null, false);
 const b = cache.sync(null, { ...shape }, null, false);
 assert.equal(a.geometry, b.geometry);
@@ -85,3 +85,45 @@ tracker.destroy();
 console.log(
   "Shared geometry: reuse, UV/range/layout isolation, edits, hidden assets and final-user cleanup passed.",
 );
+
+// Flash hairlines stay one render pixel wide, including enlarged previews.
+const line = {
+  elements: {
+    assetType: "[asset LineElements]", dimension: 2, numVertices: 4, scaleMode: 4,
+    positions: attribute(new Float32Array([0,0,20,0, 0,0,20,0, 20,0,0,0, 20,0,0,0]),4),
+    thickness: attribute(new Float32Array([.5,-.5,-.5,.5]),1),
+  },
+};
+const strokeTracker = createAssetTracker(), strokeStats = {geometryBuilds:0};
+const strokes = createGeometryCache(strokeTracker, strokeStats, { retain: 0 });
+function projectedWidth(entry, m) {
+  const p=entry.geometry.positions;
+  const x=m.a*(p[0]-p[2])+m.c*(p[1]-p[3]);
+  const y=m.b*(p[0]-p[2])+m.d*(p[1]-p[3]);
+  return Math.hypot(x,y);
+}
+const matrices = [
+  {a:1,b:0,c:0,d:1}, {a:8,b:0,c:0,d:8},
+  {a:0,b:6,c:-3,d:0}, {a:4,b:1,c:2,d:3}, {a:-5,b:0,c:0,d:2},
+];
+const entries=matrices.map(m=>strokes.sync(null,line,null,false,m));
+entries.forEach((entry,i)=>assert.ok(Math.abs(projectedWidth(entry,matrices[i])-1)<1e-5));
+assert.notEqual(entries[0].geometry,entries[1].geometry,'different scales need distinct extrusion');
+const translated=strokes.sync(null,line,null,false,{...matrices[1],tx:100,ty:50});
+assert.equal(translated.geometry,entries[1].geometry,'translation still shares geometry');
+const buildsBefore=strokeStats.geometryBuilds;
+strokes.sync(entries[1],line,null,false,matrices[1]);
+assert.equal(strokeStats.geometryBuilds,buildsBefore,'unchanged hairlines are not rebuilt');
+const normal={elements:{...line.elements,scaleMode:2}};
+const scaled=strokes.sync(null,normal,null,false,matrices[1]);
+assert.equal(projectedWidth(scaled,matrices[1]),8,'normal outlines still scale');
+const none={elements:{...line.elements,scaleMode:1,thickness:attribute(new Float32Array([2,-2,-2,2]),1)}};
+const fixed=strokes.sync(null,none,null,false,matrices[1]);
+assert.equal(projectedWidth(fixed,matrices[1]),4,'non-scaling strokes preserve their width');
+const collapsed=strokes.sync(null,line,null,false,{a:0,b:0,c:0,d:0});
+assert.ok([...collapsed.geometry.positions].every(Number.isFinite));
+for(const entry of [...entries,translated,scaled,fixed,collapsed])strokes.release(entry);
+strokes.sweep();
+assert.equal(strokeStats.geometryEntries,0);
+strokes.destroy();strokeTracker.destroy();
+console.log('Hairline/non-scaling widths and transform-aware geometry sharing passed.');

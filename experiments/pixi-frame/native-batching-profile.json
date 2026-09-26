@@ -1,0 +1,25 @@
+{
+  "environment": "Offline Battleon / headless SwiftShader; draw counts and correctness only, not a hardware FPS benchmark",
+  "routingComparison": [
+    {
+      "nativeBatching": false,
+      "draws": 3976,
+      "maxDelta": 0,
+      "changed": 0,
+      "total": 0,
+      "nativeGraphics": 2473
+    },
+    {
+      "nativeBatching": true,
+      "draws": 3142,
+      "maxDelta": 0,
+      "changed": 0,
+      "total": 0,
+      "nativeGraphics": 2473
+    }
+  ],
+  "fullSceneChecks": "passed",
+  "sparseUploadPixelDelta": 0,
+  "partialUploadPixelDelta": 0,
+  "redundantMeshUpdatesSkipped": 20
+}

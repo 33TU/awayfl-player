@@ -5,6 +5,512 @@ display-list prototype. These experiments do not replace the normal player bundl
 or change its loader settings.
 PixiJS is pinned to 8.21.0 in this package's own lockfile.
 
+## Direct object ownership experiment
+
+Branch: `experiment/pixi-direct-objects`.
+
+https://localhost:4433/game/gamefiles/pixi-benchmark/play.html?backend=direct-objects&renderScale=0&fps=1
+
+Each observed Flash display object owns a persistent Pixi container. Transform
+and visibility invalidation updates that container immediately. Child insertion,
+removal, reordering and reparenting update the Pixi hierarchy synchronously,
+including timeline calls through the shared display-object methods. Moving or
+reparenting an object preserves its Pixi identity. Hooks and ownership are
+released when switching back to AwayFL; the normal display-list backend remains
+available at `backend=display-list`.
+
+Preparation is now incremental. Display-object changes mark the affected branch;
+shared geometry and bitmap changes notify each object using that asset. Unchanged
+subtrees retain their meshes, colors, masks and effect settings without a walk.
+A fully unchanged frame skips preparation and reuses the completed canvas.
+Direct-object transform notifications now preserve clean descendants when only
+2D translation changes. Pixi propagates the parent's movement; inherited color,
+linear transforms, stroke widths and filter scale stay unchanged. Rotation,
+scale, 3D/combined invalidations, color changes and reparenting still invalidate
+the affected subtree. Independently dirty children are still visited. Set
+`reuseTranslations:false` when enabling the backend to compare full preparation.
+`translationReuses` counts transform notifications taking this path. The browser
+regression compares translated shapes, fixed-width strokes, filtered children,
+text and masks against forced full preparation, and exercises simultaneous
+geometry edits, scaling, rotation, color and visibility changes.
+
+Ancestor color/transform changes and resizing refresh affected descendants.
+Detached objects keep their resources briefly for reattachment, then release them.
+Invalidations schedule these comparisons without advancing the visual revision.
+Only actual paint, transform, visibility, hierarchy or effect changes invalidate
+retained pictures. Repeated unchanged invalidations can therefore finish scenery
+warmup and reuse both cached textures and the completed canvas.
+
+Stable scenery branches now use Pixi's `cacheAsTexture`: after 24 unchanged
+frames, eligible branches with at least 64 meshes become a retained texture.
+Text, filters, masks and non-normal blends are excluded. Changes invalidate the
+cache; transforms and resizing recalculate its resolution at the rendered scale.
+The cache budget is 8 million backing texels in total and 4 million per group;
+GPU memory also includes antialiasing and Pixi's texture-pool overhead. Hidden
+or detached caches are released. Append `&cacheScenery=0` for a comparison.
+`sceneryCaches`, `sceneryMeshesCached`, `sceneryPixels` and `sceneryBuilds` in
+`pixiLive.stats` show the retained groups and their cost. Mesh counts are not
+WebGL draw-call counts.
+`sceneryCandidates`, `sceneryWarming` and `sceneryRejected` distinguish absent
+eligible branches, stability warmup and size rejection. For individual candidates,
+`pixiLive.inspectScenery()` reports mesh counts, stable frames and retained texels.
+It also includes the most recent visual-change reason. Ancestor scale changes
+invalidate scenery resolution even when the child's local matrix stays unchanged.
+
+Pixi errors pause the game and keep Pixi selected. Initialization errors, render
+exceptions and direct-backend context loss display an error; none automatically
+resume AwayFL scene drawing. Reload to retry, or explicitly click **Use AwayFL**.
+`stats.failed` identifies a paused render failure; `lastError` contains its reason.
+The original rendering hook and prior pause state are restored on an explicit switch.
+
+Flash vector meshes now share a Pixi batch even when they have color offsets,
+radial gradients, atlas rectangles or analytic curve data. These per-mesh shader
+values are packed into vertex attributes, preserving draw order, masks and blend
+boundaries. `vectorBatchedMeshes` counts advanced meshes using this path;
+`customMeshes` counts meshes that still require separate shader draws. Append
+`&vectorBatching=0` to compare the previous rendering path.
+When only existing meshes move or change color, the vector batcher uploads
+their edited vertex ranges instead of the entire scene vertex buffer. Distant
+ranges are sent separately; nearby edits (within 16 KiB) merge. The adapter
+keeps at most eight uploads per buffer, preserving the largest gaps, and uses
+one union when the planned ranges cover at least 75% of that union. This
+bounds driver-call overhead while leaving unchanged middle vertices on the GPU.
+Stop and re-enable with `{ sparseUploads: false }` to compare the previous
+single-union path. Deferred ranges are tied to both the CPU revision and GPU
+buffer identity; superseded, resized or recreated buffers use Pixi's ordinary
+upload path. Hooks apply only to this renderer and are restored on stop.
+Structural changes still rebuild and upload the complete affected batch. The
+diagnostic `uploadBytes` measures the actual GL buffer traffic; the initial
+allocation can be much larger than subsequent updates. The sparse-edit
+regression moves two tiny objects at opposite ends of a dense buffer: uploads
+fall from 1,585,056 to 1,056 bytes/frame with identical pixels, no batch
+rebuilds, and unchanged draw/group counts. See `sparse-upload-profile.json`
+for scope and an animated fixture sample. For a programmatic
+comparison, stop Pixi and enable it with `{ partialUploads: false }`.
+The moving-rectangle regression uploads 528 bytes instead of 394,198,112 bytes
+per frame with identical final pixels. Its scope and raw measurements are in
+`partial-upload-profile.json`; animated topology changes can still require full uploads.
+
+Before repacking a retained mesh, the vector batcher now checks every packed
+input against its previous draw: geometry buffers and revisions, transform,
+color, UV matrix, texture slot, Flash shader parameters and target buffer/offset.
+Pixi can request an update even when these values are unchanged (for example
+when ancestor transform invalidation reaches a group). Such requests no longer
+rewrite or upload its vertices. In-place data edits still require the normal
+buffer revision update. Structural batch rebuilds discard these snapshots.
+To compare, stop and enable with `{ skipUnchanged: false }`.
+Profiles report `unchangedUpdates` and `packedUpdates` for retained mesh updates;
+initial/structural packing is represented by `rebuilds` instead. See
+`unchanged-update-profile.json` for the traced map branches and regression.
+The controlled redundant-update regression skips 20 unchanged meshes while
+updating two moving meshes, reducing uploads from 1,585,056 to 1,056 bytes/frame
+with identical final pixels. The ten-player equipment scene is not reproduced
+locally; its resulting FPS remains unmeasured.
+
+Large branching containers and dense standalone geometry also own independent
+Pixi render groups. Animated child replacement then rebuilds that branch's
+instruction set and vertex buffer instead of the entire scene's. Groups are
+promoted once and retained until the object is retired; unary wrappers are not
+grouped unless they contain dense geometry of their own. These groups are not
+extra texture passes. Branches with at least 6,000 vertices not already owned
+by child groups also qualify for promotion, protecting detailed static siblings
+from unrelated animation rebuilds. This threshold is not a hard buffer-size cap.
+The Battleon fixture moved roughly 2–3 MB/frame through vertex uploads at
+6,000 vertices, versus 4–11 MB/frame at the previous 12,000 threshold across
+repeated short samples. Draw count rose slightly; software-GPU render time
+varied between runs, so this is an upload reduction rather than a proven FPS
+gain. Append `&groupVertexLimit=12000` to compare the old threshold. To compare the previous shape-count rule, stop and
+re-enable with `pixiLiveControls.enable({groupVertexLimit:0})`.
+The earlier dense-sibling regression at 12,000 vertices reduces uploads from 4,105,224 to 127,980 bytes
+per frame (98 to 139 groups, 1,447 to 1,484 draws). Mean RGB difference is below
+0.00003/255; maximum channel difference is 6/255. This is a controlled animated
+sibling test over the offline Battleon fixture, not a gameplay FPS claim.
+See `vertex-group-profile.json` for scope and measurements.
+Small objects that change their vertex/index counts or shape count are now
+promoted adaptively when their nearest batch contains at least 12,000 other
+vertices. This protects static neighbors from morphs and animated stroke
+geometry even when each individual object is below the normal size threshold.
+Promotion persists for the object's lifetime; it adds an instruction group,
+not a texture pass. The first change can rebuild the parent once. Re-enable
+with `pixiLiveControls.enable({isolateTopology:false})` to compare.
+See `topology-isolation-profile.json` for the controlled geometry-change test
+and a short animated Battleon sample. In the controlled test, uploads fall
+from 1,622,160 to 2,168 bytes/frame with identical pixels and one additional
+group/draw. The static parent has zero subsequent rebuilds. In consecutive
+animated samples, median uploads fall from 41.4 to 30.1 MB/frame and batch
+update time from 27.45 to 16.95 ms (six additional groups/draws). These short
+software-GPU samples use different animation frames and are not a gameplay
+FPS claim. This targets CPU batch work and upload traffic; GPU draw/filter
+cost remains.
+
+Scenery texture caches remain separate. `batchGroups`
+counts visible groups; append `&renderGroups=0` to compare without this partition.
+The child-replacement regression reduces uploads from 413,370,536 to 157,140
+bytes/frame and local batch-update time from 274.9 to 0.5 ms. It uses 98 groups,
+with 1,447 draws instead of 1,338. Mean RGB difference is below 0.001/255.
+See `render-group-profile.json` for scope and measurement limits; these are
+submission timings on a software GPU, not a measured gameplay frame rate.
+
+The browser regression compares the same uncached Battleon frame both ways:
+7,568 WebGL draw calls become 1,337. Mean RGB error is below 0.001 on a 0–255
+scale. This validates batching and image equivalence, not live gameplay FPS.
+With scenery caching enabled, the separate 1100×630 SwiftShader profile reduced
+draw calls from 5,151 to 1,355. Median GPU-completed time improved from 799.4 ms
+to 770.5 ms; AwayFL took 527.9 ms in that fixture. Thus batching reduces driver
+submissions but does not yet make this prototype faster than AwayFL. Submission
+times include driver waits and must not be read as pure JavaScript CPU time.
+Raw samples and measurement limits are in `vector-batching-profile.json`.
+The adapter uses the pinned Pixi 8.21 mesh/batcher APIs and is WebGL-only.
+
+Backdrop blending now resolves only the MSAA rectangle being copied, skips the
+redundant pre-copy resolve, and defers backbuffer resolves until presentation.
+Offscreen filter outputs still resolve before another filter samples them; the
+final canvas still receives a full resolve. Antialiasing and resolution are
+unchanged. This renderer-local adapter targets Pixi 8.21 WebGL internals and
+restores its hooks on stop. Append `&boundedBlends=0` for the previous behavior.
+`blendResolvePixels` and `blendResolveSavedPixels` are cumulative texel counts.
+
+In the 2044×1171 offline Battleon fixture, this reduces MSAA resolve traffic from
+1,134,645,064 to 2,862,835 texels per frame (480 to 148 blits). With scenery
+caching disabled, median completed-frame time on SwiftShader fell from 2590.4 ms
+to 920.3 ms; AwayFL measured 831.6 ms. These software-GPU results do not predict
+hardware gameplay FPS. Raw samples and methodology are in
+`blend-resolve-profile.json`. The browser regression compares pixels with the
+optimization disabled/enabled, including nested filters and clipped backdrop reads.
+
+Animated filter parameters now update existing Pixi filter instances instead of
+removing and reattaching the effect chain. Blur strengths, shadow offsets,
+colors, matrices, padding and resolution are mutable; shader-compiled glow
+radius/quality, outline quality and kernel changes still replace the filter.
+Retained effect output is invalidated and its bounds/resolution refreshed when
+parameters change. Filter layout, blend mode and text-antialias changes still
+rebuild the chain. To compare the previous behavior, stop and re-enable with
+`pixiLiveControls.enable({reuseFilters:false})`.
+
+The browser regression checks updated filters against freshly constructed ones,
+including asymmetric shadows, zero blur, mixed chains, resolution changes and
+cached text outlines. It also changes a native Flash blur three times inside a
+large branch: three parameter changes now cause zero batch rebuilds and zero
+buffer uploads, versus three rebuilds and 37,800 bytes/frame with replacements.
+All 20 fresh-versus-updated filter comparisons have zero pixel difference.
+Measurements and limitations are in `filter-reuse-profile.json`.
+This optimization does not prevent rebuilds caused by changing geometry sizes.
+
+To measure the next 12 actual draws on the current machine:
+
+```js
+pixiLive.profile().then(r => console.log(JSON.stringify(r)))
+```
+
+For a crowded scene, include the submitted Pixi filter workload by effect type:
+
+```js
+pixiLive.profile(12).then(({median, effects, frameTiming}) =>
+  console.log(JSON.stringify({median, effects: effects.slice(0, 12), frameTiming: frameTiming.median})))
+```
+
+`effects` counts shader passes and draw calls over the sample. `targetPixels`
+is the summed viewport area, while `quadPixels` bounds it by the output quad
+and is the better estimate of shaded pixels. `submitMs` is CPU submission time.
+These are workload clues, not per-effect GPU timings; `median.gpuMs` remains
+the whole-frame GPU timer.
+
+`cpu.median` separates picker traversal (`inputTraverseMs`), candidate
+collection (`inputCollectMs`) and precise collision (`inputCollisionMs`) from
+other picking work (`inputPickMs`). It also separates `timelineAdvanceMs` and
+`timelineBroadcastMs` from other AVM2 timeline work. These fields are
+exclusive: parent `inputMs` and `timelineMs` exclude nested measurements.
+All hooks are active only during `profile()`.
+
+To count the nodes visited by native mouse picking in a busy room, run a
+separate short sample:
+
+```js
+pixiLive.profile(3, {pickTree:true}).then(({pickTree}) =>
+  console.log(JSON.stringify(pickTree)))
+```
+
+`pickTree` counts accepted/rejected nodes, leaves, containers, pick-object
+nodes, and visits by asset type across the sample. It instruments every picker
+node, so its CPU timings include diagnostic overhead; use an ordinary
+`profile(12)` sample for frame-time comparisons. Normal play is unchanged.
+
+The opt-in `pixiPickBounds=1` mode uses retained Pixi bounds to avoid traversing
+some distant Flash picker branches. AwayFL still resolves precise collisions
+inside candidate branches; press/release and drag checks use native picking.
+This is an accuracy experiment: hover on hit areas outside visible artwork can
+be missed, so the default remains native picking.
+Compare the same room with and without the flag using:
+
+```js
+pixiLive.profile(12).then(r => console.log(JSON.stringify({
+  traverseMs:r.cpu.median.inputTraverseMs,
+  fps:r.frameTiming.observedFPS,
+  pickBounds:r.pickBounds
+})))
+```
+
+`pickBounds` reports checks, skipped branches and time spent reading Pixi bounds
+inside the sampled native ticks. If that time exceeds the traversal savings, leave the
+flag off. `npm run check:pixi-pick-bounds` covers the broad-phase fallback;
+`PIXI_BACKEND=direct-objects PIXI_PICK_BOUNDS=1 npm run check:display-list`
+covers browser input.
+
+
+In `direct-objects`, stationary hover skips native picking while Pixi reuses the
+previously drawn frame. A new Pixi draw triggers a fresh pick on the following
+tick. Add `retainedHover=0` to compare native per-tick picking. Optional hover
+sampling is available with `idleHoverHz=12` on either Pixi backend's play URL, or
+`pixiLiveControls.enable({idleHoverHz:12})` after stopping the current backend.
+That cadence can delay hover changes on animated objects moving under the pointer.
+The retained-frame shortcut can also miss an invisible hit-area change until the
+scene draws again; disable it if that matters for a particular UI.
+Movement, queued button/wheel/enter/leave events, pressed buttons, dragging, touch,
+coordinate changes and viewport resize bypass the limit. It does not cache hit
+results, skip ActionScript frames, or enable AwayFL rendering. The original input
+method is restored on backend stop. The profile's `hover` summary reports the
+configured rate and check/skip counts inside sampled native ticks only; ticks
+after the last sample while GPU queries complete are excluded:
+
+```js
+pixiLive.profile(12).then(({median, cpu, hover, frameTiming}) =>
+  console.log(JSON.stringify({median, cpu, hover, frameTiming})))
+```
+
+`catchUp=1` enables bounded timeline catch-up in `direct-objects`. When a browser
+callback arrives late, it can advance up to three SWF frames and draw only the
+last state through Pixi. Recent expensive work limits it to one frame to avoid a
+catch-up spiral. It is opt-in because skipped intermediate draws can change the
+appearance of frame-by-frame effects. Compare with the same URL without the flag:
+
+`https://localhost:4433/game/gamefiles/pixi-benchmark/play.html?backend=direct-objects&nativeGraphics=1&renderScale=0&fps=1&catchUp=1`
+
+`pixiLive.stats.catchUpExtraSteps`, `catchUpSkippedRenders`, and
+`catchUpRecentWorkMs` show when it actually catches up. The original timer
+callback is restored when Pixi stops. `npm run check:catch-up` covers its
+timeline and render behavior.
+
+`shapeSprites=1` is an opt-in test for detailed, solid-color authored paths when
+`nativeGraphics=1` is active. It renders an eligible path once to a shared Pixi
+texture and uses tinted Sprites for its instances. Short paths, strokes,
+gradients, bitmaps, large shapes, and mutable geometry keep their existing
+Graphics or Mesh path. Raster textures use 2× resolution and a 32 MB pixel
+budget; zooming beyond that can look softer than vectors. Compare the same
+scene with and without the flag:
+
+`https://localhost:4433/game/gamefiles/pixi-benchmark/play.html?backend=direct-objects&nativeGraphics=1&shapeSprites=1&renderScale=0&fps=1`
+
+`pixiLive.stats.shapeSpriteBuilds`, `shapeSpriteUses`, and `shapeSpritePixels`
+show how many paths were baked, how many instances reused them, and the current
+texture budget. `npm run check:shape-sprites` checks sharing, invalidation, color,
+and a game scene fixture. This mode is experimental until its FPS and sharpness
+are compared against the same scene without it.
+
+`pixiEvents=1` enables the experimental Pixi v8 `EventBoundary` target picker
+for hover and pointer movement in `direct-objects`. The chosen branch is passed
+to AwayFL's Flash collision and event dispatcher. If that branch misses, the picker
+retries the full AwayFL tree. Press, release, wheel and dragging stay native
+while Flash button hit areas are mapped. Pixi target picking and
+`pixiPickBounds=1` are mutually exclusive; use one at a time. This mode may
+still select the wrong overlapping Flash target and is opt-in while button,
+mask, and hit-area coverage is verified. `pixiLive.stats` exposes
+`pixiEventPicks`, `pixiEventHits`, and `pixiEventFallbacks` for comparison.
+Shape art and other mouse-disabled objects stay hittable in Pixi: Flash routes
+such hits to the nearest mouse-enabled ancestor, and the scoped native pick
+applies `mouseEnabled` and `mouseChildren`. Marking them passive made the
+boundary miss almost everywhere, so each hover tick fell back to the full
+native tree. Press, release and wheel keep the full native pick by default:
+text fields have no Pixi hit region, so a scoped press on empty space inside
+an input focuses the box behind it. `pixiEventsScopedPress=1` routes presses
+through the scoped pick too (each full pick costs about a frame in combat). The scoped native pick tries the candidate's own branch first and
+widens to its parent and grandparent only on a miss: over a room background the
+parent is the whole room, and picking it cost as much as the full tree.
+
+`morphCache=1` keeps built morph geometry per symbol and ratio and shares it
+between every instance of that symbol, so a looping shape tween tessellates
+each ratio once instead of on every frame. The retained set is bounded
+globally rather than per instance: `morphCacheLimit=N` (default 4096 entries)
+and `morphCacheMB=N` (default 96) evict the least recently used ratios that no
+instance is showing. `morphCacheSteps=N` rounds ratios to 1/N before lookup,
+trading exact tween positions for fewer distinct builds; it is off by default.
+`window.__PIXI_MORPH_CACHE__` reports `hits`, `builds`, `shared`, `live`,
+`bytes`, `evictions` and `top()` per symbol. Combine it with
+`morphNativePaths=1`: cached Graphics keep their authored path snapshots, so
+Pixi reuses the same `GraphicsContext` for a repeated ratio.
+
+Unused native path contexts and mesh geometry are retained across sweeps in
+least-recently-used order (`retainPaths=N`, default 4096 contexts, and
+`retainGeometry=N`, default 2048 geometries; `0` restores immediate release).
+Without this, a morph returning to a cached ratio still rebuilt its Pixi
+context every frame. Bitmap-filled and rasterized contexts are not retained;
+they follow their texture's lifetime. `pixiLive.stats.nativePathRetained`,
+`nativePathRevivals` and `geometryRetained` show the effect.
+Flash hairlines (zero-width strokes) now take the authored path as Pixi
+`pixelLine` strokes, one device pixel at any scale, exactly their Flash width.
+Before this they stayed Flash line meshes whose extrusion was recomputed on
+every transform change and repacked through the vector batcher. Other
+non-scaling strokes keep the screen-space mesh route.
+`pixiLive.stats.unsupported` lists `native-fallback:<reason>` counts for
+authored paths that still use the mesh route (`contours`, `paint-offset`,
+`no-snapshot`, ...); a deferred morph shape pays a full tessellation there.
+`npm run check:morph-cache` covers sharing, budgets, replacement and
+quantization; `npm run check:path-retention` covers both retention caches.
+
+Use `PIXI_BACKEND=direct-objects PIXI_IDLE_HOVER_HZ=12 npm run check:display-list`
+to exercise the opt-in path, including native mouse/keyboard input and periodic
+stationary hover checks. `npm run check:idle-hover` also checks immediate queued
+input, dragging/touch, resize, profiler composition and restoration.
+
+The result's `groups` list ranks branches by actual uploaded bytes over the
+whole sample. Each entry includes the native object `path`, `rebuilds`, exclusive
+`updateMs` (child group work excluded), `uploadBytes`, `draws`, and `triangles`.
+`vertexBytes` is the largest used vector vertex buffer; `changedBytes` totals
+bounding spans on partial updates, including untouched gaps. `uploadBytes`
+measures the actual traffic after splitting those spans. These are sample
+totals, not per-frame medians.
+Group uploads/draws cover batch execution; standalone filter/uniform traffic
+can remain unattributed and is still included in the overall frame counters.
+All instrumentation is removed when the bounded sample completes or is stopped.
+
+Profiles also include `p95` (nearest-rank 95th percentile) and `frameTiming`:
+
+- `frameWorkMs`: wall time inside the native `showNextFrame` call, including rendering.
+- `runtimeMs`: that work excluding the adapter; includes input, ActionScript,
+  timelines, sound and direct-binding changes made during those operations.
+- `adapterMs`: the whole adapter call, including sync, Pixi rendering and cleanup.
+- `frameIntervalMs`: start-to-start native frame spacing; its first sample is null.
+- `observedFPS`: native tick cadence across the sampled interval. The tick
+  summary includes unchanged frames that reuse the canvas; draw metrics still
+  describe only actual Pixi draws. Manual renders have null native frame times.
+
+The `cpu` summary splits native frame work into exclusive sections. Its
+`mean`, `median` and `p95` use native ticks, including ticks reusing the canvas; manual
+adapter renders use drawn frames instead (`cpu.basis`). Each raw draw has `cpu`
+values for its containing tick:
+
+- `inputMs`: mouse picking/event dispatch, excluding binding callbacks.
+- `timelineMs`: the AVM frame handler (ActionScript/timelines), excluding binding callbacks.
+- `runtimeBindingsMs`: direct-object adapter callbacks triggered during native work.
+- `runtimeOtherMs`: remaining native work, including sound and uninstrumented hooks.
+- `syncSetupMs`, `syncVisitMs`, `syncMasksMs`, `syncRetireMs`, `syncSceneryMs`:
+  adapter setup, tree synchronization, mask resolution, detached-object retirement,
+  and scenery-cache preparation, excluding binding callbacks.
+- `syncNativeMs`: lazy entity preparation and native graphics traversal during
+  synchronization, excluding the Pixi conversion callbacks it invokes.
+- `syncShapeMs`: shape conversion/update callbacks, including geometry, material,
+  texture and shared native Pixi path preparation. These two sections were
+  previously included in `syncVisitMs`; compare their sum with older reports.
+- `syncBindingsMs`: binding callbacks during adapter work.
+- `pixiRenderMs`: Pixi submission, including batch updates and driver waits.
+- `adapterCleanupMs`, `adapterOtherMs`: resource cleanup/status updates and
+  remaining adapter work.
+
+Use `cpu.mean.inputMs` to measure the average cost of intermittent hover checks;
+the median can still show a full check if more than half the ticks check hover.
+Nested callbacks are charged once, to the innermost section. Per-frame sections
+partition measured work; adding separate medians does not reproduce a median
+frame time. Existing `runtimeMs`, `syncMs`, and `renderMs` are inclusive and
+must not be added to these sections. Native hooks that are unavailable cannot
+be separately attributed and remain in the corresponding `OtherMs` section.
+The extra clocks run only during `profile()`, so samples include instrumentation
+overhead. No clocks or scope allocations run for these sections otherwise.
+The offline timing-partition check is recorded in `cpu-breakdown-profile.json`.
+Profiles also include `configuration` (backend and native graphics/retention
+options) and `scenery.start`/`scenery.end` counters. These distinguish disabled
+caching from candidates warming up or being rejected without another traversal.
+For a compact CPU report:
+
+```js
+pixiLive.profile(12).then(({configuration, scenery, median, cpu, frameTiming}) =>
+  console.log(JSON.stringify({configuration, scenery, median, cpu, frameTiming})))
+```
+
+These wall times include any synchronous driver waits. GPU work overlaps CPU
+work and must not be added to it. Work between native ticks appears in frame
+spacing, not in `runtimeMs`. The temporary player hooks are restored on sample
+completion, cancellation and renderer stop, without replacing later external
+changes. Sampling stops after the requested draws (or the existing 30-second
+timeout), with at most 2,048 native tick records. Use 60 draws to inspect dips:
+
+```js
+pixiLive.profile(60).then(({median, p95, frameTiming}) =>
+  console.log(JSON.stringify({median, p95, frameTiming})))
+```
+
+This opt-in diagnostic reports per-frame and median synchronization time, render
+call time, Pixi batch-update time, draw/triangle counts, uploaded buffer bytes,
+MSAA resolve texels and asynchronous GPU timer results when supported. CPU
+timings can include driver waits; GPU timers are discarded on a disjoint event.
+No pixel readbacks or forced GPU waits are used. Sampling does not force draws;
+an idle/paused scene may return a partial report after 30 seconds. Hooks and query
+objects are removed on completion, timeout, or switching away from Pixi.
+
+The Flash runtime still advances timelines and runs scripts, bounds and input.
+Initial and changed content still needs preparation, and animated scenes still
+need drawing. This removes the unconditional preparation scan; it does not
+establish a particular in-game FPS.
+
+`pixiLive.stats.directTransformUpdates` and `directHierarchyUpdates` count actual
+changes. `polledTransforms` stays zero in this backend. `preparedNodes` and
+`skippedSubtrees` describe the latest frame; `reusedPreparations` counts frames
+that skip preparation entirely. `nodes` and `meshes` still describe the whole
+visible scene, including skipped branches. For diagnostics,
+`pixiLive.getDisplayObject(flashObject)` returns the owned Pixi container.
+
+The mutation bridge distinguishes content invalidation from a translation-only
+change. Dirty descendants no longer trigger preparation of an unchanged
+ancestor's own meshes. Those meshes and their asset subscriptions stay attached;
+changed graphics, text, shared assets, inherited color/scale and reattached
+objects still request preparation. This reduces preparation inside dirty
+branches; it does not yet remove the ancestor walk or mask/effect bookkeeping.
+
+`preparedContents` and `retainedContents` count actual content preparations and
+reused content within visited nodes in the latest frame. They are also included
+in `profile()` medians. Entirely skipped subtrees are counted separately by
+`skippedSubtrees`. For comparison, enable with `{retainContent:false}` to restore
+preparation of each visited object's content. The offline mutation comparison
+is recorded in `retained-content-profile.json`: translation prepares no content,
+a child geometry/color edit prepares one object, and all 14 cases match forced
+full preparation pixel-for-pixel. These are correctness/work-count checks, not
+hardware FPS measurements.
+
+Mask-only notifications now update the owning Pixi mask wrappers without
+invalidating descendant geometry or paint. Actual mask geometry edits, mask-mode
+changes, mixed invalidation flags, child edits and other pending work retain
+normal invalidation. `localMaskUpdates` counts these notifications cumulatively;
+`{retainMaskedContent:false}` restores the conservative behavior for comparison.
+The six-tick offline Battleon audit is in `mask-invalidation-profile.json`.
+The browser suite compares live mask changes against forced full preparation,
+including script/timeline masks, intersections, geometry/position edits and
+scroll rectangles. Native Flash picking/event invalidation is unchanged.
+
+Color-only notifications compare an owned snapshot of the eight local color
+channels before scheduling preparation. Exact repeats preserve pending work and
+skip new preparation; real channel changes, mixed flags and unknown layouts keep
+the conservative behavior. Flash's original invalidation still executes.
+`unchangedColorUpdates` is cumulative. `{skipUnchangedColors:false}` disables
+this optimization for comparison. The offline audit is recorded in
+`color-invalidation-profile.json`; it found 17 exact repeats among 89 color
+notifications in six ticks. This is a limited optimization, not a solution to
+crowded-room timeline or mouse-picking costs.
+
+`npm run check:direct-bindings` verifies copied snapshots, in-place edits, all
+channels, pending work, combined invalidations and hook cleanup. The browser
+mutation checks also compare repeated/changed colors and pending geometry edits
+against full preparation at identical scene state.
+
+Run the existing browser regression suite against this backend with:
+
+```sh
+PIXI_BACKEND=direct-objects npm run check:display-list
+```
+
+It additionally checks mutations before rendering, identity across reparenting,
+stable transforms and zero prepared nodes across idle renders, isolated branch
+updates, shared bitmap edits, and hook/ownership cleanup on stop. The offline
+Battleon fixture also verifies a retained scene with more than 9,000 meshes;
+this paused-fixture check is not a live gameplay performance measurement.
+
 From this directory:
 
 ```sh
@@ -47,9 +553,9 @@ in the shared WebGL 2 context and snapshots temporary blend sources with GPU
 copies. Direct geometry needs no GPU buffer readbacks. The compatibility path
 may download existing buffers once; live rendering does not read back pixels.
 AwayFL keeps input, ActionScript, timelines and networking. Pixi's input listeners
-are disabled. WebGL state and hooks are restored when switching back or after a
-capture failure, including unbinding an interrupted AwayFL vertex array before
-fallback. Stopping Pixi does not destroy AwayFL's graphics context.
+are disabled. Capture failures pause Pixi and unbind any interrupted AwayFL
+vertex array. WebGL hooks are restored on an explicit switch back to AwayFL.
+Stopping Pixi does not destroy AwayFL's graphics context.
 
 Before final scene rendering, the bridge restores stencil writes and the zero
 clear value that Pixi expects. AwayFL leaves stencil writes disabled after mask
@@ -119,6 +625,12 @@ linear/radial gradient atlases, color transforms, display-list changes, script a
 timeline masks, and scroll rectangles have initial implementations. Bitmap edits
 are observed without clearing AwayFL's pending upload flags, allowing a clean
 switch back. The overlay passes mouse input through to the original player.
+
+Hairline and non-scaling strokes are extruded in render pixels, so enlarged
+inventory previews keep thin lines. Their geometry cache includes the linear
+transform; translated instances still share geometry. Normal strokes continue
+to scale with the object. Horizontal/vertical-only stroke modes remain reported
+as compatibility gaps.
 
 The direct backend uses Pixi filter shaders (`pixi-filters` 6.1.5), with no custom
 Flash glow/shadow shaders:
@@ -202,6 +714,9 @@ existing bridge, or click **Use AwayFL** to switch to the native renderer.
 Validation:
 
 ```sh
+npm run check:vector-inputs
+npm run check:render-profile
+npm run check:upload-ranges
 npm run check:display-data
 npm run check:display-geometry
 npm run check:display-list
@@ -428,9 +943,10 @@ There is a separate known upstream discrepancy: a sprite with object `alpha`
 0.5 can already have alpha 0.25 in AwayFL's isolated source texture, even with
 Pixi disabled. This adapter does not compensate for that source-rendering issue.
 
-`pixiLive.stats.active` becomes false on stop or fallback. In that case the frame
-timings remain the last successful Pixi frame, and `lastError` reports why it
-stopped. They do not measure the renderer currently displaying the game.
+`pixiLive.stats.active` becomes false on an explicit stop. A render failure now
+keeps Pixi selected with `failed: true`, pauses the game and records `lastError`.
+Frame timings then remain those of the last successful frame. The fallback
+measurements below describe older versions of the bridge.
 
 The reported Battleon frame (1440 × 825) had 156.5 ms preparation and 52.1 ms
 Pixi composition before a hardlight fallback. Its cumulative geometry cache hit
@@ -493,3 +1009,141 @@ Stop and enable with no options to restore batching. `npm run check:batches`
 checks limits, order/state boundaries, geometry edits and constant isolation.
 `npm run check:live` compares batched output against the unbatched renderer,
 including moved meshes, color changes, masks, resize and rebuilt cache sources.
+# Authored paths in native Pixi Graphics (opt-in)
+
+Use `play.html?backend=direct-objects&nativeGraphics=1&renderScale=0&fps=1`
+to try the first native graphics stage. Build with `npm run build:native` and
+`npm run build` in this directory. The separate `native-runtime.js` captures
+decoded path commands before the first SWF loads; the regular AwayFL runtime is
+unchanged. `loader-native.html` is generated from the proxy's existing loader.
+
+Solid, linear-gradient and repeating bitmap fills with supported contours, plus
+normal-scaling solid strokes with move, line, quadratic and cubic commands, now
+become Pixi `Graphics` using a shared, immutable `GraphicsContext`. They use
+the standard Pixi graphics pipeline, not the Flash vector mesh shader. Each instance
+retains its transform and color; moving/recoloring it does not clear or recreate
+the context. Contexts are released after their final graphics user is retired.
+For SWF shapes, the experimental runtime snapshots path commands when a shape
+definition is serialized, before AwayFL tessellates it. ActionScript-drawn
+paths still use the graphics-factory capture. Both routes share the same Pixi
+context per authored path, and edited paths discard their saved definition.
+While Pixi is active, authored solid, supported gradient, and repeating
+bitmap fills (including compound contours) defer AwayFL's triangle generation. The temporary
+bounding rectangle preserves conservative bounds until the real triangles are
+needed. Unsupported fills, strokes, and edited paths still use AwayFL's
+geometry path.
+The snapshot now also contains immutable, parsed segments and conservative
+path bounds that include curve extrema (stroke thickness is separate). Pixi consumes those segments directly when constructing its shared
+`GraphicsContext`, without re-parsing command offsets for each context. These
+data are prepared before any AwayFL triangles for SWF definitions. A native
+element hit test, geometry edit, scale/scale9 operation, Pixi mesh fallback,
+or `BitmapData.draw`
+materializes deferred triangles when needed. Switching back to the AwayFL
+renderer materializes all remaining deferred shapes. The live counters are in
+`pixiLive.stats.deferredGeometry` (`skipped`, `materialized`, `live`, plus
+the corresponding `*Strokes` counters).
+Append `&pixiBitmapDraw=1` to try the Pixi `BitmapData.draw` bridge. It renders
+a previously prepared display subtree, including internal timeline masks, into
+a Pixi render texture. It reads the pixels into an unused transparent Flash
+bitmap; unsupported draws stay on AwayFL's offscreen path. The Battleon map
+fixture exercises a 2,000-object subtree. This is a correctness experiment: the synchronous
+GPU readback and separate AwayFL texture upload can cost more than the original
+draw. `pixiLive.stats.pixiBitmapDraws` counts successful draws. The browser
+pixel comparison for nested graphics and the map is `npm run check:bitmap-draw`.
+With native graphics enabled, single-contour fills and strokes now use their
+retained Pixi `GraphicsContext` for bounds and the fine hit test. Flash still
+dispatches mouse events. Compound shapes, partial mesh ranges and elements
+shared by different contexts keep AwayFL's bounds and hit test.
+The hook is released when its last Pixi user retires and restored on switch
+back to AwayFL. `npm run check:native-picking` covers the ownership rules;
+`npm run check:native-paths` exercises fill and stroke hits in the browser.
+Single `drawRect`, `drawCircle`, `drawEllipse` and circular-corner
+`drawRoundRect` fills are also captured before AwayFL turns them into triangles.
+Pixi draws them with native primitive commands, using the same shared-context
+and paint rules. Elliptical corners, multiple primitives and simultaneous
+strokes keep the mesh renderer.
+Plain, single-format dynamic text in common browser fonts uses Pixi `Text`
+inside the AwayFL `TextSprite` display object. Its existing transform, text
+field layout, masks and parent filters still apply. Edited text creates a new
+Pixi text texture; moving the field retains it. Wrapped fields use one Pixi
+text object per AwayFL-calculated line, preserving Flash's break points and
+line origins. Uniform-color lines use `Text`; mixed-color lines use `HTMLText`.
+Input fields, mixed font styles and custom embedded fonts keep the glyph-mesh renderer. This is
+enabled with `nativeGraphics=1`, and `nativeText=0` disables it for comparison.
+Single-line fields with multiple color runs and otherwise matching font styles
+use Pixi `HTMLText`, with HTML-escaped content and Flash color transforms applied
+to each run. The login screen's “New Release” title exercises this path. Pixi
+loads HTML text textures asynchronously; the adapter requests a new draw when
+each texture becomes ready, including when the scene is otherwise unchanged.
+Text texture resolution follows its effective screen scale (capped at 4) so
+scaled interface labels do not stretch a one-pixel-per-unit raster.
+`nativeTexts` counts active Pixi text objects in the current frame. AwayFL still
+does text layout and glyph construction for bounds and compatibility.
+`pixiLive.stats.nativeGraphics` counts instances currently represented this way;
+`nativePathBuilds` and `nativePathShares` are cumulative.
+Linear and centered radial gradients use Pixi `FillGradient` with the decoded
+SWF color stops and UV transform. Copies share one compiled context.
+`nativeGradients` counts live gradient instances. Browser fixtures compare both
+types with the mesh backend. Focal radial gradients, reflect/repeat spread and
+linear-RGB interpolation retain the mesh path.
+Repeating bitmap fills use the decoded UV matrix and shared Pixi texture with
+the authored path. CPU-backed bitmap edits refresh that texture without rebuilding
+the path. `nativeBitmaps` counts live native bitmap-fill instances. Non-repeating
+fills retain the mesh renderer because Pixi Graphics currently forces repeat
+sampling for textured fills.
+For two-contour fills, Pixi `GraphicsPath` handles both an inner hole and
+separate filled islands. Three or more contours are classified into nested
+regions: Pixi fills outer shapes and islands, and cuts their direct holes.
+Intersecting contours without a clear containment relation retain AwayFL mesh
+rendering. `nativeCompounds` counts live multi-contour fill instances.
+
+Strokes use Pixi's native `stroke()` with centered width, cap, join and miter
+settings. Open and closed contours and multiple disconnected stroke paths are
+supported. They share contexts exactly like fills, including across translated,
+rotated and scaled instances. Hairlines and non-scaling strokes retain the mesh
+implementation; this does not re-enable the `pixelLine` experiment. Authored
+normal-scaling solid strokes now defer AwayFL line-buffer generation while Pixi
+is active. AwayFL still prepares their paths; it builds the line buffer if a
+native geometry operation, compatibility mesh, offscreen draw, or renderer
+switch needs it.
+
+In native graphics mode, ordinary fallback meshes also use Pixi's default batcher,
+so interleaved Graphics and compatible meshes can share draws. Only meshes needing
+Flash curve, radial-fill or color-offset shader inputs use the Flash batcher.
+The default batcher retains Pixi's shader/packing code; a renderer-local adapter
+tracks changed vertex ranges for partial uploads and skips identical mesh updates.
+Structural rebuilds still upload the full affected buffer. Stop and enable with
+`pixiLiveControls.enable({nativeBatching:false})` to compare the previous routing.
+`npm run check:native-batching` compares frozen Battleon pixels and draw counts,
+then samples animated frames separately. Headless software-renderer timings are
+not a prediction of hardware FPS.
+
+Intersecting compound fills, focal/reflect/repeat gradients, non-repeating bitmap fills,
+non-scaling strokes, morphs, rich and embedded text, nine-slice shapes, elliptical-corner rounded
+rectangles and mixed primitive paths retain the existing mesh path.
+This is a partial migration, not a removal of the Flash runtime: native geometry
+still supports bounds, picking and compatibility. It does not yet bypass AwayFL
+tessellation or eliminate the synchronization pass. SWF shape data is decoded,
+not generated by the ActionScript JIT; SWF paths are captured at definition
+serialization and dynamic paths at the graphics factory.
+
+`npm run check:path-source` verifies snapshots, unsupported inputs, sharing,
+buffer edits and pooled-shape invalidation. `npm run check:native-paths` checks
+actual rendered fill pixels, curves, native primitives and plain text, shared contexts,
+transform reuse, edits, clear, visibility and mixed-primitive fallback in a
+disposable browser tab. The full
+offline scene suite also accepts `PIXI_NATIVE_GRAPHICS=1 PIXI_BACKEND=direct-objects`.
+
+Static authored paths are converted once per shared context. Timeline transforms
+reuse the context, while geometry edits create a new one. Remaining migration
+work includes intersecting compound fills, non-repeating bitmaps, focal and
+non-pad gradients, elliptical and mixed primitives, rich/embedded text and dynamic/morph geometry. The runtime still creates native geometry for
+bounds/picking; eliminating that dependency requires replacing those consumers
+as well as the visible renderer.
+
+Constant-UV solid fills in the mesh fallback track their sampled texel rather
+than the revision of a whole shared palette. Writes to other colors no longer
+invalidate them. Checks are coalesced before synchronization and still observe
+actual sampled pixel edits, dimensions, premultiplication and GPU-side changes.
+`check-texture-samples.mjs` covers dependencies/lifetime; the browser check of
+the same name with `-browser` compares pixels against `sampledTextures:false`.

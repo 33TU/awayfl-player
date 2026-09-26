@@ -1,0 +1,45 @@
+{
+  "environment": "Headless Chromium / SwiftShader, offline fixtures; not a hardware performance benchmark",
+  "nativePathTests": {
+    "shared": true,
+    "transformReused": true,
+    "editIsolated": true,
+    "clear": true,
+    "visibility": true,
+    "curves": true,
+    "primitiveFallback": true,
+    "pixels": true,
+    "nativePathBuilds": 30,
+    "nativePathShares": 11
+  },
+  "scenes": {
+    "login": {
+      "nativeGraphics": 37,
+      "nativePathBuilds": 27,
+      "nativePathShares": 10,
+      "meshes": 169,
+      "lastError": null
+    },
+    "battleon": {
+      "nativeGraphics": 2473,
+      "nativePathBuilds": 716,
+      "nativePathShares": 1758,
+      "meshes": 6672,
+      "lastError": null
+    }
+  },
+  "sceneryComparison": {
+    "groups": 12,
+    "meshes": 2574,
+    "batching": {
+      "meshes": 4121,
+      "batchedDraws": 3976,
+      "unbatchedDraws": 7096,
+      "meanError": 3.8115785688601226e-05,
+      "changedPercent": 0
+    },
+    "meanError": 0.553316792520676,
+    "changedPercent": 1.1894282632146709
+  },
+  "fullSceneChecks": "passed"
+}

@@ -1,0 +1,409 @@
+{
+  "scope": "Pixi 8.21 WebGL on SwiftShader. Regression uses a paused offline Battleon frame and one changing native graphics object alongside 20 static siblings (150 rectangles each), after one change to learn topology. Three measured changes; same final pixels. Animated sample uses consecutive, not identical, runtime frames at 900x515; six warm-up ticks and six sampled ticks per variant, scenery caching disabled. GPU timers unavailable. Submission timings include driver stalls and do not predict Iris Xe gameplay FPS.",
+  "controlledGeometryChange": {
+    "before": {
+      "median": {
+        "syncMs": 0.5,
+        "renderMs": 8.799999997019768,
+        "batchUpdateMs": 1.0999999940395355,
+        "gpuMs": null,
+        "draws": 1480,
+        "triangles": 1707302,
+        "uploadBytes": 1622160,
+        "blitPixels": 564155,
+        "sceneryCaches": 0,
+        "batchGroups": 137
+      },
+      "groups": [
+        {
+          "id": 841,
+          "path": "[asset DisplayObjectContainer]#6/scene/morph-batch-regression",
+          "kind": "object",
+          "updateMs": 1.5000000149011612,
+          "rebuilds": 3,
+          "uploads": 6,
+          "uploadBytes": 4866480,
+          "draws": 3,
+          "triangles": 18024,
+          "vertexBytes": 1586640,
+          "changedBytes": 0
+        }
+      ],
+      "isolated": false,
+      "glError": 0
+    },
+    "after": {
+      "median": {
+        "syncMs": 0.6000000089406967,
+        "renderMs": 9.200000002980232,
+        "batchUpdateMs": 1.2999999970197678,
+        "gpuMs": null,
+        "draws": 1481,
+        "triangles": 1707304,
+        "uploadBytes": 2168,
+        "blitPixels": 564155,
+        "sceneryCaches": 0,
+        "batchGroups": 138
+      },
+      "groups": [
+        {
+          "id": 982,
+          "path": "[asset DisplayObjectContainer]#6/scene/morph-batch-regression/changing-shape",
+          "kind": "object",
+          "updateMs": 0.20000000298023224,
+          "rebuilds": 3,
+          "uploads": 6,
+          "uploadBytes": 8624,
+          "draws": 3,
+          "triangles": 24,
+          "vertexBytes": 2640,
+          "changedBytes": 0
+        },
+        {
+          "id": 979,
+          "path": "[asset DisplayObjectContainer]#6/scene/morph-batch-regression",
+          "kind": "object",
+          "updateMs": 0.10000000894069672,
+          "rebuilds": 0,
+          "uploads": 0,
+          "uploadBytes": 0,
+          "draws": 3,
+          "triangles": 18000,
+          "vertexBytes": 1584000,
+          "changedBytes": 0
+        }
+      ],
+      "isolated": true,
+      "glError": 0
+    },
+    "pixelDelta": 0,
+    "meanError": 0
+  },
+  "animatedSamples": [
+    {
+      "isolateTopology": false,
+      "median": {
+        "syncMs": 16.700000002980232,
+        "renderMs": 664.25,
+        "batchUpdateMs": 27.44999999552965,
+        "gpuMs": null,
+        "draws": 1497,
+        "triangles": 1705639.5,
+        "uploadBytes": 41403296,
+        "blitPixels": 566385,
+        "sceneryCaches": 0,
+        "batchGroups": 138
+      },
+      "groups": [
+        {
+          "id": 90,
+          "path": "[asset DisplayObjectContainer]#6/scene/[asset MovieClip]#35294/scene/instance_mc_3035/instance_mc_2652/instance_mc_2546/instance_mc_934",
+          "kind": "object",
+          "updateMs": 34.70000000298023,
+          "rebuilds": 6,
+          "uploads": 12,
+          "uploadBytes": 61738584,
+          "draws": 828,
+          "triangles": 240862,
+          "vertexBytes": 9814024,
+          "changedBytes": 0
+        },
+        {
+          "id": 133,
+          "path": "[asset DisplayObjectContainer]#6/scene/[asset MovieClip]#35294/scene/instance_mc_3256/instance_mc_3255",
+          "kind": "object",
+          "updateMs": 26.49999998509884,
+          "rebuilds": 6,
+          "uploads": 12,
+          "uploadBytes": 50816784,
+          "draws": 186,
+          "triangles": 188492,
+          "vertexBytes": 8153904,
+          "changedBytes": 0
+        },
+        {
+          "id": 18,
+          "path": "[asset DisplayObjectContainer]#6/scene/[asset MovieClip]#35294/scene/instance_mc_3008/instance_mc_2699",
+          "kind": "object",
+          "updateMs": 42.29999999701977,
+          "rebuilds": 0,
+          "uploads": 1,
+          "uploadBytes": 38473864,
+          "draws": 18,
+          "triangles": 881934,
+          "vertexBytes": 38473864,
+          "changedBytes": 38473864
+        },
+        {
+          "id": 73,
+          "path": "[asset DisplayObjectContainer]#6/scene/[asset MovieClip]#35294/scene/instance_mc_3035/instance_mc_2652/instance_mc_2546/instance_mc_2473/instance_mc_2472/instance_mc_2471/instance_mc_2466/instance_mc_2449",
+          "kind": "object",
+          "updateMs": 26.299999997019768,
+          "rebuilds": 6,
+          "uploads": 12,
+          "uploadBytes": 35619768,
+          "draws": 906,
+          "triangles": 145688,
+          "vertexBytes": 5737336,
+          "changedBytes": 0
+        },
+        {
+          "id": 80,
+          "path": "[asset DisplayObjectContainer]#6/scene/[asset MovieClip]#35294/scene/instance_mc_3035/instance_mc_2652/instance_mc_2546/instance_mc_593/instance_mc_592",
+          "kind": "object",
+          "updateMs": 24.899999991059303,
+          "rebuilds": 6,
+          "uploads": 12,
+          "uploadBytes": 32747208,
+          "draws": 504,
+          "triangles": 130162,
+          "vertexBytes": 5243304,
+          "changedBytes": 0
+        },
+        {
+          "id": 67,
+          "path": "[asset DisplayObjectContainer]#6/scene/[asset MovieClip]#35294/scene/instance_mc_3008",
+          "kind": "object",
+          "updateMs": 16.200000002980232,
+          "rebuilds": 0,
+          "uploads": 1,
+          "uploadBytes": 21373352,
+          "draws": 132,
+          "triangles": 509214,
+          "vertexBytes": 21373352,
+          "changedBytes": 21373352
+        },
+        {
+          "id": 75,
+          "path": "[asset DisplayObjectContainer]#6/scene/[asset MovieClip]#35294/scene/instance_mc_3035/instance_mc_2652/instance_mc_2546/instance_mc_2473/instance_mc_2472/instance_mc_2471/instance_mc_2466",
+          "kind": "object",
+          "updateMs": 11.800000011920929,
+          "rebuilds": 0,
+          "uploads": 6,
+          "uploadBytes": 19702848,
+          "draws": 288,
+          "triangles": 80616,
+          "vertexBytes": 3283808,
+          "changedBytes": 19702848
+        },
+        {
+          "id": 48,
+          "path": "[asset DisplayObjectContainer]#6/scene/[asset MovieClip]#35294/scene/instance_mc_3008/instance_mc_2973",
+          "kind": "object",
+          "updateMs": 11.100000008940697,
+          "rebuilds": 0,
+          "uploads": 1,
+          "uploadBytes": 16423264,
+          "draws": 102,
+          "triangles": 409788,
+          "vertexBytes": 16423264,
+          "changedBytes": 16423264
+        }
+      ]
+    },
+    {
+      "isolateTopology": true,
+      "median": {
+        "syncMs": 19.099999994039536,
+        "renderMs": 665,
+        "batchUpdateMs": 16.950000002980232,
+        "gpuMs": null,
+        "draws": 1503,
+        "triangles": 1708442.5,
+        "uploadBytes": 30117798,
+        "blitPixels": 569172,
+        "sceneryCaches": 0,
+        "batchGroups": 144
+      },
+      "groups": [
+        {
+          "id": 232,
+          "path": "[asset DisplayObjectContainer]#6/scene/[asset MovieClip]#35294/scene/instance_mc_3035/instance_mc_2652/instance_mc_2546/instance_mc_934",
+          "kind": "object",
+          "updateMs": 21.900000005960464,
+          "rebuilds": 3,
+          "uploads": 9,
+          "uploadBytes": 55437384,
+          "draws": 828,
+          "triangles": 236570,
+          "vertexBytes": 9632656,
+          "changedBytes": 25246320
+        },
+        {
+          "id": 220,
+          "path": "[asset DisplayObjectContainer]#6/scene/[asset MovieClip]#35294/scene/instance_mc_3035/instance_mc_2652/instance_mc_2546/instance_mc_593/instance_mc_592",
+          "kind": "object",
+          "updateMs": 11.099999994039536,
+          "rebuilds": 3,
+          "uploads": 9,
+          "uploadBytes": 26173272,
+          "draws": 504,
+          "triangles": 125870,
+          "vertexBytes": 5061936,
+          "changedBytes": 10358568
+        },
+        {
+          "id": 213,
+          "path": "[asset DisplayObjectContainer]#6/scene/[asset MovieClip]#35294/scene/instance_mc_3035/instance_mc_2652/instance_mc_2546/instance_mc_2473/instance_mc_2472/instance_mc_2471/instance_mc_2466/instance_mc_2449",
+          "kind": "object",
+          "updateMs": 18.80000001192093,
+          "rebuilds": 3,
+          "uploads": 9,
+          "uploadBytes": 22151604,
+          "draws": 906,
+          "triangles": 137104,
+          "vertexBytes": 5374600,
+          "changedBytes": 5459520
+        },
+        {
+          "id": 215,
+          "path": "[asset DisplayObjectContainer]#6/scene/[asset MovieClip]#35294/scene/instance_mc_3035/instance_mc_2652/instance_mc_2546/instance_mc_2473/instance_mc_2472/instance_mc_2471/instance_mc_2466",
+          "kind": "object",
+          "updateMs": 13.199999988079071,
+          "rebuilds": 0,
+          "uploads": 6,
+          "uploadBytes": 19702848,
+          "draws": 288,
+          "triangles": 80616,
+          "vertexBytes": 3283808,
+          "changedBytes": 19702848
+        },
+        {
+          "id": 226,
+          "path": "[asset DisplayObjectContainer]#6/scene/[asset MovieClip]#35294/scene/instance_mc_3035/instance_mc_2652/instance_mc_2546/instance_mc_775/instance_mc_774",
+          "kind": "object",
+          "updateMs": 0.20000001788139343,
+          "rebuilds": 0,
+          "uploads": 6,
+          "uploadBytes": 9622800,
+          "draws": 180,
+          "triangles": 44670,
+          "vertexBytes": 1818696,
+          "changedBytes": 9622800
+        },
+        {
+          "id": 235,
+          "path": "[asset DisplayObjectContainer]#6/scene/[asset MovieClip]#35294/scene/instance_mc_3035/instance_mc_2652/instance_mc_2559/instance_mc_2558",
+          "kind": "object",
+          "updateMs": 5.900000020861626,
+          "rebuilds": 0,
+          "uploads": 6,
+          "uploadBytes": 7683984,
+          "draws": 6,
+          "triangles": 29106,
+          "vertexBytes": 1280664,
+          "changedBytes": 7683984
+        },
+        {
+          "id": 228,
+          "path": "[asset DisplayObjectContainer]#6/scene/[asset MovieClip]#35294/scene/instance_mc_3035/instance_mc_2652/instance_mc_2546/instance_mc_2532",
+          "kind": "object",
+          "updateMs": 4.999999970197678,
+          "rebuilds": 6,
+          "uploads": 12,
+          "uploadBytes": 6512940,
+          "draws": 138,
+          "triangles": 25284,
+          "vertexBytes": 1259280,
+          "changedBytes": 0
+        },
+        {
+          "id": 229,
+          "path": "[asset DisplayObjectContainer]#6/scene/[asset MovieClip]#35294/scene/instance_mc_3035/instance_mc_2652/instance_mc_2546/instance_mc_2545",
+          "kind": "object",
+          "updateMs": 4.700000002980232,
+          "rebuilds": 5,
+          "uploads": 11,
+          "uploadBytes": 6025584,
+          "draws": 138,
+          "triangles": 26176,
+          "vertexBytes": 1325808,
+          "changedBytes": 367224
+        }
+      ]
+    }
+  ],
+  "validation": {
+    "directObjects": "Full browser suite passed, including text, filters, masks, cache invalidation, batching, profiles, context loss and explicit renderer switching.",
+    "displayList": "Full reference-walk browser suite passed."
+  },
+  "referenceWalkGeometryChange": {
+    "before": {
+      "median": {
+        "syncMs": 31.399999991059303,
+        "renderMs": 8.900000005960464,
+        "batchUpdateMs": 1.2999999970197678,
+        "gpuMs": null,
+        "draws": 1480,
+        "triangles": 1707302,
+        "uploadBytes": 1622160,
+        "blitPixels": 564155,
+        "sceneryCaches": 0,
+        "batchGroups": 137
+      },
+      "groups": [
+        {
+          "id": 619,
+          "path": "[asset DisplayObjectContainer]#6/scene/morph-batch-regression",
+          "kind": "object",
+          "updateMs": 2.2999999821186066,
+          "rebuilds": 3,
+          "uploads": 6,
+          "uploadBytes": 4866480,
+          "draws": 3,
+          "triangles": 18024,
+          "vertexBytes": 1586640,
+          "changedBytes": 0
+        }
+      ],
+      "isolated": false,
+      "glError": 0
+    },
+    "after": {
+      "median": {
+        "syncMs": 36.1000000089407,
+        "renderMs": 6,
+        "batchUpdateMs": 0.7000000029802322,
+        "gpuMs": null,
+        "draws": 1481,
+        "triangles": 1707304,
+        "uploadBytes": 2168,
+        "blitPixels": 564155,
+        "sceneryCaches": 0,
+        "batchGroups": 138
+      },
+      "groups": [
+        {
+          "id": 760,
+          "path": "[asset DisplayObjectContainer]#6/scene/morph-batch-regression/changing-shape",
+          "kind": "object",
+          "updateMs": 0.30000001192092896,
+          "rebuilds": 3,
+          "uploads": 6,
+          "uploadBytes": 8624,
+          "draws": 3,
+          "triangles": 24,
+          "vertexBytes": 2640,
+          "changedBytes": 0
+        },
+        {
+          "id": 757,
+          "path": "[asset DisplayObjectContainer]#6/scene/morph-batch-regression",
+          "kind": "object",
+          "updateMs": 0.09999999403953552,
+          "rebuilds": 0,
+          "uploads": 0,
+          "uploadBytes": 0,
+          "draws": 3,
+          "triangles": 18000,
+          "vertexBytes": 1584000,
+          "changedBytes": 0
+        }
+      ],
+      "isolated": true,
+      "glError": 0
+    },
+    "pixelDelta": 0,
+    "meanError": 0
+  }
+}

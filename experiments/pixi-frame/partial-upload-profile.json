@@ -1,0 +1,92 @@
+{
+  "environment": "Headless Chrome, SwiftShader software GPU, 900x515 offline Battleon fixture. No authentication or server connection.",
+  "workload": "Paused scene after initial render; move one existing visible vector rectangle on each of three measured frames. Scenery caching disabled. Compare partial and full uploads with identical final pixels. This is not a gameplay FPS measurement.",
+  "sceneryRegression": {
+    "before": [
+      255,
+      0,
+      0,
+      255
+    ],
+    "after": [
+      255,
+      0,
+      0,
+      255
+    ],
+    "cached": true,
+    "reused": true,
+    "invalidationReused": true,
+    "edited": [
+      0,
+      255,
+      0,
+      255
+    ],
+    "invalidated": true,
+    "recached": true,
+    "hiddenReleased": true,
+    "resized": true,
+    "ancestorResized": true,
+    "retired": true,
+    "pixels": 0
+  },
+  "partialUploads": {
+    "reason": "complete",
+    "timerSupported": false,
+    "disjoint": false,
+    "renderSize": [
+      900,
+      515
+    ],
+    "median": {
+      "syncMs": 0.5,
+      "renderMs": 9.700000002980232,
+      "batchUpdateMs": 0,
+      "gpuMs": null,
+      "draws": 1338,
+      "triangles": 1701296,
+      "uploadBytes": 528,
+      "blitPixels": 563067,
+      "sceneryCaches": 0
+    },
+    "frames": [
+      {
+        "syncMs": 0.5999999940395355,
+        "renderMs": 6.200000002980232,
+        "batchUpdateMs": 0.3999999910593033,
+        "gpuMs": null,
+        "draws": 1338,
+        "triangles": 1701296,
+        "uploadBytes": 528,
+        "blitPixels": 563067,
+        "sceneryCaches": 0
+      },
+      {
+        "syncMs": 0.5,
+        "renderMs": 12,
+        "batchUpdateMs": 0,
+        "gpuMs": null,
+        "draws": 1338,
+        "triangles": 1701296,
+        "uploadBytes": 528,
+        "blitPixels": 563067,
+        "sceneryCaches": 0
+      },
+      {
+        "syncMs": 0.5,
+        "renderMs": 9.700000002980232,
+        "batchUpdateMs": 0,
+        "gpuMs": null,
+        "draws": 1338,
+        "triangles": 1701296,
+        "uploadBytes": 528,
+        "blitPixels": 563067,
+        "sceneryCaches": 0
+      }
+    ]
+  },
+  "fullUploadMedianBytes": 394198112,
+  "maximumPixelDifference": 0,
+  "profilerHooksRestored": true
+}
