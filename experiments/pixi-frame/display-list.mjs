@@ -78,7 +78,7 @@ const clamp = (v) => Math.max(0, Math.min(1, v));
 // renderer. Own canvas/context/textures; no render-command capture or GPU readback.
 export async function startDisplayList(
   player,
-  { onStatus = () => {}, cacheEffects = true, directObjects = false, cacheScenery = true, vectorBatching = true, boundedBlends = true, partialUploads = true, renderGroups = true, groupVertexLimit = 6000, reuseFilters = true, isolateTopology = true, sparseUploads = true, skipUnchanged = true, idleHoverHz = 0, retainedHover = true, pixiPickBounds = false, pixiEvents = false, catchUp = false, reuseTranslations = true, retainContent = true, retainMaskedContent = true, skipUnchangedColors = true, nativeGraphics = false, shapeSprites = false, nativeText, nativeBatching = true, sampledTextures = true, pixiBitmapDraw = false, retainPaths = 4096, retainGeometry = 4096, pixiEventsScopedPress = true, pixiEventsCull = false, effectTextures = false, directMultiBlend = true, antialias = true, bezierSmoothness, reuseLinear = true, arrivalBudgetMs = 12, arrivalMaxFrames = 8, arrivalFreezeMs = 60, arrivalHide = false, instancedTransforms = true, isolateNeighbors = 12000 } = {},
+  { onStatus = () => {}, cacheEffects = true, directObjects = false, cacheScenery = true, vectorBatching = true, boundedBlends = true, partialUploads = true, renderGroups = true, groupVertexLimit = 6000, reuseFilters = true, isolateTopology = true, sparseUploads = true, skipUnchanged = true, idleHoverHz = 0, retainedHover = true, pixiPickBounds = false, pixiEvents = false, catchUp = false, reuseTranslations = true, retainContent = true, retainMaskedContent = true, skipUnchangedColors = true, nativeGraphics = false, shapeSprites = false, nativeText, nativeBatching = true, sampledTextures = true, pixiBitmapDraw = false, retainPaths = 4096, retainGeometry = 4096, pixiEventsScopedPress = true, pixiEventsCull = false, effectTextures = false, directMultiBlend = true, antialias = true, bezierSmoothness, reuseLinear = true, arrivalBudgetMs = 12, arrivalMaxFrames = 8, arrivalFreezeMs = 60, arrivalHide = false, instancedTransforms = true, isolateNeighbors = 12000, maskGroups = false } = {},
 ) {
   const useNativeText = nativeText ?? nativeGraphics;
   const native = player._renderer;
@@ -1188,6 +1188,27 @@ export async function startDisplayList(
   function resolveMasks() {
     for (const r of records.values())
       if (r.epoch === stats.frames) {
+        // Opt-in (maskGroups=1), unsafe: a mask whose content keeps changing
+        // (skill cooldown wedges change frame every frame) rebuilds the whole
+        // group of the content it clips (the action bar, about 1000
+        // containers, every frame). Promoting the mask to its own render
+        // group cut that to 35 containers, but content drawn after a masked
+        // icon (the key numbers) disappeared: Pixi's stencil pop does not
+        // restore state for a render-group mask.
+        if (renderGroups && maskGroups) for (const n of r.maskNodes || []) {
+          const t = records.get(n);
+          // Only timeline masks (a MovieClip whose frames animate, like the
+          // cooldown wedges). Promoting a TextField's crop mask lost the text.
+          if (!t || t.batchGroup || n.assetType !== "[asset MovieClip]" || n.parentTextField) continue;
+          if (t.maskRevision !== undefined && t.revision !== t.maskRevision && ++t.maskChanges >= 3) {
+            t.outer.enableRenderGroup();
+            t.batchGroup = true;
+            visualDirty = true;
+            stats.maskGroups = (stats.maskGroups || 0) + 1;
+          }
+          t.maskChanges ||= 0;
+          t.maskRevision = t.revision;
+        }
         const targets =
           r.maskNodes
             ?.map((n) => records.get(n)?.outer)
