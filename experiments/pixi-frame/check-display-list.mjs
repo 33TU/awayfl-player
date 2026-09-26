@@ -416,7 +416,9 @@ try {
     report.pixels.shared.buildsBefore,
     "movement, scale and rotation do not rebuild geometry",
   );
-  assert.ok(report.pixels.shared.shares >= 8);
+  // The source box keeps its custom (Flash batcher) geometry after its colour
+  // transform is reset (sticky), so the 8 plain copies share among themselves.
+  assert.ok(report.pixels.shared.shares >= 7, 'copies share geometry: ' + report.pixels.shared.shares);
   assert.deepEqual(report.pixels.shared.first, green);
   assert.deepEqual(report.pixels.shared.moved, green);
   assert.deepEqual(report.pixels.shared.old, black);

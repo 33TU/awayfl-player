@@ -17,8 +17,11 @@ export function vectorInputs(element, target, index, textureId, out = [], withTr
   const rect = r.flashRect;
   out.push(rect?.width ?? 1, rect?.height ?? 1, rect?.x ?? 0, rect?.y ?? 0,
     r.flashRadial || 0);
-  for (let j = 0; j < 4; j++) out.push(r.flashMultiply?.[j] ?? 1);
-  for (let j = 0; j < 4; j++) out.push(r.flashOffset?.[j] ?? 0);
+  // Instanced: the colour transform lives in the table with the matrix.
+  if (withTransform) {
+    for (let j = 0; j < 4; j++) out.push(r.flashMultiply?.[j] ?? 1);
+    for (let j = 0; j < 4; j++) out.push(r.flashOffset?.[j] ?? 0);
+  }
   return out;
 }
 

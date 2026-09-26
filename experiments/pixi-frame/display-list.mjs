@@ -505,11 +505,16 @@ export async function startDisplayList(
       ? textureSamples.version(image, sampleOffset) : null;
     const texture = tex ? imageTexture(image, sampler, sampleOffset) : Texture.WHITE;
     if (!texture) return null;
-    const custom =
+    let custom =
       !!curves ||
       radial ||
       color.some((c, i) => (i < 4 ? c < 0 || c > 1 : c !== 0));
     let r = record.meshes[index];
+    // Sticky: once a mesh needed the Flash batcher (a colour transform, a
+    // hit flash), keep it there. Flipping back disposed and recreated the
+    // mesh in the other batcher, a structural change that rebuilt its whole
+    // render group at the start and end of every flash and fade.
+    if (r?.custom && !custom && vectorBatching) custom = true;
     if (r && r.custom !== custom) {
       disposeMesh(r);
       r = null;

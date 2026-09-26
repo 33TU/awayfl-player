@@ -449,6 +449,13 @@ containers and 21 KB, for 5 percent more draws. In combat the same setting
 was slower (t14.json: median 31 ms, p90 61 ms against 26 to 27 and 49 to 52
 for the default), with more upload traffic, so the default stays at 12000.
 
+With instanced transforms the per-mesh table also holds the Flash colour
+multiply and offset (four RGBA32F texels per mesh), so a colour or alpha tween
+rewrites the table row rather than every vertex, and the instanced vertex is
+60 bytes instead of 92. A mesh that once needed the Flash batcher stays there
+(sticky custom): flipping back at the end of a hit flash or fade disposed and
+recreated it in the other batcher, rebuilding its render group each time.
+
 `npm run build:native:profile` writes the same `native-runtime.js` without
 minification, so a DevTools trace names the parse, symbol construction, JIT
 and tessellation functions instead of one-letter aliases. Use it to record a

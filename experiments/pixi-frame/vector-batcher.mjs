@@ -13,8 +13,11 @@ import { vectorInputs, sameVectorInputs } from "./vector-inputs.mjs";
 // animated mesh was repacked and re-uploaded on every frame (13 percent of a
 // busy frame in bufferSubData alone, t7.json). With the table a moved mesh
 // rewrites 32 bytes. WebGL2 only (texelFetch in the vertex shader).
-const MATRIX_WIDTH = 256;             // texels per row: 128 matrices
-const MATRIX_STRIDE = 8;              // floats per matrix: two RGBA texels
+const MATRIX_WIDTH = 256;             // texels per row: 64 entries
+// Per mesh: [a b c d] [tx ty - -] [colour multiply] [colour offset]. A colour
+// tween then rewrites the row too, instead of every vertex of the mesh.
+const MATRIX_TEXELS = 4;
+const MATRIX_STRIDE = MATRIX_TEXELS * 4;
 let instancedTransforms = false;
 
 const shaders = new Map();
@@ -27,9 +30,11 @@ function shaderFor(maxTextures, instanced) {
       name: "flash-instanced-transforms",
       vertex: {
         header: "in float aMatrix; uniform sampler2D uMatrices;",
-        main: `int mi = int(aMatrix + 0.5) * 2;
+        main: `int mi = int(aMatrix + 0.5) * ${MATRIX_TEXELS};
           vec4 m0 = texelFetch(uMatrices, ivec2(mi % ${MATRIX_WIDTH}, mi / ${MATRIX_WIDTH}), 0);
           vec4 m1 = texelFetch(uMatrices, ivec2((mi + 1) % ${MATRIX_WIDTH}, (mi + 1) / ${MATRIX_WIDTH}), 0);
+          vMultiply = texelFetch(uMatrices, ivec2((mi + 2) % ${MATRIX_WIDTH}, (mi + 2) / ${MATRIX_WIDTH}), 0);
+          vOffset = texelFetch(uMatrices, ivec2((mi + 3) % ${MATRIX_WIDTH}, (mi + 3) / ${MATRIX_WIDTH}), 0);
           position = vec2(m0.x * aPosition.x + m0.z * aPosition.y + m1.x, m0.y * aPosition.x + m0.w * aPosition.y + m1.y);`,
       },
     } : null;
@@ -37,8 +42,11 @@ function shaderFor(maxTextures, instanced) {
           main: textureBit.fragment.main.replaceAll("vUV", "flashUV") } }, roundPixelsBitGl, {
           name: "flash-vectors",
           vertex: {
-            header: "in vec4 aVector; in vec4 aRect; in vec4 aMultiply; in vec4 aOffset; out vec4 vVector; out vec4 vRect; out vec4 vMultiply; out vec4 vOffset;",
-            main: "vVector = aVector; vRect = aRect; vMultiply = aMultiply; vOffset = aOffset;",
+            header: instanced
+              ? "in vec4 aVector; in vec4 aRect; out vec4 vVector; out vec4 vRect; out vec4 vMultiply; out vec4 vOffset;"
+              : "in vec4 aVector; in vec4 aRect; in vec4 aMultiply; in vec4 aOffset; out vec4 vVector; out vec4 vRect; out vec4 vMultiply; out vec4 vOffset;",
+            main: instanced ? "vVector = aVector; vRect = aRect;"
+              : "vVector = aVector; vRect = aRect; vMultiply = aMultiply; vOffset = aOffset;",
           },
           fragment: {
             header: "in vec4 vVector; in vec4 vRect; in vec4 vMultiply; in vec4 vOffset;",
@@ -86,13 +94,15 @@ class VectorBatcher extends DefaultBatcher {
     this.instanced = instancedTransforms;
     // The matrix texture takes the last sampler unit, so batching gets one less.
     this.maxTextures = this.instanced ? Math.max(1, options.maxTextures - 1) : options.maxTextures;
-    this.vertexSize = this.instanced ? 23 : 22;
+    // Instanced: colour multiply/offset live in the table, 15 floats a vertex.
+    this.vertexSize = this.instanced ? 15 : 22;
     const stride = this.vertexSize * 4;
     this.inputScratch = [];
     this.unchangedUpdates = this.packedUpdates = this.matrixUpdates = 0;
     for (const attribute of Object.values(this.geometry.attributes)) attribute.stride = stride;
-    const layout = [["aVector", 24], ["aRect", 40], ["aMultiply", 56], ["aOffset", 72]];
-    if (this.instanced) layout.push(["aMatrix", 88]);
+    const layout = this.instanced
+      ? [["aVector", 24], ["aRect", 40], ["aMatrix", 56]]
+      : [["aVector", 24], ["aRect", 40], ["aMultiply", 56], ["aOffset", 72]];
     for (const [name, offset] of layout)
       this.geometry.addAttribute(name, {
         buffer: this.geometry.getBuffer("aPosition"),
@@ -134,10 +144,15 @@ class VectorBatcher extends DefaultBatcher {
   }
   writeMatrix(element) {
     const wt = element.transform, at = element.flashMatrix * MATRIX_STRIDE, m = this.matrices;
-    if (m[at] === wt.a && m[at + 1] === wt.b && m[at + 2] === wt.c && m[at + 3] === wt.d &&
-        m[at + 4] === wt.tx && m[at + 5] === wt.ty) return false;
+    const mul = element.renderable?.flashMultiply, off = element.renderable?.flashOffset;
+    let same = m[at] === wt.a && m[at + 1] === wt.b && m[at + 2] === wt.c && m[at + 3] === wt.d &&
+      m[at + 4] === wt.tx && m[at + 5] === wt.ty;
+    for (let j = 0; same && j < 4; j++)
+      same = m[at + 8 + j] === (mul?.[j] ?? 1) && m[at + 12 + j] === (off?.[j] ?? 0);
+    if (same && m[at + 7] === 1) return false;
     m[at] = wt.a; m[at + 1] = wt.b; m[at + 2] = wt.c; m[at + 3] = wt.d;
-    m[at + 4] = wt.tx; m[at + 5] = wt.ty;
+    m[at + 4] = wt.tx; m[at + 5] = wt.ty; m[at + 7] = 1;
+    for (let j = 0; j < 4; j++) { m[at + 8 + j] = mul?.[j] ?? 1; m[at + 12 + j] = off?.[j] ?? 0; }
     this.matrixDirty = true;
     return true;
   }
@@ -213,9 +228,9 @@ class VectorBatcher extends DefaultBatcher {
       floats[index++] = curves?.[i * 3 + 2] || 0;
       floats[index++] = radial;
       floats[index++] = sx; floats[index++] = sy; floats[index++] = ox; floats[index++] = oy;
+      if (instanced) { floats[index++] = slot; continue; }
       for (let j = 0; j < 4; j++) floats[index++] = multiply?.[j] ?? 1;
       for (let j = 0; j < 4; j++) floats[index++] = offset?.[j] ?? 0;
-      if (instanced) floats[index++] = slot;
     }
   }
   destroy() {
