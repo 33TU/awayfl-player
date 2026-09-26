@@ -1395,7 +1395,14 @@ export async function startDisplayList(
             const promise = text._gpuData[renderer.uid]?.texturePromise;
             if (promise && !observedHTMLTextures.has(promise)) {
               observedHTMLTextures.add(promise);
-              promise.then(() => { if (!stopped) visualDirty = true; }).catch(() => {});
+              // Advance the record's revision too: a scenery cache or retained
+              // effect that snapshotted the empty placeholder only refreshes
+              // on a revision change, so the label could stay invisible.
+              promise.then(() => {
+                if (stopped) return;
+                visualDirty = true;
+                if (records.get(r.node) === r) { dirty(r, "text-texture"); sourceChanged(r); }
+              }).catch(() => {});
             }
           }
         }
