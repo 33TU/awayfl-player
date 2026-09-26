@@ -3,7 +3,7 @@ import { EventBoundary, Matrix } from "pixi.js";
 // Pixi owns the broad target choice; AwayFL still creates PickingCollision and
 // dispatches Flash mouse events. Retry the full tree when a visual Pixi target
 // does not correspond to a Flash hit (e.g. a button with a custom hit area).
-export function installPixiPickEvents(player, scene, records, owners, renderer, stats, { nativePress = false } = {}) {
+export function installPixiPickEvents(player, scene, records, owners, renderer, stats, { nativePress = false, hitStates = null } = {}) {
   const picker = player?._mousePicker;
   const prototype = picker && Object.getPrototypeOf(picker);
   if (!prototype || typeof picker.getViewCollision !== "function" ||
@@ -84,6 +84,10 @@ export function installPixiPickEvents(player, scene, records, owners, renderer, 
     function pick(scope) {
       const path = new Set();
       for (let p = scope; p; p = p.parent) path.add(p);
+      // Invisible hit states (button hit areas, walkable regions) can sit above
+      // the Pixi candidate without any art. Admit every hit-state owner so the
+      // native pick can prefer them exactly as the full tree would.
+      if (hitStates) for (const owner of hitStates()) for (let p = owner; p; p = p.parent) path.add(p);
       const previous = allowed;
       allowed = { path, scope };
       try { return originalViewCollision.call(picker, x, y, ...args); }
@@ -107,10 +111,13 @@ export function installPixiPickEvents(player, scene, records, owners, renderer, 
   function inScope(node) {
     const container = node?.container;
     if (!container) return true;
-    // A button's hit state is a separate node parented under its owner and
-    // may sit outside the display list; admit it exactly when its owner is.
-    const parent = node.parent;
-    if (parent && parent.container?.pickObject === container) return inScope(parent);
+    // A button's hit state is a separate node subtree parented under its
+    // owner and may sit outside the display list; admit it exactly when the
+    // owner is. Climb node parents to the hit-state link.
+    for (let n = node; n; n = n.parent) {
+      const owner = n.parent;
+      if (owner && owner.container?.pickObject === n.container) return inScope(owner);
+    }
     for (let p = container; p; p = p.parent) if (p === allowed.scope) return true;
     return allowed.path.has(container);
   }

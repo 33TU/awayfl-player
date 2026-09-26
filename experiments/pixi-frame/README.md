@@ -319,12 +319,15 @@ Shape art and other mouse-disabled objects stay hittable in Pixi: Flash routes
 such hits to the nearest mouse-enabled ancestor, and the scoped native pick
 applies `mouseEnabled` and `mouseChildren`. Marking them passive made the
 boundary miss almost everywhere, so each hover tick fell back to the full
-native tree. Press, release and wheel keep the full native pick by default;
-`pixiEventsScopedPress=1` routes them through the scoped pick (each full pick
-costs about a frame in combat). In a live room the scoped press did not walk
-the avatar on floor clicks, so it stays opt-in until that routing is
-understood. Input fields carry an explicit Pixi hit rectangle covering their
-box, so a press on empty space inside one resolves to the field. A button's timeline hit state is admitted to the scoped
+native tree. Press, release and wheel use the scoped pick as well
+(`pixiEventsScopedPress=0` restores a full native pick per click, which costs
+about a frame each in combat). Invisible hit states such as a map's walkable-
+area button have no Pixi art, so the display list tracks every object with a
+hit state (`hitStateNodes`) and the scoped traversal always admits their
+branches; the native pick then prefers them exactly as the full tree would.
+Input fields carry an explicit Pixi hit rectangle covering their box, so a
+press on empty space inside one resolves to the field. Verified in a live
+room: a floor click walks the avatar through the scoped press. A button's timeline hit state is admitted to the scoped
 traversal exactly when its owner is. The scoped native pick tries the candidate's own branch first and
 widens to its parent and grandparent only on a miss: over a room background the
 parent is the whole room, and picking it cost as much as the full tree.

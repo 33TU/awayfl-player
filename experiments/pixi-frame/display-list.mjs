@@ -78,7 +78,7 @@ const clamp = (v) => Math.max(0, Math.min(1, v));
 // renderer. Own canvas/context/textures; no render-command capture or GPU readback.
 export async function startDisplayList(
   player,
-  { onStatus = () => {}, cacheEffects = true, directObjects = false, cacheScenery = true, vectorBatching = true, boundedBlends = true, partialUploads = true, renderGroups = true, groupVertexLimit = 6000, reuseFilters = true, isolateTopology = true, sparseUploads = true, skipUnchanged = true, idleHoverHz = 0, retainedHover = true, pixiPickBounds = false, pixiEvents = false, catchUp = false, reuseTranslations = true, retainContent = true, retainMaskedContent = true, skipUnchangedColors = true, nativeGraphics = false, shapeSprites = false, nativeText, nativeBatching = true, sampledTextures = true, pixiBitmapDraw = false, retainPaths = 4096, retainGeometry = 2048, pixiEventsScopedPress = false, effectTextures = false, directMultiBlend = true, antialias = true, bezierSmoothness } = {},
+  { onStatus = () => {}, cacheEffects = true, directObjects = false, cacheScenery = true, vectorBatching = true, boundedBlends = true, partialUploads = true, renderGroups = true, groupVertexLimit = 6000, reuseFilters = true, isolateTopology = true, sparseUploads = true, skipUnchanged = true, idleHoverHz = 0, retainedHover = true, pixiPickBounds = false, pixiEvents = false, catchUp = false, reuseTranslations = true, retainContent = true, retainMaskedContent = true, skipUnchangedColors = true, nativeGraphics = false, shapeSprites = false, nativeText, nativeBatching = true, sampledTextures = true, pixiBitmapDraw = false, retainPaths = 4096, retainGeometry = 2048, pixiEventsScopedPress = true, effectTextures = false, directMultiBlend = true, antialias = true, bezierSmoothness } = {},
 ) {
   const useNativeText = nativeText ?? nativeGraphics;
   const native = player._renderer;
@@ -118,6 +118,10 @@ export async function startDisplayList(
   sourceCanvas.ownerDocument.body.append(canvas);
   const scene = new Container();
   const groupOwners = new WeakMap();
+  // Flash objects whose hit test is an invisible hit state (button hit
+  // areas, walkable regions). Pixi cannot see them, so scoped picks must
+  // always admit their branches.
+  const hitStateNodes = new Set();
   const records = new Map(),
     textures = new Map();
   const observedHTMLTextures = new WeakSet();
@@ -187,7 +191,7 @@ export async function startDisplayList(
     undefined, directObjects && retainedHover ? () => stats.drawnFrames : null);
   const restoreCatchUp = directObjects && catchUp ? installCatchUp(player, stats) : null;
   const restorePixiPickEvents = directObjects && pixiEvents
-    ? installPixiPickEvents(player, scene, records, groupOwners, renderer, stats, { nativePress: !pixiEventsScopedPress }) : null;
+    ? installPixiPickEvents(player, scene, records, groupOwners, renderer, stats, { nativePress: !pixiEventsScopedPress, hitStates: () => hitStateNodes }) : null;
   const restorePixiPickBounds = directObjects && pixiPickBounds && !pixiEvents
     ? installPixiPickBounds(player, records, stats, renderer) : null;
   const scenery = directObjects && cacheScenery
@@ -702,12 +706,15 @@ export async function startDisplayList(
     r.outer.visible = node.visible !== false;
     stats.nodes++;
     if (!r.outer.visible) {
+      hitStateNodes.delete(node);
       scenery?.release(r);
       effectTextureCache?.release(r);
       if (before) finishSummary(r, before);
       path.delete(node);
       return r.outer;
     }
+    if (node.pickObject) hitStateNodes.add(node); else if (hitStateNodes.size) hitStateNodes.delete(node);
+    stats.hitStateNodes = hitStateNodes.size;
     if (!bindings) { stats.polledTransforms++; updateObject(node, r); }
     const a = r.transform;
     if (r.is3D) missing("3d-transform");
@@ -1070,6 +1077,7 @@ export async function startDisplayList(
       }
   }
   function destroyRecord(r) {
+    hitStateNodes.delete(r.node);
     scenery?.release(r);
     effectTextureCache?.release(r);
     needsSweep = true;
