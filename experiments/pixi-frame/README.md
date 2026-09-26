@@ -1213,7 +1213,13 @@ materializes deferred triangles when needed. Switching back to the AwayFL
 renderer materializes all remaining deferred shapes. The live counters are in
 `pixiLive.stats.deferredGeometry` (`skipped`, `materialized`, `live`, plus
 the corresponding `*Strokes` counters).
-Append `&pixiBitmapDraw=1` to try the Pixi `BitmapData.draw` bridge. It renders
+The Pixi `BitmapData.draw` bridge is on by default (`pixiBitmapDraw=0`
+disables). It now applies a draw's colour transform to the read-back pixels
+and accepts a retained, clean source branch regardless of its ancestors.
+Skill cooldown overlays (a dimmed icon copy drawn with a colour transform)
+were otherwise GPU-only bitmaps Pixi could not show, so cooldowns rendered
+no overlay at all. The game calls draw only on cooldown start, per room for
+the map snapshot, and for a part rasterizer, never per frame. The bridge It renders
 a previously prepared display subtree, including internal timeline masks, into
 a Pixi render texture. It reads the pixels into an unused transparent Flash
 bitmap; unsupported draws stay on AwayFL's offscreen path. The Battleon map
