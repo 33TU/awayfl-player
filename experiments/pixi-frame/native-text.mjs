@@ -129,7 +129,14 @@ export function syncNativeText(record, spec, color, world, dirty) {
     // update it in place while its layout kind and font stay the same.
     const layoutKey = JSON.stringify([spec.kind, spec.fontFamily, spec.fontSize, spec.fontWeight,
       spec.fontStyle, spec.letterSpacing, spec.kind === 'lines' ? spec.lines.filter(l => l.text).map(l => !!l.runs) : null]);
-    const reusable = record.nativeText && record.nativeLayoutKey === layoutKey;
+    // Pixi's HTMLText ignores a text change that arrives while its previous
+    // texture is still being generated (and stays stuck if that generation
+    // failed), so an HTML label set twice in quick succession, like the room
+    // name on a room change, kept the old text. Replace such an object.
+    const generating = text => Object.values(text?._gpuData || {}).some(g => g?.generatingTexture);
+    const busy = record.nativeText && (generating(record.nativeText) ||
+      record.nativeText.children?.some(generating));
+    const reusable = record.nativeText && record.nativeLayoutKey === layoutKey && !busy;
     if (reusable) {
       if (spec.kind === 'lines') {
         let index = 0;
