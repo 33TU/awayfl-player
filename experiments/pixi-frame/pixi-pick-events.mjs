@@ -1,4 +1,4 @@
-import { EventBoundary, Matrix } from "pixi.js";
+import { EventBoundary } from "pixi.js";
 
 // Pixi's Mesh.containsPoint walks an indexed triangle list one index at a
 // time, so it also tests the triangles straddling consecutive real ones. A
@@ -46,29 +46,37 @@ export function installPixiPickEvents(player, scene, records, owners, renderer, 
   const boundary = new EventBoundary(scene);
   // Pixi skips the transform update of a render group cached as a texture, so
   // worldTransform inside a scenery-cached branch (the map) is stale or unset
-  // and the default hit test misses it. Derive world transforms from the
-  // local transform chain instead; the cache is cleared per hit test.
-  // Matrices are kept per container and revalidated by a stamp per hit test:
-  // allocating one per visited container was a third of the hit test.
-  const worlds = new WeakMap();
+  // and the default hit test misses it. Walk the local transform chain
+  // instead, but carry the point down rather than matrices up: the point in a
+  // container's space is cached per hit test, and a leaf only applies its own
+  // local inverse to its parent's point. Building a world matrix per visited
+  // leaf was a quarter of the hit test.
+  const points = new WeakMap();
   let stamp = 0;
-  const worldOf = container => {
-    let entry = worlds.get(container);
-    if (entry && entry.stamp === stamp) return entry.matrix;
-    if (!entry) worlds.set(container, entry = { matrix: new Matrix(), stamp: 0 });
+  const localPointOf = (container, location) => {
+    let entry = points.get(container);
+    if (entry && entry.stamp === stamp) return entry;
+    if (!entry) points.set(container, entry = { x: 0, y: 0, stamp: 0 });
+    const parentPoint = container.parent && container !== scene
+      ? localPointOf(container.parent, location) : location;
     container.updateLocalTransform?.();
-    const m = entry.matrix.copyFrom(container.localTransform);
-    if (container.parent && container !== scene) m.prepend(worldOf(container.parent));
+    container.localTransform.applyInverse(parentPoint, entry);
     entry.stamp = stamp;
-    return m;
+    return entry;
   };
   const local = { x: 0, y: 0 };
+  const leafPoint = (container, location) => {
+    const parentPoint = container.parent && container !== scene
+      ? localPointOf(container.parent, location) : location;
+    container.updateLocalTransform?.();
+    return container.localTransform.applyInverse(parentPoint, local);
+  };
   const containsPoint = (container, location) => {
     if (container.hitArea) return true;
     if (container.containsPoint) {
-      worldOf(container).applyInverse(location, local);
-      if (container.renderPipeId === "mesh") return meshContainsPoint(container, local.x, local.y);
-      return container.containsPoint(local);
+      const p = leafPoint(container, location);
+      if (container.renderPipeId === "mesh") return meshContainsPoint(container, p.x, p.y);
+      return container.containsPoint(p);
     }
     // A Flash mask is a display object of its own: the boundary hands its
     // record's outer container to this test through the masked wrapper's
@@ -88,8 +96,8 @@ export function installPixiPickEvents(player, scene, records, owners, renderer, 
     // hit state far behind the real target.
     if (container.measurable === false) return true;
     if (container.hitArea) {
-      worldOf(container).applyInverse(location, local);
-      if (!container.hitArea.contains(local.x, local.y)) return true;
+      const p = leafPoint(container, location);
+      if (!container.hitArea.contains(p.x, p.y)) return true;
       // The default prune re-tests hitArea with worldTransform; skip to effects.
       const area = container.hitArea;
       container.hitArea = null;
