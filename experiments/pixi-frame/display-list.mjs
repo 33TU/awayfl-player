@@ -78,7 +78,7 @@ const clamp = (v) => Math.max(0, Math.min(1, v));
 // renderer. Own canvas/context/textures; no render-command capture or GPU readback.
 export async function startDisplayList(
   player,
-  { onStatus = () => {}, cacheEffects = true, directObjects = false, cacheScenery = true, vectorBatching = true, boundedBlends = true, partialUploads = true, renderGroups = true, groupVertexLimit = 6000, reuseFilters = true, isolateTopology = true, sparseUploads = true, skipUnchanged = true, idleHoverHz = 0, retainedHover = true, pixiPickBounds = false, pixiEvents = false, catchUp = false, reuseTranslations = true, retainContent = true, retainMaskedContent = true, skipUnchangedColors = true, nativeGraphics = false, shapeSprites = false, nativeText, nativeBatching = true, sampledTextures = true, pixiBitmapDraw = false, retainPaths = 4096, retainGeometry = 2048, pixiEventsScopedPress = true, effectTextures = false, directMultiBlend = true, antialias = true, bezierSmoothness } = {},
+  { onStatus = () => {}, cacheEffects = true, directObjects = false, cacheScenery = true, vectorBatching = true, boundedBlends = true, partialUploads = true, renderGroups = true, groupVertexLimit = 6000, reuseFilters = true, isolateTopology = true, sparseUploads = true, skipUnchanged = true, idleHoverHz = 0, retainedHover = true, pixiPickBounds = false, pixiEvents = false, catchUp = false, reuseTranslations = true, retainContent = true, retainMaskedContent = true, skipUnchangedColors = true, nativeGraphics = false, shapeSprites = false, nativeText, nativeBatching = true, sampledTextures = true, pixiBitmapDraw = false, retainPaths = 4096, retainGeometry = 2048, pixiEventsScopedPress = false, effectTextures = false, directMultiBlend = true, antialias = true, bezierSmoothness } = {},
 ) {
   const useNativeText = nativeText ?? nativeGraphics;
   const native = player._renderer;
@@ -627,10 +627,11 @@ export async function startDisplayList(
       // subtrees to an ancestor. Keep every branch hittable so Pixi still
       // reports the topmost art; the scoped native pick applies those rules.
       r.outer.interactiveChildren = true;
-      // A text field is hit over its whole box, not only its glyphs, so give
+      // An input field is hit over its whole box, not only its glyphs, so give
       // the container an explicit hit rectangle; otherwise a click on empty
-      // space inside an input resolves to whatever lies behind it.
-      if (typeof node.text === "string" && node._width > 0 && node._height > 0) {
+      // space inside it resolves to whatever lies behind it. Dynamic labels
+      // keep glyph hits only.
+      if (typeof node.text === "string" && node.type === "input" && node._width > 0 && node._height > 0) {
         const x = node.textOffsetX || 0, y = node.textOffsetY || 0;
         if (!r.outer.hitArea) r.outer.hitArea = new Rectangle(x, y, node._width, node._height);
         else { r.outer.hitArea.x = x; r.outer.hitArea.y = y; r.outer.hitArea.width = node._width; r.outer.hitArea.height = node._height; }
