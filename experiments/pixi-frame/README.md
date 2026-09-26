@@ -413,8 +413,9 @@ subtree on every frame to size the filter texture, 10 percent of a
 filter-heavy frame (t7.json); in a live room about 18 of 160 filtered groups
 refresh per frame. `stats.filterAreaUpdates` counts refreshes.
 
-Instanced transforms (opt-in with `instanced=1`; WebGL2 only) now apply to
-the Flash vector meshes only, the colour-transformed and curved art already
+Instanced transforms (default; `instanced=0` disables; WebGL2 only) apply to
+the Flash vector meshes only; same-room combat, t11 against t12: median frame
+29 to 26 ms, p90 54 to 49 ms. They cover the colour-transformed and curved art already
 in the 88-byte format. In combat those repacked about 140 times a frame only
 because they moved (repack-reason trace); private-room idle: uploads 20 KB
 against 885 KB per frame, same draw count. An earlier version moved every
