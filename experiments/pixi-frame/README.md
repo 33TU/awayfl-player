@@ -378,6 +378,15 @@ overlap each other now use GPU add/multiply/screen blending directly (`directMul
 Pixi canvas, which also removes the per-pass resolve before every backdrop
 copy; `bezierSmoothness=N` (Pixi default 0.5) lowers curve subdivision, which
 Pixi computes in authored units rather than screen pixels.
+Every multi-contour fill now uses the containment tree with explicit holes;
+Pixi's signed compound path missed a hole whose contour winding matched the
+outer one, so a chest icon's frame drew solid over its planks (`chest.swf`).
+A masked object is never promoted to its own Pixi render group: a stencil mask
+rendered from another group's transform clipped inventory lists at the wrong
+place. `hairlines=0` (runtime) keeps hairlines on the mesh route and
+`reuseLinear=0` restores full re-preparation on rotate/scale, both for
+comparison. The proxy loader accepts any `entry=<name>` SWF under gamefiles,
+so a single asset can be rendered alone for inspection.
 `pixiLive.stats.unsupported` lists `native-fallback:<reason>` counts for
 authored paths that still use the mesh route (`contours`, `paint-offset`,
 `no-snapshot`, ...); a deferred morph shape pays a full tessellation there.

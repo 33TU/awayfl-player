@@ -113,6 +113,19 @@ export async function checkNativePaths(player, live) {
     if(graphics(a).context!==hairlineContext||live.stats.nativePathBuilds!==hairlineBuilds)
       throw Error('Hairline transform rebuilt shared context');
     a.$BgscaleX=1;
+    // A closed hairline outline must stay an outline: interior untouched,
+    // edge carrying the stroke color.
+    cg.$Bgclear();cg.$BglineStyle(0,0xff8800,1);
+    cg.$BgmoveTo(0,0);cg.$BglineTo(40,0);cg.$BglineTo(40,40);cg.$BglineTo(0,40);cg.$BglineTo(0,0);frame();
+    if(!graphics(a))throw Error('Closed hairline did not use Pixi Graphics');
+    const read=(x,y)=>{const canvas=player._view.stage.context._gl.canvas.ownerDocument.querySelector('[data-pixi-display-list]');
+      const gl=canvas.getContext('webgl2'),bytes=new Uint8Array(4);const point=live.getDisplayObject(a).toGlobal({x,y});
+      gl.readPixels(Math.floor(point.x),canvas.height-1-Math.floor(point.y),1,1,gl.RGBA,gl.UNSIGNED_BYTE,bytes);return Array.from(bytes);};
+    const interior=read(20,20);
+    if(interior[0]>8||interior[1]>8)throw Error('Closed hairline filled its interior: '+interior);
+    const edge=[read(20,-1),read(20,0),read(20,1)];
+    if(!edge.some(p=>p[0]>100&&p[2]<60))throw Error('Closed hairline edge missing: '+JSON.stringify(edge));
+    a.adaptee.graphics.clear();
     return {shared:true,transformReused:true,editIsolated:true,clear:true,picking:true,visibility:true,hairline:true,
       curves:true,nativePrimitives:true,roundRect:true,ellipticalCornerFallback:true,
       mixedPrimitiveFallback:true,pixels:true,normalStroke:true,strokeTransformReused:true,

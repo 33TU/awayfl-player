@@ -124,13 +124,19 @@ function attachPaintUV(path, style) {
     gradient: Object.freeze({ ...path.gradient, uv: Object.freeze(matrix) }) });
 }
 
+// Hairlines become Pixi pixelLine strokes unless disabled for comparison.
+let hairlinePixelLines = true;
+export function setHairlinePixelLines(enabled) { hairlinePixelLines = !!enabled; }
+
 export function snapshotStrokePath(path) {
   const style = path.style;
   // Normal scaling maps directly to Pixi. A Flash hairline is one device pixel
   // at any scale, which is exactly Pixi's pixelLine stroke. Other non-scaling
   // strokes keep a screen-space width and stay on the mesh path.
-  const hairline = style?.scaleMode === 4;
-  if (style?.data_type !== '[graphicsdata StrokeStyle]' || (style.scaleMode !== 2 && !hairline) ||
+  // The SWF decoder marks widths up to 0.05 as hairlines; the script bridge
+  // drops the scale mode, so apply the same width rule here.
+  const hairline = style?.scaleMode === 4 || (style?.thickness > 0 && style.thickness <= 0.05);
+  if (style?.data_type !== '[graphicsdata StrokeStyle]' || (style.scaleMode !== 2 && !hairline) || (hairline && !hairlinePixelLines) ||
       !(style.thickness > 0) || !Number.isFinite(style.thickness) ||
       !(style.miterLimit > 0) || !Number.isFinite(style.miterLimit)) return null;
   // SWF decoding supplies enums; script lineStyle calls can supply strings.
@@ -482,6 +488,7 @@ export function installPathSource(Graphics, Factory, Strokes, Box, runtime = {})
     lazyStats,
     setBitmapDrawHandler(handler) { bitmapDrawHandler = handler; },
     setMorphLiteGeometry(enabled) { morphLazyEnabled = !!enabled; },
+    setHairlinePixelLines,
     setLiteGeometry(enabled) {
       if (!enabled) {
         lazyEnabled = false;

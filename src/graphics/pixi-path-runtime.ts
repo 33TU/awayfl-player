@@ -10,6 +10,8 @@ import { installCachedPickBounds } from './cached-pick-bounds.mjs';
 // Loaded only by the experimental runtime, before any SWF assets are decoded.
 window['__PIXI_FLASH_PATHS__'] = installPathSource(Graphics, GraphicsFactoryFills,
   GraphicsFactoryStrokes, Box, { AttributesBuffer, LineElements, DisplayObject, SceneImage2D });
+if (new URLSearchParams(location.search).get('hairlines') === '0')
+  window['__PIXI_FLASH_PATHS__'].setHairlinePixelLines(false);
 if (new URLSearchParams(location.search).get('morphNativePaths') === '1')
   window['__PIXI_FLASH_PATHS__'].setMorphLiteGeometry(true);
 const params = new URLSearchParams(location.search);

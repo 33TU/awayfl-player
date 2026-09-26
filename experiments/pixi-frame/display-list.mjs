@@ -78,7 +78,7 @@ const clamp = (v) => Math.max(0, Math.min(1, v));
 // renderer. Own canvas/context/textures; no render-command capture or GPU readback.
 export async function startDisplayList(
   player,
-  { onStatus = () => {}, cacheEffects = true, directObjects = false, cacheScenery = true, vectorBatching = true, boundedBlends = true, partialUploads = true, renderGroups = true, groupVertexLimit = 6000, reuseFilters = true, isolateTopology = true, sparseUploads = true, skipUnchanged = true, idleHoverHz = 0, retainedHover = true, pixiPickBounds = false, pixiEvents = false, catchUp = false, reuseTranslations = true, retainContent = true, retainMaskedContent = true, skipUnchangedColors = true, nativeGraphics = false, shapeSprites = false, nativeText, nativeBatching = true, sampledTextures = true, pixiBitmapDraw = false, retainPaths = 4096, retainGeometry = 2048, pixiEventsScopedPress = true, effectTextures = false, directMultiBlend = true, antialias = true, bezierSmoothness } = {},
+  { onStatus = () => {}, cacheEffects = true, directObjects = false, cacheScenery = true, vectorBatching = true, boundedBlends = true, partialUploads = true, renderGroups = true, groupVertexLimit = 6000, reuseFilters = true, isolateTopology = true, sparseUploads = true, skipUnchanged = true, idleHoverHz = 0, retainedHover = true, pixiPickBounds = false, pixiEvents = false, catchUp = false, reuseTranslations = true, retainContent = true, retainMaskedContent = true, skipUnchangedColors = true, nativeGraphics = false, shapeSprites = false, nativeText, nativeBatching = true, sampledTextures = true, pixiBitmapDraw = false, retainPaths = 4096, retainGeometry = 2048, pixiEventsScopedPress = true, effectTextures = false, directMultiBlend = true, antialias = true, bezierSmoothness, reuseLinear = true } = {},
 ) {
   const useNativeText = nativeText ?? nativeGraphics;
   const native = player._renderer;
@@ -215,7 +215,7 @@ export async function startDisplayList(
     record: nodeRecord,
     update: updateObject,
     changed: sourceChanged,
-    linearChanged,
+    linearChanged: reuseLinear ? linearChanged : null,
     hierarchyChanged: (r) => { if (r) dirty(r, "hierarchy"); },
     detached: (r) => detachedRecords.set(r, stats.frames),
     stats,
@@ -954,12 +954,21 @@ export async function startDisplayList(
     // rebuild multi-megabyte buffers. Child groups are excluded from this budget.
     // Unary wrappers need no extra group; large standalone geometry does.
     // Promotion is persistent so animation does not toggle grouping every frame.
-    if (renderGroups && !r.batchGroup && (
+    // A masked object must share its mask's render group: Pixi renders a
+    // stencil mask with the mask container's group-relative transform inside
+    // the masked group's instruction set, so a promoted masked object clips
+    // at the wrong place (inventory lists spilled past their mask).
+    if (renderGroups && !r.batchGroup && !maskNodes.length && (
       (drawingChildren >= 2 && (drawCost >= 64 || (groupVertexLimit > 0 && batchVertices >= groupVertexLimit))) ||
       ownVertices >= 12000 || protectNeighbors
     )) {
       r.outer.enableRenderGroup();
       r.batchGroup = true;
+      visualDirty = true;
+    }
+    if (r.batchGroup && maskNodes.length) {
+      r.outer.disableRenderGroup();
+      r.batchGroup = false;
       visualDirty = true;
     }
     if (r.batchGroup) stats.batchGroups++;

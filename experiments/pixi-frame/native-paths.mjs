@@ -154,8 +154,11 @@ export function createNativePaths(stats, renderer, { shapeSprites = false, retai
     let entry = entries.get(path);
     if (!entry) {
       const context = new GraphicsContext();
-      const compound = !path.stroke && path.contours > 1;
-      const drawing = compound ? new GraphicsPath(undefined, true) : context;
+      // Every multi-contour fill goes through the containment tree with explicit
+      // holes. Pixi's signed compound path missed holes whose contour winding
+      // matches the outer one (a chest frame drew solid over its planks).
+      const regions = !path.stroke && path.contours > 1;
+      const drawing = context;
       let startX, startY, endX, endY, hasSegment = false;
       const closeStroke = () => {
         if (path.stroke && hasSegment && startX === endX && startY === endY)
@@ -171,9 +174,8 @@ export function createNativePaths(stats, renderer, { shapeSprites = false, retai
           context.ellipse(x + width / 2, y + height / 2, width / 2, height / 2);
         }
       }
-      for (const { command, args } of pathSegments(path)) {
+      if (!regions) for (const { command, args } of pathSegments(path)) {
         if (command === 1) {
-          if (compound && startX !== undefined) drawing.closePath();
           closeStroke(); drawing.moveTo(...args);
           [startX, startY] = args; hasSegment = false;
         }
@@ -183,12 +185,11 @@ export function createNativePaths(stats, renderer, { shapeSprites = false, retai
         [endX, endY] = args.slice(-2);
         if (command !== 1) hasSegment = true;
       }
-      if (compound) context.path(drawing.closePath());
       let gradient;
       if (path.stroke) {
         closeStroke();
         context.stroke({ ...path.stroke, color: 0xffffff, alignment: 0.5 });
-      } else if (path.contours > 2) {
+      } else if (regions) {
         const roots = contourPlan(path);
         const paint = fillStyle(path, texture);
         gradient = path.gradient ? paint.fill : null;
