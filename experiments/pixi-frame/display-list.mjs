@@ -78,7 +78,7 @@ const clamp = (v) => Math.max(0, Math.min(1, v));
 // renderer. Own canvas/context/textures; no render-command capture or GPU readback.
 export async function startDisplayList(
   player,
-  { onStatus = () => {}, cacheEffects = true, directObjects = false, cacheScenery = true, vectorBatching = true, boundedBlends = true, partialUploads = true, renderGroups = true, groupVertexLimit = 6000, reuseFilters = true, isolateTopology = true, sparseUploads = true, skipUnchanged = true, idleHoverHz = 0, retainedHover = true, pixiPickBounds = false, pixiEvents = false, catchUp = false, reuseTranslations = true, retainContent = true, retainMaskedContent = true, skipUnchangedColors = true, nativeGraphics = false, shapeSprites = false, nativeText, nativeBatching = true, sampledTextures = true, pixiBitmapDraw = false, retainPaths = 4096, retainGeometry = 4096, pixiEventsScopedPress = true, pixiEventsCull = false, effectTextures = false, directMultiBlend = true, antialias = true, bezierSmoothness, reuseLinear = true, arrivalBudgetMs = 12, arrivalMaxFrames = 8, arrivalFreezeMs = 60, arrivalHide = false, instancedTransforms = true } = {},
+  { onStatus = () => {}, cacheEffects = true, directObjects = false, cacheScenery = true, vectorBatching = true, boundedBlends = true, partialUploads = true, renderGroups = true, groupVertexLimit = 6000, reuseFilters = true, isolateTopology = true, sparseUploads = true, skipUnchanged = true, idleHoverHz = 0, retainedHover = true, pixiPickBounds = false, pixiEvents = false, catchUp = false, reuseTranslations = true, retainContent = true, retainMaskedContent = true, skipUnchangedColors = true, nativeGraphics = false, shapeSprites = false, nativeText, nativeBatching = true, sampledTextures = true, pixiBitmapDraw = false, retainPaths = 4096, retainGeometry = 4096, pixiEventsScopedPress = true, pixiEventsCull = false, effectTextures = false, directMultiBlend = true, antialias = true, bezierSmoothness, reuseLinear = true, arrivalBudgetMs = 12, arrivalMaxFrames = 8, arrivalFreezeMs = 60, arrivalHide = false, instancedTransforms = true, isolateNeighbors = 12000 } = {},
 ) {
   const useNativeText = nativeText ?? nativeGraphics;
   const native = player._renderer;
@@ -132,7 +132,7 @@ export async function startDisplayList(
   const stats = {
     active: true,
     mode: directObjects ? "direct-objects" : "display-list",
-    configuration: { nativeGraphics, retainPaths, retainGeometry, arrivalBudgetMs, arrivalMaxFrames, arrivalFreezeMs, arrivalHide, instancedTransforms: instanced, effectTextures: directObjects && effectTextures, directMultiBlend, antialias, bezierSmoothness: bezierSmoothness ?? null, shapeSprites: nativeGraphics && shapeSprites, nativeText: useNativeText, nativeBatching, sampledTextures, cacheScenery: directObjects && cacheScenery, groupVertexLimit,
+    configuration: { nativeGraphics, retainPaths, retainGeometry, isolateNeighbors, arrivalBudgetMs, arrivalMaxFrames, arrivalFreezeMs, arrivalHide, instancedTransforms: instanced, effectTextures: directObjects && effectTextures, directMultiBlend, antialias, bezierSmoothness: bezierSmoothness ?? null, shapeSprites: nativeGraphics && shapeSprites, nativeText: useNativeText, nativeBatching, sampledTextures, cacheScenery: directObjects && cacheScenery, groupVertexLimit,
       retainContent, retainMaskedContent, skipUnchangedColors, reuseTranslations, retainedHover: directObjects && retainedHover, pixiPickBounds: false, pixiEvents: false },
     deferredGeometry: pathSource?.lazyStats ?? null,
     pixiBitmapDraws: 0,
@@ -1021,7 +1021,7 @@ export async function startDisplayList(
       for (let parent = node.parent; parent; parent = parent.parent) {
         const owner = records.get(parent);
         if (owner?.batchGroup || !parent.parent) {
-          protectNeighbors = (owner?.batchVertices || 0) - batchVertices >= 12000;
+          protectNeighbors = (owner?.batchVertices || 0) - batchVertices >= isolateNeighbors;
           break;
         }
       }

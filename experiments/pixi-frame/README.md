@@ -440,6 +440,13 @@ shader's uniforms only on its first bind. A quiet headless room looked faster
 (render 41 ms against 85), but those runs were in different room populations. `pixiLive.profile()` reports
 `matrixUpdates` beside `packedUpdates` and `unchangedUpdates`.
 
+`isolateNeighbors=N` (default 12000) is how many static neighbour vertices an
+animated branch must protect before it becomes its own render group; with
+`groupVertexLimit` it sets how finely animated avatars and monsters are split.
+Private doomkitten room at idle: default 274 containers re-collected and
+493 KB uploaded per frame; `isolateNeighbors=1000&groupVertexLimit=3000` 46
+containers and 21 KB, for 5 percent more draws. Combat decides the default.
+
 `npm run build:native:profile` writes the same `native-runtime.js` without
 minification, so a DevTools trace names the parse, symbol construction, JIT
 and tessellation functions instead of one-letter aliases. Use it to record a
