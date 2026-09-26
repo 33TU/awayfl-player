@@ -331,6 +331,19 @@ room: a floor click walks the avatar through the scoped press. A button's timeli
 traversal exactly when its owner is. The scoped native pick tries the candidate's own branch first and
 widens to its parent and grandparent only on a miss: over a room background the
 parent is the whole room, and picking it cost as much as the full tree.
+Three details keep the Pixi candidate honest. Mesh hits use an exact,
+topology-aware triangle test (`meshContainsPoint`): Pixi's own
+`Mesh.containsPoint` walks an indexed triangle list one index at a time, so a
+mesh with a hole (the letterbox frame the game keeps on top of its stage)
+counted as solid and swallowed every click. Mask containers are pruned, and a
+mask that is a plain record container answers for the art inside it, so
+content clipped by a Flash mask (inventory rows) is neither hit through the
+mask nor dropped entirely. The scoped traversal admits the masks of every
+admitted ancestor together with their subtrees: the native picker accepts a
+clipped entity only after the mask's own picker hits, and that mask is usually
+a sibling of the content, outside the candidate's ancestor path. Verified in a
+live room: a click on an inventory row selects it through the scoped press,
+with the scoped and full picks resolving to the same row.
 
 `morphCache=1` keeps built morph geometry per symbol and ratio and shares it
 between every instance of that symbol, so a looping shape tween tessellates
@@ -383,7 +396,10 @@ Pixi's signed compound path missed a hole whose contour winding matched the
 outer one, so a chest icon's frame drew solid over its planks (`chest.swf`).
 A masked object is never promoted to its own Pixi render group: a stencil mask
 rendered from another group's transform clipped inventory lists at the wrong
-place. `hairlines=0` (runtime) keeps hairlines on the mesh route and
+place. A node in mask mode stays visible to Pixi even when Flash hides it:
+AwayFL's TextField clips overflowing glyphs with a mask child it keeps hidden,
+and Pixi fills a stencil only from a visible mask container, so the
+inventory's gold amount was clipped away entirely. `hairlines=0` (runtime) keeps hairlines on the mesh route and
 `reuseLinear=0` restores full re-preparation on rotate/scale, both for
 comparison. The proxy loader accepts any `entry=<name>` SWF under gamefiles,
 so a single asset can be rendered alone for inspection.

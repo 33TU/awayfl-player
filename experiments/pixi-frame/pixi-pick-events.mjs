@@ -1,5 +1,38 @@
 import { EventBoundary, Matrix } from "pixi.js";
 
+// Pixi's Mesh.containsPoint walks an indexed triangle list one index at a
+// time, so it also tests the triangles straddling consecutive real ones. A
+// mesh with a gap (the letterbox frame around the stage, a ring, text with
+// counters) then reports the gap as solid and swallows every hit beneath it.
+const sign = (px, py, ax, ay, bx, by) => (px - bx) * (ay - by) - (ax - bx) * (py - by);
+function pointInTriangle(px, py, ax, ay, bx, by, cx, cy) {
+  const d1 = sign(px, py, ax, ay, bx, by);
+  const d2 = sign(px, py, bx, by, cx, cy);
+  const d3 = sign(px, py, cx, cy, ax, ay);
+  return !((d1 < 0 || d2 < 0 || d3 < 0) && (d1 > 0 || d2 > 0 || d3 > 0));
+}
+export function meshContainsPoint(mesh, x, y) {
+  const bounds = mesh.bounds;
+  if (!bounds || !bounds.containsPoint(x, y)) return false;
+  const geometry = mesh.geometry;
+  const attribute = geometry.attributes?.aPosition;
+  const vertices = geometry.getBuffer("aPosition").data;
+  // Interleaved layouts keep positions at a stride; separate buffers use 2.
+  const stride = attribute?.stride ? attribute.stride / 4 : 2;
+  const offset = attribute?.offset ? attribute.offset / 4 : 0;
+  const strip = geometry.topology === "triangle-strip";
+  const step = strip ? 1 : 3;
+  const index = geometry.getIndex()?.data;
+  const count = index ? index.length : Math.floor((vertices.length - offset) / stride);
+  const at = i => (index ? index[i] : i) * stride + offset;
+  for (let i = 0; i + 2 < count; i += step) {
+    const a = at(i), b = at(i + 1), c = at(i + 2);
+    if (pointInTriangle(x, y, vertices[a], vertices[a + 1], vertices[b], vertices[b + 1],
+        vertices[c], vertices[c + 1])) return true;
+  }
+  return false;
+}
+
 // Pixi owns the broad target choice; AwayFL still creates PickingCollision and
 // dispatches Flash mouse events. Retry the full tree when a visual Pixi target
 // does not correspond to a Flash hit (e.g. a button with a custom hit area).
@@ -26,14 +59,30 @@ export function installPixiPickEvents(player, scene, records, owners, renderer, 
     return m;
   };
   const local = { x: 0, y: 0 };
-  boundary.hitTestFn = (container, location) => {
+  const containsPoint = (container, location) => {
     if (container.hitArea) return true;
-    if (!container.containsPoint) return false;
-    worldOf(container).applyInverse(location, local);
-    return container.containsPoint(local);
+    if (container.containsPoint) {
+      worldOf(container).applyInverse(location, local);
+      if (container.renderPipeId === "mesh") return meshContainsPoint(container, local.x, local.y);
+      return container.containsPoint(local);
+    }
+    // A Flash mask is a display object of its own: the boundary hands its
+    // record's outer container to this test through the masked wrapper's
+    // effect, so answer for the art inside it. A miss here prunes everything
+    // the mask clips (the inventory list rows, for instance).
+    for (const child of container.children)
+      if (child.visible && containsPoint(child, location)) return true;
+    return false;
   };
+  boundary.hitTestFn = containsPoint;
   const prune = boundary.hitPruneFn;
   boundary.hitPruneFn = (container, location) => {
+    // A Flash mask stays in the display list but is never drawn or picked;
+    // Pixi marks every mask container non-measurable. A full-stage mask at the
+    // top of the game timeline would otherwise be the target of every click,
+    // and its scope holds no Flash hit, so the scoped pick would settle on a
+    // hit state far behind the real target.
+    if (container.measurable === false) return true;
     if (container.hitArea) {
       worldOf(container).applyInverse(location, local);
       if (!container.hitArea.contains(local.x, local.y)) return true;
@@ -80,20 +129,34 @@ export function installPixiPickEvents(player, scene, records, owners, renderer, 
     for (let p = target; p && !candidate; p = p.parent) candidate = owners.get(p);
     stats.pixiEventLast = { target: target?.constructor?.name || null,
       candidate: candidate?.name || candidate?.assetType || null };
+    // Diagnostics only: the Flash node itself, kept out of JSON dumps.
+    Object.defineProperty(stats.pixiEventLast, "node", { value: candidate, enumerable: false });
     if (!candidate || !records.has(candidate)) {
       stats.pixiEventFallbacks++;
       return originalViewCollision.call(this, x, y, ...args);
     }
     stats.pixiEventCandidates++;
     function pick(scope) {
-      const path = new Set();
-      for (let p = scope; p; p = p.parent) path.add(p);
+      const path = new Set(), scopes = new Set([scope]);
+      // A masked entity only counts when the mask's own picker also hits, and
+      // the mask is a display object of its own, usually a sibling of the
+      // content it clips (a list's mask layer). Admit the masks of every
+      // admitted ancestor, with their subtrees, or the clipped content is
+      // silently dropped from the scoped pick.
+      const admit = node => {
+        for (let p = node; p && !path.has(p); p = p.parent) {
+          path.add(p);
+          if (p.mask) { scopes.add(p.mask); admit(p.mask); }
+          if (p._timelineMasks) for (const mask of p._timelineMasks) { scopes.add(mask); admit(mask); }
+        }
+      };
+      admit(scope);
       // Invisible hit states (button hit areas, walkable regions) can sit above
       // the Pixi candidate without any art. Admit every hit-state owner so the
       // native pick can prefer them exactly as the full tree would.
-      if (hitStates) for (const owner of hitStates()) for (let p = owner; p; p = p.parent) path.add(p);
+      if (hitStates) for (const owner of hitStates()) admit(owner);
       const previous = allowed;
-      allowed = { path, scope };
+      allowed = { path, scopes };
       try { return originalViewCollision.call(picker, x, y, ...args); }
       finally { allowed = previous; }
     }
@@ -122,7 +185,7 @@ export function installPixiPickEvents(player, scene, records, owners, renderer, 
       const owner = n.parent;
       if (owner && owner.container?.pickObject === n.container) return inScope(owner);
     }
-    for (let p = container; p; p = p.parent) if (p === allowed.scope) return true;
+    for (let p = container; p; p = p.parent) if (allowed.scopes.has(p)) return true;
     return allowed.path.has(container);
   }
   function getTraverser(node) {

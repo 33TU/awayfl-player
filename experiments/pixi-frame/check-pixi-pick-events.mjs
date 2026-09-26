@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import "pixi.js/events";
-import { Container, Graphics } from "pixi.js";
-import { installPixiPickEvents } from "./pixi-pick-events.mjs";
+import { Container, Graphics, Mesh, MeshGeometry, Texture } from "pixi.js";
+import { installPixiPickEvents, meshContainsPoint } from "./pixi-pick-events.mjs";
 
 const scene = new Container();
 const flashRoot = { parent: null };
@@ -23,7 +23,13 @@ picker.node = { view: { width: 100, height: 100 } };
 picker.getViewCollision = function() {
   for (const container of candidates) {
     const traverser = this.getTraverser({ container });
-    if (traverser && hits.has(container)) return { rootNode: container };
+    if (!traverser) continue;
+    // A masked entity is only a hit when its mask's picker is traversed too.
+    let clipped = false;
+    for (let p = container; p && !clipped; p = p.parent)
+      if (p.mask && !this.getTraverser({ container: p.mask })) clipped = true;
+    if (clipped) continue;
+    if (hits.has(container)) return { rootNode: container };
   }
   return null;
 };
@@ -97,6 +103,92 @@ assert.equal(picker.getViewCollision(210, 10).rootNode, flashButton, "hit-state 
 assert.deepEqual(visited, [flashButton]);
 assert.equal(stats.pixiEventFallbacks, fallbacksBefore, "no fallback needed");
 hitStateOwners.clear();
+// A full-stage mask at the top of the tree is never a Pixi target: the hit
+// goes to the content beneath it, with the hit-state owner still admitted.
+const flashMaskOwner = { parent: flashRoot };
+const stageMask = new Graphics().rect(0, 0, 400, 100).fill(0xffffff);
+stageMask.eventMode = "static";
+scene.addChild(stageMask);
+scene.mask = stageMask;
+owners.set(stageMask, flashMaskOwner);
+records.set(flashMaskOwner, {});
+candidates = [flashMaskOwner, flashCached];
+hits = new Set([flashCached]);
+visited.length = 0;
+assert.equal(picker.getViewCollision(210, 10).rootNode, flashCached, "a mask above the content is skipped by the Pixi hit test");
+assert.deepEqual(visited, [flashCached], "the mask's own scope is never tried");
+scene.mask = null;
+stageMask.removeFromParent();
+// A letterbox frame (a mesh with a hole) on top of everything must not claim
+// the hole: Pixi's own Mesh.containsPoint does, by walking triangle lists
+// one index at a time.
+const frameGeometry = new MeshGeometry({
+  positions: new Float32Array([0, 0, 400, 0, 400, 100, 0, 100, 200, 0, 220, 0, 220, 20, 200, 20]),
+  uvs: new Float32Array(16),
+  indices: new Uint32Array([0, 1, 5, 0, 5, 4, 1, 2, 6, 1, 6, 5, 2, 3, 7, 2, 7, 6, 3, 0, 4, 3, 4, 7]),
+});
+const frame = new Mesh({ geometry: frameGeometry, texture: Texture.WHITE });
+frame.eventMode = "static";
+scene.addChild(frame);
+const flashFrame = { parent: flashRoot };
+owners.set(frame, flashFrame);
+records.set(flashFrame, {});
+assert.equal(meshContainsPoint(frame, 210, 10), false, "the hole is not inside the frame");
+assert.equal(meshContainsPoint(frame, 100, 10), true, "the frame's own bars still hit");
+assert.equal(meshContainsPoint(frame, 205, 5), false, "a corner of the hole is not inside the frame");
+candidates = [flashFrame, flashCached];
+hits = new Set([flashFrame, flashCached]);
+visited.length = 0;
+assert.equal(picker.getViewCollision(210, 10).rootNode, flashCached, "a hit inside the frame's hole goes to the content beneath");
+assert.deepEqual(visited, [flashCached]);
+frame.removeFromParent();
+// Content clipped by a Flash mask: Pixi asks whether the mask contains the
+// point through the masked wrapper's effect, and the mask is a plain record
+// container holding the mask art, not a Graphics. The clipped art overlaps
+// the cached leaf at x 200..220; only x 150..170 stays inside the mask.
+const maskRecord = new Container();
+maskRecord.addChild(new Graphics().rect(150, 0, 20, 20).fill(0xffffff));
+const wrapper = new Container();
+const masked = new Graphics().rect(150, 0, 80, 40).fill(0x123456);
+masked.eventMode = "static";
+wrapper.addChild(masked);
+wrapper.mask = maskRecord;
+const maskedBranch = new Container();
+maskedBranch.addChild(maskRecord, wrapper);
+scene.addChild(maskedBranch);
+const flashMasked = { parent: flashRoot };
+owners.set(masked, flashMasked);
+records.set(flashMasked, {});
+candidates = [flashMasked, flashCached];
+hits = new Set([flashMasked, flashCached]);
+visited.length = 0;
+assert.equal(picker.getViewCollision(160, 10).rootNode, flashMasked, "a hit inside the mask reaches the clipped content");
+assert.deepEqual(visited, [flashMasked]);
+visited.length = 0;
+assert.equal(picker.getViewCollision(210, 10).rootNode, flashCached, "clipped content outside its mask is not a candidate");
+assert.deepEqual(visited, [flashCached], "no fallback: the leaf beneath is the Pixi candidate");
+wrapper.mask = null;
+maskedBranch.removeFromParent();
+// The native pick accepts clipped content only through its mask's picker;
+// the mask is a sibling of the clipped branch, outside the candidate's
+// ancestor path, and must still be traversed by the scoped pick.
+const flashListFrame = { parent: flashRoot };
+const flashListMask = { parent: flashListFrame };
+const flashList = { parent: flashListFrame, mask: flashListMask };
+const flashRow = { parent: flashList };
+const rowArt = new Graphics().rect(300, 0, 20, 20).fill(0x00ffff);
+rowArt.eventMode = "static";
+scene.addChild(rowArt);
+owners.set(rowArt, flashRow);
+records.set(flashRow, {});
+candidates = [flashRow, flashButton];
+hits = new Set([flashRow, flashButton]);
+hitStateOwners.add(flashButton);
+visited.length = 0;
+assert.equal(picker.getViewCollision(310, 10).rootNode, flashRow, "clipped content stays pickable when its mask is a sibling");
+assert.deepEqual(visited, [flashRow, flashListMask], "the mask is traversed inside the row's scope");
+hitStateOwners.clear();
+rowArt.removeFromParent();
 candidates = [flashSibling, flashLeaf];
 hits = new Set([flashSibling]);
 restore();

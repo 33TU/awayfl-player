@@ -645,8 +645,12 @@ export async function startDisplayList(
         r.outer.eventMode = "passive";
       }
     }
-    if (r.outer.visible !== (node.visible !== false)) dirty(r);
-    r.outer.visible = node.visible !== false;
+    // A mask keeps clipping while hidden (AwayFL's TextField hides the mask
+    // child it draws over overflowing glyphs); Pixi only fills the stencil
+    // from a visible mask container, and never draws a mask on its own.
+    const visible = node.visible !== false || node.maskMode === true;
+    if (r.outer.visible !== visible) dirty(r);
+    r.outer.visible = visible;
     const m = node.transform.matrix3D;
     const local = node._registrationMatrix3D ? m.clone() : m;
     if (node._registrationMatrix3D) {
@@ -702,8 +706,9 @@ export async function startDisplayList(
     const forceChildren = force || r.descendantsDirty;
     r.branchDirty = r.selfDirty = r.descendantsDirty = false;
     stats.preparedNodes++;
-    if (r.outer.visible !== (node.visible !== false)) dirty(r);
-    r.outer.visible = node.visible !== false;
+    const visible = node.visible !== false || node.maskMode === true;
+    if (r.outer.visible !== visible) dirty(r);
+    r.outer.visible = visible;
     stats.nodes++;
     if (!r.outer.visible) {
       hitStateNodes.delete(node);
