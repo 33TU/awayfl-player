@@ -69,13 +69,18 @@ export function installPixiPickEvents(player, scene, records, owners, renderer, 
     stats.pixiEventFallbacks++;
     return originalViewCollision.call(this, x, y, ...args);
   }
+  function inScope(node) {
+    const container = node?.container;
+    if (!container) return true;
+    // A button's hit state is a separate node parented under its owner and
+    // may sit outside the display list; admit it exactly when its owner is.
+    const parent = node.parent;
+    if (parent && parent.container?.pickObject === container) return inScope(parent);
+    for (let p = container; p; p = p.parent) if (p === allowed.scope) return true;
+    return allowed.path.has(container);
+  }
   function getTraverser(node) {
-    if (allowed && !node?.container?.pickObject) {
-      let descendant = false;
-      for (let p = node?.container; p; p = p.parent)
-        if (p === allowed.scope) { descendant = true; break; }
-      if (!descendant && !allowed.path.has(node?.container)) return null;
-    }
+    if (allowed && !inScope(node)) return null;
     return originalGetTraverser.call(this, node);
   }
   picker.getViewCollision = viewCollision;
