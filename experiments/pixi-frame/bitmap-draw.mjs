@@ -3,11 +3,17 @@ import { Matrix, RenderTexture } from "pixi.js";
 // Flash ColorTransform (multipliers and 0..255 offsets) from an AwayFL or AS3
 // object; null when it cannot be read.
 function readColorTransform(t) {
+  const keys = ["redMultiplier", "greenMultiplier", "blueMultiplier", "alphaMultiplier",
+    "redOffset", "greenOffset", "blueOffset", "alphaOffset"];
+  // Accessors first (AwayJS and AS3 objects); the raw array's layout varies.
+  for (const source of [t, t.adaptee]) {
+    if (!source) continue;
+    const v = keys.map(k => source[k] ?? source["$Bg" + k]);
+    if (v.every(Number.isFinite)) return v;
+  }
   const raw = t._rawData || t.adaptee?._rawData;
-  const v = raw?.length === 8 ? Array.from(raw)
-    : ["redMultiplier", "greenMultiplier", "blueMultiplier", "alphaMultiplier",
-       "redOffset", "greenOffset", "blueOffset", "alphaOffset"].map(k => t[k] ?? t["$Bg" + k]);
-  return v.every(Number.isFinite) ? v : null;
+  const v = raw?.length >= 8 ? Array.from(raw).slice(0, 8) : null;
+  return v?.every(Number.isFinite) ? v : null;
 }
 // Pixels read back from a render target are premultiplied RGBA. Apply the
 // transform to straight colour, as Flash does, then premultiply again.
@@ -28,7 +34,7 @@ function applyColorTransform(data, [rm, gm, bm, am, ro, go, bo, ao]) {
 // First synchronous BitmapData.draw bridge. The two renderers own different GL
 // contexts, so this deliberately reads the Pixi target back into AwayFL's CPU
 // bitmap. Only replace draws whose entire destination is transparent/unused.
-export function createBitmapDraw(renderer, records, stats) {
+export function createBitmapDraw(renderer, records, stats, { prepare = null, scale = () => 1, onHiRes = null } = {}) {
   function preparedTree(node, root) {
     const record = records.get(node);
     if (!record) return "missing-record:" + node.name;
@@ -56,14 +62,33 @@ export function createBitmapDraw(renderer, records, stats) {
     return null;
   }
   return function draw(bitmap, source, matrix, colorTransform, blendMode, clipRect) {
-    const record = records.get(source);
-    const treeReason = preparedTree(source, source);
+    let record = records.get(source);
+    let treeReason = preparedTree(source, source);
+    // A branch the game snapshots right after changing it (the room map is
+    // moved into place, then drawn) is prepared on demand instead of
+    // declining the draw to AwayFL's low-resolution GPU path.
+    if (treeReason && prepare) {
+      prepare(source);
+      record = records.get(source);
+      treeReason = preparedTree(source, source);
+      if (!treeReason) stats.pixiBitmapDrawPrepared = (stats.pixiBitmapDrawPrepared || 0) + 1;
+    }
     if (treeReason) { stats.pixiBitmapDrawLastSkip = treeReason; return false; }
     // A colour transform is applied to the read-back pixels below. Skill
     // cooldowns draw a dimmed copy of the icon this way (World.coolDownAct);
     // refusing it left the overlay as a GPU-only bitmap Pixi could not show.
-    const ct = colorTransform ? readColorTransform(colorTransform) : null;
-    if (colorTransform && !ct) { stats.pixiBitmapDrawLastSkip = "color-transform"; return false; }
+    let ct = colorTransform ? readColorTransform(colorTransform) : null;
+    const unreadable = colorTransform && !ct;
+    if (ct && ct.every((v, i) => v === (i < 4 ? 1 : 0))) ct = null;
+    if (unreadable) {
+      stats.pixiBitmapDrawLastSkip = "color-transform";
+      const proto = Object.getPrototypeOf(colorTransform);
+      stats.pixiBitmapDrawColorShape = { own: Object.keys(colorTransform).slice(0, 16), proto: proto ? Object.getOwnPropertyNames(proto).slice(0, 24) : null,
+        ctor: colorTransform.constructor?.name, adaptee: colorTransform.adaptee ? Object.keys(colorTransform.adaptee).slice(0, 12) : null,
+        raw: colorTransform._rawData ? Array.from(colorTransform._rawData).map(String) : null,
+        getters: ["redMultiplier", "alphaMultiplier", "redOffset"].map(k => String(colorTransform[k])) };
+      return false;
+    }
     if (!record.outer.visible || source.mask || source.filters?.length ||
         (blendMode && blendMode !== "normal" && blendMode !== "layer") ||
         (clipRect && (clipRect.x !== 0 || clipRect.y !== 0 ||
@@ -94,6 +119,19 @@ export function createBitmapDraw(renderer, records, stats) {
       bitmap.invalidateGPU();
       bitmap.invalidateOwners();
       stats.pixiBitmapDraws++;
+      // Flash shows this bitmap stretched to the screen (the room snapshot is
+      // stage-sized, 960 wide, on a 4K display). Keep a copy rendered at the
+      // display's pixel density for Pixi to show while the game leaves the
+      // bitmap unchanged; the game itself keeps its stage-sized pixels.
+      // Colour-transformed draws stay at bitmap resolution.
+      const k = Math.min(4, Math.max(1, Math.ceil(scale() - 0.05)));
+      if (onHiRes && !ct && k > 1 && bitmap.width * k <= 8192 && bitmap.height * k <= 8192) {
+        const hi = RenderTexture.create({ width: bitmap.width, height: bitmap.height, resolution: k, antialias: true });
+        renderer.render({ container: record.outer, target: hi,
+          transform: new Matrix(...values), clear: true, clearColor: [0, 0, 0, 0] });
+        onHiRes(bitmap, hi);
+        stats.pixiBitmapHiRes = (stats.pixiBitmapHiRes || 0) + 1;
+      }
       return true;
     } catch (error) {
       stats.pixiBitmapDrawLastError = String(error);

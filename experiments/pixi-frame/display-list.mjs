@@ -208,7 +208,11 @@ export async function startDisplayList(
   // stays hidden until every shape in it has a mesh, then appears whole.
   // Five SWFs landing together used to convert in one frame: three tasks
   // of about 200 ms each in a busy room.
-  let arrivalSpent = 0, arrivalRoot = null, arrivalFreeze = false;
+  let arrivalSpent = 0, arrivalRoot = null, arrivalFreeze = false, bridgePreparing = false;
+  // Stage-to-canvas scale of the last frame: device pixels per stage pixel.
+  let projectionScale = 1;
+  // BitmapData.draw results rendered at display density (see bitmap-draw).
+  const hiResTextures = new WeakMap();
   stats.arrivalDeferred = 0; stats.arrivalHidden = 0; stats.arrivalRoots = 0; stats.arrivalFrozen = 0;
   stats.filterAreaUpdates = 0;
   stats.gpuReadbacks = 0;
@@ -317,6 +321,14 @@ export async function startDisplayList(
     // one-off snapshots (the "Smooth Background" room, part rasters) that
     // otherwise stayed black.
     const version = tracker.version(image, "invalidateGPU", bindings ? "_imageDataDirty" : null, sampleOffset === null);
+    const hi = hiResTextures.get(image);
+    if (hi) {
+      // Valid until the game edits the bitmap (any edit advances its revision).
+      if (hi.revision === undefined) hi.revision = version;
+      if (hi.revision === version && !image.isDisposed && !image._imageDataDirty) return hi.texture;
+      hiResTextures.delete(image);
+      hi.texture.destroy(true);
+    }
     if (image._imageDataDirty) {
       missing("gpu-bitmap");
       if (gpuReadback && typeof image.syncData === "function" && !pendingReadbacks.has(image)) {
@@ -761,7 +773,7 @@ export async function startDisplayList(
     if (firstVisit) r.arrivedFrame = stats.frames;
     r.epoch = stats.frames;
     let gateRoot = false;
-    if (arrivalBudgetMs > 0 && bindings && !arrivalRoot) {
+    if (arrivalBudgetMs > 0 && bindings && !arrivalRoot && !bridgePreparing) {
       if (r.arrivalGated) gateRoot = true;
       else if (firstVisit) {
         const parentRecord = node.parent && records.get(node.parent);
@@ -1382,6 +1394,7 @@ export async function startDisplayList(
       }
       previousProjection = projectionKey;
       scene.setFromMatrix(projection);
+      projectionScale = Math.hypot(projection.a, projection.b) || 1;
       endPhase?.(); endPhase = profiler.section("syncVisitMs");
       const root = visit(player.root, IDENTITY_COLOR, new Set(), projection);
       if (root.parent !== scene) scene.addChild(root);
@@ -1511,7 +1524,23 @@ export async function startDisplayList(
   }
   native.render = render;
   if (nativeGraphics) pathSource.setLiteGeometry(true);
-  if (pixiBitmapDraw && pathSource) pathSource.setBitmapDrawHandler(createBitmapDraw(renderer, records, stats));
+  if (pixiBitmapDraw && pathSource) pathSource.setBitmapDrawHandler(createBitmapDraw(renderer, records, stats, {
+    scale: () => projectionScale,
+    onHiRes: (bitmap, texture) => {
+      hiResTextures.get(bitmap)?.texture.destroy(true);
+      hiResTextures.set(bitmap, { texture, revision: undefined });
+    },
+    prepare: node => {
+      if (stopped || !node?.parent) return;
+      const parent = records.get(node.parent);
+      if (!parent) return;
+      bridgePreparing = true;
+      try {
+        visit(node, parent.color || IDENTITY_COLOR, new Set(), parent.world || scene.localTransform, 0, true);
+        resolveMasks();
+      } finally { bridgePreparing = false; }
+    },
+  }));
   onStatus(directObjects ? "Pixi direct objects — prototype" : "Pixi display list — prototype", stats);
   return {
     stop,

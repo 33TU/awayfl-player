@@ -1221,7 +1221,14 @@ renderer materializes all remaining deferred shapes. The live counters are in
 `pixiLive.stats.deferredGeometry` (`skipped`, `materialized`, `live`, plus
 the corresponding `*Strokes` counters).
 The Pixi `BitmapData.draw` bridge is on by default (`pixiBitmapDraw=0`
-disables). It now applies a draw's colour transform to the read-back pixels
+disables). It prepares a not-yet-prepared source branch on demand (the room
+map is moved into place and drawn in the same frame), and after writing the
+game's stage-sized pixels it renders a second copy at the display's pixel
+density (up to 4x, `stats.pixiBitmapHiRes`) that Pixi shows until the game
+edits the bitmap. With Smooth Background off the room snapshot is therefore
+sharp on high-DPI screens instead of a stretched 960-pixel image; the game
+still sees its own bitmap. Colour-transformed draws (cooldown icons) keep
+bitmap resolution. It now applies a draw's colour transform to the read-back pixels
 and accepts a retained, clean source branch regardless of its ancestors.
 Skill cooldown overlays (a dimmed icon copy drawn with a colour transform)
 were otherwise GPU-only bitmaps Pixi could not show, so cooldowns rendered
