@@ -39,12 +39,18 @@ export function createSceneryCache(stats, changed) {
       }
       let entry = entries.get(r);
       const resolution = Math.max(Math.hypot(r.world.a, r.world.b), Math.hypot(r.world.c, r.world.d));
-      if (!entry) entries.set(r, entry = { revision: r.revision, resolution, since: stats.frames, pixels: 0 });
+      if (!entry) entries.set(r, entry = { revision: r.revision, resolution, since: stats.frames, pixels: 0, invalidations: 0 });
       if (entry.revision !== r.revision || entry.resolution !== resolution) {
+        // A branch that keeps changing after being cached is animated scenery
+        // (the Battleon statue's water). Re-caching it cost a rebuild each
+        // time, and a freshly cached group was sometimes drawn without its
+        // position for a frame (the statue jumped to the top-left corner).
+        // After two invalidations while cached it stays live for good.
+        if (entry.pixels && ++entry.invalidations >= 2) entry.animated = true;
         uncache(r, entry);
         entry.revision = r.revision;
         entry.resolution = resolution;
-        entry.rejected = false;
+        entry.rejected = !!entry.animated;
         entry.since = stats.frames;
       }
     },
