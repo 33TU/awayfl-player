@@ -61,7 +61,22 @@ export function createBitmapDraw(renderer, records, stats, { prepare = null, sca
       }
     return null;
   }
-  return function draw(bitmap, source, matrix, colorTransform, blendMode, clipRect) {
+  // Flash's BitmapData.draw ignores the source's own visibility: the game's
+  // part rasterizer (Game.rasterizePart) hides each part and then draws it
+  // into a bitmap that replaces it. Declining hidden sources sent those draws
+  // to AwayFL's stage-resolution path, so parts turned pixelated a moment
+  // after the sharp first frame. Show the root only for this draw.
+  return function draw(bitmap, source, ...rest) {
+    const hiddenRoot = source?.visible === false;
+    if (!hiddenRoot) return drawVisible(bitmap, source, ...rest);
+    source.visible = true;
+    try {
+      const ok = drawVisible(bitmap, source, ...rest);
+      if (ok) stats.pixiBitmapDrawHiddenRoots = (stats.pixiBitmapDrawHiddenRoots || 0) + 1;
+      return ok;
+    } finally { source.visible = false; }
+  };
+  function drawVisible(bitmap, source, matrix, colorTransform, blendMode, clipRect) {
     let record = records.get(source);
     let treeReason = preparedTree(source, source);
     // A branch the game snapshots right after changing it (the room map is
