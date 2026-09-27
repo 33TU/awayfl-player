@@ -443,7 +443,7 @@ export async function startDisplayList(
     const bitmapImage = path?.bitmap?.image;
     const bitmapTexture = bitmapImage && imageTexture(bitmapImage,
       { repeat: true, smooth: path.bitmap.smooth });
-    if (path && nativePaths.supports(path) && (!bitmapImage || (bitmapTexture &&
+    if (path && nativePaths.supports(path, bitmapTexture) && (!bitmapImage || (bitmapTexture &&
         bitmapImage.width === path.bitmap.width && bitmapImage.height === path.bitmap.height)) &&
         !node.animator && !shape.particleCollection && !e?.scale9Grid &&
         ((!path.gradient && !path.bitmap) || color.slice(4).every(v => v === 0)) &&
@@ -482,7 +482,7 @@ export async function startDisplayList(
     // candidate for the native renderer, and a deferred shape pays a full
     // tessellation here.
     if (path) {
-      missing("native-fallback:" + (!nativePaths.supports(path) ? "contours"
+      missing("native-fallback:" + (!nativePaths.supports(path, bitmapTexture) ? "contours"
         : bitmapImage && !(bitmapTexture && bitmapImage.width === path.bitmap.width &&
             bitmapImage.height === path.bitmap.height) ? "bitmap-size"
         : node.animator || shape.particleCollection ? "animator"
@@ -1551,6 +1551,38 @@ export async function startDisplayList(
     profile: (count, options) => stopped ? Promise.reject(Error("Pixi is stopped")) : profiler.sample(count, options),
     inspectScenery: () => scenery?.inspect() || [],
     sceneryRecords: () => scenery?.records() || [],
+    // Debug: compare each live native path's Pixi triangulation with AwayJS's
+    // own triangles for the same shape. A large area difference marks a path
+    // the native planner fills wrongly (a missing wedge or a filled hole).
+    auditNativePaths(tolerance = 0.03) {
+      const seen = new Set(), out = [];
+      const triArea = (v, idx, count, dim = 2) => { let a = 0;
+        for (let i = 0; i + 2 < count; i += 3) {
+          const p = idx ? [idx[i], idx[i + 1], idx[i + 2]] : [i, i + 1, i + 2];
+          const [x0, y0] = [v[p[0] * dim], v[p[0] * dim + 1]], [x1, y1] = [v[p[1] * dim], v[p[1] * dim + 1]], [x2, y2] = [v[p[2] * dim], v[p[2] * dim + 1]];
+          a += Math.abs((x1 - x0) * (y2 - y0) - (x2 - x0) * (y1 - y0)) / 2; }
+        return a; };
+      for (const [node, r] of records) for (const m of r.meshes || []) {
+        const entry = m?.pathEntry; if (!entry || seen.has(entry) || entry.path.stroke) continue;
+        seen.add(entry);
+        try {
+          const gpu = renderer.graphicsContext.getGpuContext(entry.context);
+          const g = gpu.geometryData, pixi = triArea(g.vertices, g.indices, g.indices.length);
+          pathSource?.ensureGeometry(m.shape);
+          const e = m.shape.elements; if (!e?.positions) continue;
+          const n = e.numVertices ?? e.positions.count, dim = e.positions.dimensions || 2;
+          const pos = e.positions.get(n), idx = e.indices ? e.indices.get(e.indices.count) : null;
+          const away = triArea(pos, idx, idx ? idx.length : n, dim);
+          const diff = Math.abs(pixi - away) / Math.max(1e-6, away);
+          if (diff > tolerance) {
+            let names = []; for (let p = node; p && names.length < 6; p = p.parent) names.push(p.name);
+            out.push({ diff: +diff.toFixed(3), pixi: Math.round(pixi), away: Math.round(away), contours: entry.path.contours,
+              segments: entry.path.segments?.length, path: names.join("<"), visible: m.mesh.visible && r.outer.visible });
+          }
+        } catch (error) { out.push({ error: String(error), path: node.name }); }
+      }
+      return out.sort((a, b) => (b.diff || 0) - (a.diff || 0));
+    },
     getDisplayObject: (node) => records.get(node?.adaptee || node)?.outer,
     // Diagnostics: the Pixi renderer, for GL-level probes from the console.
     get renderer() { return renderer; },

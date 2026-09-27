@@ -150,9 +150,8 @@ export function createNativePaths(stats, renderer, { shapeSprites = false, retai
     if (path.bitmap) return { texture, textureSpace: 'global', matrix: bitmapMatrix(path.bitmap) };
     return 0xffffff;
   }
-  function acquire(path, texture) {
-    let entry = entries.get(path);
-    if (!entry) {
+  function build(path, texture) {
+    {
       const context = new GraphicsContext();
       // Every multi-contour fill goes through the containment tree with explicit
       // holes. Pixi's signed compound path missed holes whose contour winding
@@ -208,9 +207,80 @@ export function createNativePaths(stats, renderer, { shapeSprites = false, retai
         context.closePath().fill({ texture, textureSpace: 'global',
           matrix: bitmapMatrix(path.bitmap) });
       } else context.closePath().fill(0xffffff);
-      entry = { path, context, gradient, texture, users: 0 };
+      const entry = { path, context, gradient, texture, users: 0 };
       entries.set(path, entry); stats.nativePathBuilds++;
-    } else {
+      return entry;
+    }
+  }
+  // Pixi's triangulator silently drops or overfills outlines it cannot handle:
+  // a contour that touches itself (the settings scrollbar handle filled 4x its
+  // area and covered the grip) or a degenerate one (no triangles at all).
+  // Compare the triangulated area with the outline's own area once per path;
+  // a mismatch sends the path to AwayJS's mesh route, which fills it right.
+  const verified = new WeakMap();
+  function polygonArea(contour) {
+    const primitives = contour.shapePath.shapePrimitives;
+    if (primitives.length !== 1 || primitives[0].shape.type !== 'polygon') return null;
+    const p = primitives[0].shape.points;
+    let a = 0;
+    for (let i = 0, n = p.length; i < n; i += 2) {
+      const j = (i + 2) % n;
+      a += p[i] * p[j + 1] - p[j] * p[i + 1];
+    }
+    return Math.abs(a) / 2;
+  }
+  function expectedArea(path) {
+    if (path.contours > 1) {
+      const regionArea = region => {
+        let a = polygonArea(region.contour);
+        for (const child of region.children) {
+          a -= polygonArea(child.contour);
+          for (const island of child.children) a += regionArea(island);
+        }
+        return a;
+      };
+      return contourPlan(path).reduce((a, root) => a + regionArea(root), 0);
+    }
+    const contours = contourPaths(path);
+    return contours.length === 1 ? polygonArea(contours[0]) : null;
+  }
+  function triangulatedArea(context) {
+    const { vertices: v, indices: idx } = renderer.graphicsContext.updateGpuContext(context).geometryData;
+    let a = 0;
+    for (let i = 0; i + 2 < idx.length; i += 3) {
+      const i0 = idx[i] * 2, i1 = idx[i + 1] * 2, i2 = idx[i + 2] * 2;
+      a += Math.abs((v[i1] - v[i0]) * (v[i2 + 1] - v[i0 + 1]) - (v[i2] - v[i0]) * (v[i1 + 1] - v[i0 + 1]));
+    }
+    return a / 2;
+  }
+  function verify(path, texture) {
+    if (path.primitive || path.stroke || !renderer?.graphicsContext) return true;
+    let ok = verified.get(path);
+    if (ok !== undefined) return ok;
+    ok = true;
+    try {
+      const expected = expectedArea(path);
+      if (expected != null && Number.isFinite(expected)) {
+        const entry = entries.get(path) || build(path, texture);
+        const actual = triangulatedArea(entry.context);
+        ok = Math.abs(actual - expected) <= expected * 0.01 + 0.5;
+        if (!ok) {
+          stats.nativePathRejected = (stats.nativePathRejected || 0) + 1;
+          if (!entry.users) {
+            entries.delete(path);
+            entry.context.destroy();
+            if (entry.gradient) { retirePixiTexture(entry.gradient.texture); entry.gradient.destroy(); }
+          }
+        }
+      }
+    } catch { ok = true; }
+    verified.set(path, ok);
+    return ok;
+  }
+  function acquire(path, texture) {
+    let entry = entries.get(path);
+    if (!entry) entry = build(path, texture);
+    else {
       stats.nativePathShares++;
       if (!entry.users && unused.delete(entry)) stats.nativePathRevivals++;
     }
@@ -225,7 +295,7 @@ export function createNativePaths(stats, renderer, { shapeSprites = false, retai
     return { entry, graphics: new Graphics(entry.context) };
   }
   return {
-    supports(path) { return !!path.primitive || !!contourPlan(path); },
+    supports(path, texture) { return !!path.primitive || (!!contourPlan(path) && verify(path, texture)); },
     acquire,
     release(entry) {
       // Texture-backed entries follow their texture's lifetime instead.
