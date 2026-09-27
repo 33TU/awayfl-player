@@ -1,17 +1,11 @@
 import { WebGLRenderer, Container, Matrix, Mesh, Texture, BufferImageSource, Sprite, Shader, GlProgram, UniformGroup, Graphics, AlphaFilter, Rectangle } from "pixi.js";
-import { FlashHardLightBlend } from "./flash-blends.mjs";
-import {
-  OverlayBlend,
-  DarkenBlend,
-  LightenBlend,
-  DifferenceBlend,
-} from "pixi.js";
+import { FlashHardLightBlend, FlashOverlayBlend, FlashDarkenBlend, FlashLightenBlend, FlashDifferenceBlend } from "./flash-blends.mjs";
 const advancedBlends = {
-  overlay: OverlayBlend,
+  overlay: FlashOverlayBlend,
   "hard-light": FlashHardLightBlend,
-  darken: DarkenBlend,
-  lighten: LightenBlend,
-  difference: DifferenceBlend,
+  darken: FlashDarkenBlend,
+  lighten: FlashLightenBlend,
+  difference: FlashDifferenceBlend,
 };
 import { installVectorBatcher } from "./vector-batcher.mjs";
 import { installBlendResolve } from "./blend-resolve.mjs";
