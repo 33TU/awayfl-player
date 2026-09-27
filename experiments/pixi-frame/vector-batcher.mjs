@@ -280,11 +280,16 @@ export function installVectorBatcher(renderer, partialUploads = true, sparseUplo
   const adaptor = batches._adaptor;
   const adaptorExecute = adaptor?.execute;
   let executeInstanced;
-  if (instancedTransforms && adaptorExecute) {
+  if (adaptorExecute) {
     const samplerSet = new WeakSet();
     executeInstanced = function(batchPipe, batch) {
+      // Pixi's geometry draw treats a count of 0 as "the whole index buffer",
+      // so an empty batch (an element without indices, such as a shape Pixi
+      // could not triangulate) drew every index from its start offset: past
+      // the end of the buffer ("glDrawElements: Insufficient buffer size").
+      if (!batch.size) return;
       const batcher = batch.batcher;
-      if (batcher instanceof VectorBatcher && batcher.instanced) {
+      if (instancedTransforms && batcher instanceof VectorBatcher && batcher.instanced) {
         const unit = batcher.maxTextures;
         batcher.syncMatrixTexture(renderer, unit);
         const program = batcher.shader.glProgram;
