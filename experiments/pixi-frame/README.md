@@ -1223,8 +1223,10 @@ the corresponding `*Strokes` counters).
 The Pixi `BitmapData.draw` bridge is on by default (`pixiBitmapDraw=0`
 disables). It prepares a not-yet-prepared source branch on demand (the room
 map is moved into place and drawn in the same frame), and after writing the
-game's stage-sized pixels it renders a second copy at the display's pixel
-density (up to 4x, `stats.pixiBitmapHiRes`) that Pixi shows until the game
+game's stage-sized pixels it renders a second copy at 1.5 times the
+display's pixel density (up to 4x, `stats.pixiBitmapHiRes`,
+`stats.pixiBitmapHiResScale`; the extra half supersamples edges, since
+render-texture MSAA depends on the driver and came out aliased on a laptop) that Pixi shows until the game
 edits the bitmap. With Smooth Background off the room snapshot is therefore
 sharp on high-DPI screens instead of a stretched 960-pixel image; the game
 still sees its own bitmap. Colour-transformed draws (cooldown icons) keep

@@ -215,7 +215,7 @@ export async function startDisplayList(
   const hiResTextures = new WeakMap();
   stats.arrivalDeferred = 0; stats.arrivalHidden = 0; stats.arrivalRoots = 0; stats.arrivalFrozen = 0;
   stats.filterAreaUpdates = 0;
-  stats.gpuReadbacks = 0;
+  stats.gpuReadbacks = 0; stats.hiResShown = 0; stats.hiResDropped = 0;
   const pendingReadbacks = new WeakSet();
   function nothingDrawsBeneath(node) {
     for (let n = node; n?.parent; n = n.parent) {
@@ -325,7 +325,9 @@ export async function startDisplayList(
     if (hi) {
       // Valid until the game edits the bitmap (any edit advances its revision).
       if (hi.revision === undefined) hi.revision = version;
-      if (hi.revision === version && !image.isDisposed && !image._imageDataDirty) return hi.texture;
+      if (hi.revision === version && !image.isDisposed && !image._imageDataDirty) { stats.hiResShown++; return hi.texture; }
+      stats.hiResDropped++;
+      stats.hiResDropReason = image.isDisposed ? "disposed" : image._imageDataDirty ? "gpu-dirty" : "revision";
       hiResTextures.delete(image);
       hi.texture.destroy(true);
     }

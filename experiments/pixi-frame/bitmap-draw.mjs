@@ -124,9 +124,14 @@ export function createBitmapDraw(renderer, records, stats, { prepare = null, sca
       // display's pixel density for Pixi to show while the game leaves the
       // bitmap unchanged; the game itself keeps its stage-sized pixels.
       // Colour-transformed draws stay at bitmap resolution.
-      const k = Math.min(4, Math.max(1, Math.ceil(scale() - 0.05)));
+      // 1.5x the display density, capped at 4x: render-texture MSAA depends on
+      // the driver (edges came out aliased on a laptop GPU), and the
+      // downscale on display smooths them regardless.
+      const k = Math.min(4, Math.max(1, Math.ceil(scale() * 1.5 - 0.05)));
+      stats.pixiBitmapHiResScale = k;
       if (onHiRes && !ct && k > 1 && bitmap.width * k <= 8192 && bitmap.height * k <= 8192) {
-        const hi = RenderTexture.create({ width: bitmap.width, height: bitmap.height, resolution: k, antialias: true });
+        const hi = RenderTexture.create({ width: bitmap.width, height: bitmap.height, resolution: k, antialias: true,
+          scaleMode: "linear", autoGenerateMipmaps: false });
         renderer.render({ container: record.outer, target: hi,
           transform: new Matrix(...values), clear: true, clearColor: [0, 0, 0, 0] });
         onHiRes(bitmap, hi);
