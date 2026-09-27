@@ -6,6 +6,26 @@ function gradientStops(stops) {
     color: `#${color.toString(16).padStart(6, '0')}${Math.round(alpha * 255).toString(16).padStart(2, '0')}` }));
 }
 
+// Pixi paints its radial texture over a fill of the last stop's colour, with
+// source-over, so stops more transparent than the last one show that colour
+// instead of the backdrop. Yulgar's carpet vignette (a nearly transparent
+// centre fading to opaque brown) became one flat dark multiply layer, and the
+// carpet came out about 20 percent darker than in Flash. Canvas radial
+// gradients already extend the last stop beyond the outer circle, so repaint
+// the gradient alone.
+function repaintRadial(gradient) {
+  const canvas = gradient.texture.source.resource;
+  const context = canvas.getContext('2d');
+  const { width, height } = canvas, half = width / 2;
+  const fill = context.createRadialGradient(half, height / 2, 0, half, height / 2, half);
+  for (const { offset, color } of gradient.colorStops) fill.addColorStop(offset, color);
+  context.setTransform(1, 0, 0, 1, 0, 0);
+  context.clearRect(0, 0, width, height);
+  context.fillStyle = fill;
+  context.fillRect(0, 0, width, height);
+  gradient.texture.source.update();
+}
+
 function createGradient({ type, stops, uv }) {
   if (type === 'radial') {
     const [a, b, c, d, tx, ty] = uv, half = 128;
@@ -15,6 +35,7 @@ function createGradient({ type, stops, uv }) {
     // Flash UVs map object coordinates to [-1, 1]^2. Pixi's radial atlas
     // samples [0, 256]^2, so invert that affine object-to-atlas mapping.
     gradient.buildGradient();
+    repaintRadial(gradient);
     gradient.transform = new Matrix(a * half, b * half, c * half, d * half,
       (tx + 1) * half, (ty + 1) * half).invert();
     return gradient;
