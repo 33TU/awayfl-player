@@ -31,6 +31,50 @@ function applyColorTransform(data, [rm, gm, bm, am, ro, go, bo, ao]) {
   }
 }
 
+// Render a branch with the draw matrix as its own transform. Pixi's
+// render({ transform }) applies the matrix to the root's draws only; nested
+// render groups derive their world transform from the root's own local
+// transform (its position in the room), so an isolated group inside a
+// rasterized room layer (the Borgars stage) landed where the layer sits
+// rather than where the game's matrix puts it.
+// A blend filter samples its input and the copied backdrop with the same
+// coordinates. Pixi runs a chain at its lowest filter resolution (a blur's
+// reduced one) but copies the backdrop at the target's resolution, so in a
+// hi-res snapshot (2-4x) the two textures disagreed and the backdrop was read
+// from shifted positions: the Borgars stage lights repainted the wainscot,
+// platform and domes about 30 pixels lower. During a snapshot, chains with a
+// backdrop-reading filter run every pass at the target's resolution.
+function matchBlendResolutions(root) {
+  const saved = [];
+  const passes = f => [f, ...(f.effects || []), f.blurXFilter, f.blurYFilter,
+    f._blurFilter, f._blurFilter?.blurXFilter, f._blurFilter?.blurYFilter].filter(Boolean);
+  const walk = c => {
+    const filters = c.filters;
+    if (filters?.length && filters.some(f => passes(f).some(p => p.blendRequired)))
+      for (const f of filters) for (const pass of passes(f)) {
+        saved.push([pass, pass.resolution]);
+        pass.resolution = "inherit";
+      }
+    for (const child of c.children) walk(child);
+  };
+  walk(root);
+  return () => { for (const [pass, resolution] of saved) pass.resolution = resolution; };
+}
+
+function renderAt(renderer, container, target, values) {
+  const restoreResolutions = matchBlendResolutions(container);
+  const saved = container.localTransform.clone();
+  container.setFromMatrix(new Matrix(...values));
+  container.updateLocalTransform();
+  try {
+    renderer.render({ container, target, clear: true, clearColor: [0, 0, 0, 0] });
+  } finally {
+    container.setFromMatrix(saved);
+    container.updateLocalTransform();
+    restoreResolutions();
+  }
+}
+
 // First synchronous BitmapData.draw bridge. The two renderers own different GL
 // contexts, so this deliberately reads the Pixi target back into AwayFL's CPU
 // bitmap. Only replace draws whose entire destination is transparent/unused.
@@ -119,8 +163,7 @@ export function createBitmapDraw(renderer, records, stats, { prepare = null, sca
     if (!values.every(Number.isFinite)) return false;
     const target = RenderTexture.create({ width: bitmap.width, height: bitmap.height });
     try {
-      renderer.render({ container: record.outer, target,
-        transform: new Matrix(...values), clear: true, clearColor: [0, 0, 0, 0] });
+      renderAt(renderer, record.outer, target, values);
       const { pixels, width, height } = renderer.extract.pixels(target);
       if (width !== bitmap.width || height !== bitmap.height) return false;
       bitmap.unmarkToUnload();
@@ -159,8 +202,7 @@ export function createBitmapDraw(renderer, records, stats, { prepare = null, sca
           outer.filters = previous?.length ? [...previous, colorFilter] : [colorFilter];
         }
         try {
-          renderer.render({ container: outer, target: hi,
-            transform: new Matrix(...values), clear: true, clearColor: [0, 0, 0, 0] });
+          renderAt(renderer, outer, hi, values);
         } finally {
           if (colorFilter) { outer.filters = previous; colorFilter.destroy(); }
         }
