@@ -1017,8 +1017,11 @@ export async function startDisplayList(
     r.node = node;
     const blend = node.blendMode || "normal";
     const filters = node.filters || [];
-    const sx = Math.hypot(world.a, world.b),
-      sy = Math.hypot(world.c, world.d);
+    // Flash sizes filters in stage pixels, scaled only by the stage's view
+    // matrix (Ruffle: "nothing in-between"). The world scale shrank the blur
+    // of heavily scaled-down symbols: an item's 12 px aura blur, on a shape
+    // scaled to 0.19, came out as a 2 px blur with hard-edged rays.
+    const sx = projectionScale, sy = projectionScale;
     let hasFilter = false;
     const descriptions = filters
       .map((f) => {
