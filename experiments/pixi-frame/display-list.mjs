@@ -1550,6 +1550,7 @@ export async function startDisplayList(
     stats,
     profile: (count, options) => stopped ? Promise.reject(Error("Pixi is stopped")) : profiler.sample(count, options),
     inspectScenery: () => scenery?.inspect() || [],
+    sceneryRecords: () => scenery?.records() || [],
     getDisplayObject: (node) => records.get(node?.adaptee || node)?.outer,
     // Diagnostics: the Pixi renderer, for GL-level probes from the console.
     get renderer() { return renderer; },

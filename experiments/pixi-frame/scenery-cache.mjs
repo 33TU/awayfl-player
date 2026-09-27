@@ -32,6 +32,7 @@ export function createSceneryCache(stats, changed) {
         lastChange: r.lastChange,
       }));
     },
+    records: () => Array.from(entries, ([r, entry]) => ({ r, entry })),
     observe(r) {
       if (!r.rasterSafe || r.hasText || r.drawCost < 64 || !r.outer.visible) {
         release(r);
