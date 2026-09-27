@@ -29,6 +29,7 @@ import {
   filterProgramKey,
   updateFilter,
   destroyFilter,
+  inheritBlendChainResolution,
 } from "./display-list-filters.mjs";
 import { createAssetTracker, combineColor, screenSpaceStroke } from "./display-list-data.mjs";
 import { installPixiPickBounds } from "./pixi-pick-bounds.mjs";
@@ -1164,6 +1165,7 @@ export async function startDisplayList(
             : null;
         r.filterLayout = layout;
       }
+      inheritBlendChainResolution(r.filters);
       r.filterKey = key;
     }
     // Pixi measures a filtered container's subtree on every frame to size the
@@ -1548,6 +1550,24 @@ export async function startDisplayList(
     stats,
     profile: (count, options) => stopped ? Promise.reject(Error("Pixi is stopped")) : profiler.sample(count, options),
     inspectScenery: () => scenery?.inspect() || [],
+    // Debug: list filter types in use, or enable/disable one type live, to
+    // find which effect draws wrongly on a given GPU.
+    // debugFilters() -> counts; debugFilters("OutlineFilter", false) -> off.
+    debugFilters(name, enabled) {
+      const counts = {}, touched = [];
+      const visit = f => {
+        const type = f.constructor?.name || "Filter";
+        counts[type] = (counts[type] || 0) + 1;
+        if (name && type.includes(name)) { f.enabled = enabled; touched.push(type); }
+        for (const e of f.effects || []) visit(e);
+      };
+      for (const r of records.values()) {
+        for (const f of r.filters || []) visit(f);
+        if (r.effectCache && name) r.effectCache.refresh?.();
+      }
+      if (name) for (const r of records.values()) dirty(r);
+      return name ? { changed: touched.length, enabled } : counts;
+    },
     // Debug: check gl.getError() after every draw and describe the failing
     // one (render group, batch/mesh/graphics, buffer sizes, highest index).
     // Slow: it synchronises with the GPU on each draw. Call again with false.

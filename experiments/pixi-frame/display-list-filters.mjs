@@ -290,3 +290,24 @@ export function destroyFilter(filter) {
   }
   filter.destroy();
 }
+
+// A blend filter (overlay, hard light, ...) samples its input and the copied
+// backdrop with the same coordinates. Pixi runs a chain at its lowest filter
+// resolution (a blur's reduced one) but copies the backdrop at the target's,
+// so the two textures disagreed: the backdrop was read from shifted positions
+// and past the copied area, whose unwritten texels are black on some drivers
+// (black boxes over avatar parts and the loading-screen dragon on an AMD
+// desktop; transparent, so invisible, on the laptop). Chains with a
+// backdrop-reading filter run every pass at the target's resolution.
+export function blendChainPasses(f) {
+  return [f, ...(f.effects || []), f.blurXFilter, f.blurYFilter,
+    f._blurFilter, f._blurFilter?.blurXFilter, f._blurFilter?.blurYFilter].filter(Boolean);
+}
+export function inheritBlendChainResolution(filters) {
+  if (!filters?.some(f => blendChainPasses(f).some(p => p.blendRequired))) return false;
+  for (const f of filters) for (const pass of blendChainPasses(f)) {
+    pass.resolution = "inherit";
+    if (f.shadowResolution !== undefined) f.shadowResolution = Infinity;
+  }
+  return true;
+}

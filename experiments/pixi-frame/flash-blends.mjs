@@ -16,8 +16,12 @@ function flashBlend(name, glBlend, wgslBlend) {
         gl: {
           functions: "",
           main: `
-            vec3 s = front.rgb / max(front.a, 0.00001);
-            vec3 d = back.rgb / max(back.a, 0.00001);
+            // No epsilon divide: filter shaders run at mediump, which AMD
+            // GPUs evaluate as fp16, where 0.00001 flushes to zero. Fully
+            // transparent texels then computed 0/0 = NaN and composited as
+            // opaque black boxes over every blend layer's bounds.
+            vec3 s = front.a > 0.0 ? front.rgb / front.a : vec3(0.0);
+            vec3 d = back.a > 0.0 ? back.rgb / back.a : vec3(0.0);
             vec3 b = ${glBlend};
             finalColor = vec4(front.rgb * (1.0 - back.a)
               + back.rgb * (1.0 - front.a) + b * front.a * back.a,
@@ -27,8 +31,8 @@ function flashBlend(name, glBlend, wgslBlend) {
         gpu: {
           functions: "",
           main: `
-            let s = front.rgb / max(front.a, 0.00001);
-            let d = back.rgb / max(back.a, 0.00001);
+            let s = select(vec3<f32>(0.0), front.rgb / front.a, front.a > 0.0);
+            let d = select(vec3<f32>(0.0), back.rgb / back.a, back.a > 0.0);
             let b = ${wgslBlend};
             out = vec4<f32>(front.rgb * (1.0 - back.a)
               + back.rgb * (1.0 - front.a) + b * front.a * back.a,
