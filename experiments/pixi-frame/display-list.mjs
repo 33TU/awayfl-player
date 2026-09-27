@@ -76,6 +76,7 @@ const clamp = (v) => Math.max(0, Math.min(1, v));
 
 // Experimental backend: walks display objects, never invokes AwayFL's root
 // renderer. Own canvas/context/textures; no render-command capture or GPU readback.
+const debugDrawsState = { restore: null, log: [] };
 export async function startDisplayList(
   player,
   { onStatus = () => {}, cacheEffects = true, directObjects = false, cacheScenery = true, vectorBatching = true, boundedBlends = true, partialUploads = true, renderGroups = true, groupVertexLimit = 6000, reuseFilters = true, isolateTopology = true, sparseUploads = true, skipUnchanged = true, idleHoverHz = 0, retainedHover = true, pixiPickBounds = false, pixiEvents = false, catchUp = false, reuseTranslations = true, retainContent = true, retainMaskedContent = true, skipUnchangedColors = true, nativeGraphics = false, shapeSprites = false, nativeText, nativeBatching = true, sampledTextures = true, pixiBitmapDraw = true, retainPaths = 4096, retainGeometry = 4096, pixiEventsScopedPress = true, pixiEventsCull = false, effectTextures = false, directMultiBlend = true, antialias = true, bezierSmoothness, reuseLinear = true, arrivalBudgetMs = 12, arrivalMaxFrames = 8, arrivalFreezeMs = 60, arrivalHide = false, instancedTransforms = true, isolateNeighbors = 12000, maskGroups = false, gpuReadback = true } = {},
@@ -1553,6 +1554,81 @@ export async function startDisplayList(
     stats,
     profile: (count, options) => stopped ? Promise.reject(Error("Pixi is stopped")) : profiler.sample(count, options),
     inspectScenery: () => scenery?.inspect() || [],
+    // Debug: check gl.getError() after every draw and describe the failing
+    // one (render group, batch/mesh/graphics, buffer sizes, highest index).
+    // Slow: it synchronises with the GPU on each draw. Call again with false.
+    debugDraws(on = true) {
+      const gl = renderer.gl, pipes = renderer.renderPipes, state = debugDrawsState;
+      if (state.restore) { state.restore(); state.restore = null; }
+      if (!on) return state.log;
+      const log = state.log = []; let group = null, current = null;
+      const uid = renderer.uid;
+      const bufInfo = b => b && { length: b.data?.length, bytes: b.data?.byteLength, gpuBytes: b._gpuData?.[uid]?.byteLength,
+        gpuRevision: b._gpuData?.[uid]?.updateID, revision: b._updateID };
+      const maxIndex = (data, start, count) => { let m = -1; for (let i = start; i < start + count && i < data.length; i++) if (data[i] > m) m = data[i]; return m; };
+      const pathOf = root => { for (const r of records.values()) if (r.outer === root || r.content === root) {
+        const names = []; for (let n = r.node; n && names.length < 6; n = n.parent) names.push(n.name || n.assetType); return names.join("<"); } return root?.label || null; };
+      const wraps = [];
+      const wrap = (obj, name, fn) => { const orig = obj[name]; obj[name] = function (...a) { return fn.call(this, orig, a); }; wraps.push(() => { obj[name] = orig; }); };
+      wrap(pipes.renderGroup, "execute", function (orig, a) { const prev = group; group = a[0]; try { return orig.apply(this, a); } finally { group = prev; } });
+      wrap(pipes.batch, "execute", function (orig, a) { current = { kind: "batch", batch: a[0] }; return orig.apply(this, a); });
+      wrap(pipes.mesh, "execute", function (orig, a) { current = { kind: "mesh", mesh: a[0] }; return orig.apply(this, a); });
+      if (pipes.graphics) wrap(pipes.graphics, "execute", function (orig, a) { current = { kind: "graphics", graphics: a[0] }; return orig.apply(this, a); });
+      wrap(gl, "drawElements", function (orig, a) {
+        gl.getError(); // clear sticky errors from earlier calls
+        const out = orig.apply(this, a); const err = gl.getError();
+        if (err && log.length < 40) {
+          const [mode, count, type, offset] = a; const entry = { err, mode, count, offset, frame: stats.frames, group: group && pathOf(group.root), kind: current?.kind };
+          try {
+            if (current?.kind === "batch") { const b = current.batch, bt = b.batcher, geo = bt.geometry;
+              Object.assign(entry, { batcher: bt.name, start: b.start, size: b.size, vertexSize: bt.vertexSize, attributeSize: bt.attributeSize,
+                vertices: bt.attributeSize / bt.vertexSize, maxIndex: maxIndex(bt.indexBuffer, b.start, b.size), vertexBuffer: bufInfo(geo.buffers[0]), indexBuffer: bufInfo(geo.indexBuffer) }); }
+            else if (current?.kind === "mesh") { const g = current.mesh.geometry;
+              Object.assign(entry, { label: pathOf(current.mesh.parent) , vertices: g.positions.length / 2, indices: g.indices.length, maxIndex: maxIndex(g.indices, 0, g.indices.length),
+                buffers: g.buffers.map(bufInfo), indexBuffer: bufInfo(g.indexBuffer), batchMode: g.batchMode }); }
+            else if (current?.kind === "graphics") { const gc = renderer.graphicsContext.getGpuContext(current.graphics.context); const geo = gc.graphicsData?.geometry;
+              Object.assign(entry, { label: pathOf(current.graphics.parent), batchable: gc.isBatchable, buffers: geo?.buffers.map(bufInfo), indexBuffer: bufInfo(geo?.indexBuffer) }); }
+          } catch (e) { entry.describeError = String(e); }
+          log.push(entry);
+        }
+        return out;
+      });
+      // AwayFL's own context: BitmapData draws that fall back to AwayFL render
+      // there. Record the JS stack of any failing draw.
+      const away = player?._view?.stage?.context?._gl;
+      if (away && away !== gl) for (const name of ["drawElements", "drawArrays"])
+        wrap(away, name, function (orig, a) {
+          away.getError();
+          const out = orig.apply(this, a); const err = away.getError();
+          if (err && log.length < 40) {
+            const buffer = away.getParameter(away.ELEMENT_ARRAY_BUFFER_BINDING);
+            log.push({ context: "awayfl", call: name, err, args: a.slice(0, 4), frame: stats.frames,
+              elementBufferBytes: buffer ? away.getBufferParameter(away.ELEMENT_ARRAY_BUFFER, away.BUFFER_SIZE) : null,
+              stack: new Error().stack.split("\n").slice(2, 14).map(l => l.trim()) });
+          }
+          return out;
+        });
+      // WebGL errors are sticky: an upload can set one that a later draw
+      // reads. Check the calls that take sizes and offsets directly.
+      const argInfo = v => v == null ? v : typeof v === "number" ? v
+        : ArrayBuffer.isView(v) ? `${v.constructor.name}(${v.length})` : v.constructor?.name || typeof v;
+      for (const [context, target] of [["pixi", gl], ["awayfl", away]]) {
+        if (!target || (context === "awayfl" && target === gl)) continue;
+        for (const name of ["bufferData", "bufferSubData", "texImage2D", "texSubImage2D", "texStorage2D",
+          "copyTexSubImage2D", "readPixels", "blitFramebuffer", "renderbufferStorageMultisample", "framebufferTexture2D"]) {
+          if (typeof target[name] !== "function") continue;
+          wrap(target, name, function (orig, a) {
+            target.getError(); // attribute only errors raised by this call
+            const out = orig.apply(this, a); const err = target.getError();
+            if (err && log.length < 40) log.push({ context, call: name, err, args: a.map(argInfo), frame: stats.frames,
+              stack: new Error().stack.split("\n").slice(2, 12).map(l => l.trim()) });
+            return out;
+          });
+        }
+      }
+      state.restore = () => wraps.reverse().forEach(f => f());
+      return log;
+    },
     sceneryRecords: () => scenery?.records() || [],
     // Debug: compare each live native path's Pixi triangulation with AwayJS's
     // own triangles for the same shape. A large area difference marks a path
