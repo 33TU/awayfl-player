@@ -1229,8 +1229,9 @@ display's pixel density (up to 4x, `stats.pixiBitmapHiRes`,
 render-texture MSAA depends on the driver and came out aliased on a laptop) that Pixi shows until the game
 edits the bitmap. With Smooth Background off the room snapshot is therefore
 sharp on high-DPI screens instead of a stretched 960-pixel image; the game
-still sees its own bitmap. Colour-transformed draws (cooldown icons) keep
-bitmap resolution. It now applies a draw's colour transform to the read-back pixels
+still sees its own bitmap. A draw's colour transform is applied to the copy
+with a colour-matrix filter (a tinted snapshot layer otherwise stayed at 960
+pixels and showed pixelated over the sharp room). It now applies a draw's colour transform to the read-back pixels
 and accepts a retained, clean source branch regardless of its ancestors.
 Skill cooldown overlays (a dimmed icon copy drawn with a colour transform)
 were otherwise GPU-only bitmaps Pixi could not show, so cooldowns rendered

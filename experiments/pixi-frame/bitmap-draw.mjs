@@ -1,4 +1,4 @@
-import { Matrix, RenderTexture } from "pixi.js";
+import { Matrix, RenderTexture, ColorMatrixFilter } from "pixi.js";
 
 // Flash ColorTransform (multipliers and 0..255 offsets) from an AwayFL or AS3
 // object; null when it cannot be read.
@@ -123,17 +123,32 @@ export function createBitmapDraw(renderer, records, stats, { prepare = null, sca
       // stage-sized, 960 wide, on a 4K display). Keep a copy rendered at the
       // display's pixel density for Pixi to show while the game leaves the
       // bitmap unchanged; the game itself keeps its stage-sized pixels.
-      // Colour-transformed draws stay at bitmap resolution.
+      // A colour transform is applied with a colour-matrix filter: before,
+      // such draws kept bitmap resolution, and a tinted snapshot layer showed
+      // pixelated on top of the sharp room.
       // 1.5x the display density, capped at 4x: render-texture MSAA depends on
       // the driver (edges came out aliased on a laptop GPU), and the
       // downscale on display smooths them regardless.
       const k = Math.min(4, Math.max(1, Math.ceil(scale() * 1.5 - 0.05)));
       stats.pixiBitmapHiResScale = k;
-      if (onHiRes && !ct && k > 1 && bitmap.width * k <= 8192 && bitmap.height * k <= 8192) {
+      if (onHiRes && k > 1 && bitmap.width * k <= 8192 && bitmap.height * k <= 8192) {
         const hi = RenderTexture.create({ width: bitmap.width, height: bitmap.height, resolution: k, antialias: true,
           scaleMode: "linear", autoGenerateMipmaps: false });
-        renderer.render({ container: record.outer, target: hi,
-          transform: new Matrix(...values), clear: true, clearColor: [0, 0, 0, 0] });
+        const outer = record.outer, previous = outer.filters;
+        let colorFilter = null;
+        if (ct) {
+          const [rm, gm, bm, am, ro, go, bo, ao] = ct;
+          colorFilter = new ColorMatrixFilter();
+          colorFilter.matrix = [rm, 0, 0, 0, ro / 255, 0, gm, 0, 0, go / 255, 0, 0, bm, 0, bo / 255, 0, 0, 0, am, ao / 255];
+          colorFilter.resolution = k;
+          outer.filters = previous?.length ? [...previous, colorFilter] : [colorFilter];
+        }
+        try {
+          renderer.render({ container: outer, target: hi,
+            transform: new Matrix(...values), clear: true, clearColor: [0, 0, 0, 0] });
+        } finally {
+          if (colorFilter) { outer.filters = previous; colorFilter.destroy(); }
+        }
         onHiRes(bitmap, hi);
         stats.pixiBitmapHiRes = (stats.pixiBitmapHiRes || 0) + 1;
       }
