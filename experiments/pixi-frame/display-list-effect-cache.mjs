@@ -1,5 +1,14 @@
 import { AlphaFilter, TexturePool } from "pixi.js";
 
+// The lowest fixed resolution among the effects, or the target's when every
+// effect inherits it (a hi-res BitmapData snapshot renders at up to 4x).
+function effectResolution(filters) {
+  let r = "inherit";
+  for (const f of filters)
+    if (f.resolution !== "inherit") r = r === "inherit" ? f.resolution : Math.min(r, f.resolution);
+  return r;
+}
+
 // Retain normal filter output, not the backdrop. Source geometry still renders
 // into Pixi's input target; unchanged effects then require only a texture copy.
 // Advanced blends and externally masked subtrees must stay outside this cache.
@@ -9,10 +18,7 @@ export class RetainedEffects extends AlphaFilter {
       alpha: 1,
       antialias: filters.every((f) => f.antialias === "on"),
       padding: filters.reduce((n, f) => n + f.padding, 0),
-      resolution: filters.reduce(
-        (n, f) => (f.resolution === "inherit" ? n : Math.min(n, f.resolution)),
-        1,
-      ),
+      resolution: effectResolution(filters),
     });
     this.effects = filters;
     this.stats = stats;
@@ -26,7 +32,7 @@ export class RetainedEffects extends AlphaFilter {
     this.lastInputKey = undefined;
     this.antialias = this.effects.every(f => f.antialias === "on") ? "on" : "off";
     this.padding = this.effects.reduce((n, f) => n + f.padding, 0);
-    this.resolution = this.effects.reduce((n, f) => f.resolution === "inherit" ? n : Math.min(n, f.resolution), 1);
+    this.resolution = effectResolution(this.effects);
   }
 
   release() {

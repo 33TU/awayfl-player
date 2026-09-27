@@ -1150,6 +1150,7 @@ export async function startDisplayList(
               ? new AdvancedBlend()
               : new AlphaFilter({ alpha: 1 });
             if (!AdvancedBlend) isolate.blendMode = mapped;
+            isolate.resolution = "inherit";
             r.filters.push(isolate);
           } else missing("blend:" + blend);
         }

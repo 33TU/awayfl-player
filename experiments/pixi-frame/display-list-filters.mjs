@@ -242,7 +242,20 @@ export function updateFilter(filter, d) {
   }
 }
 
+// Pixi filters default to resolution 1: one texel per logical pixel of the
+// target. A BitmapData snapshot of the room is 960 logical pixels wide but is
+// rendered at up to 4x for a 4K display, so colour-adjusted shapes (the
+// battleontown rocks carry an AdjustColorFilter) came out at a quarter of the
+// snapshot's density and turned blocky once the snapshot replaced the live
+// room. Filters that keep edges sharp follow the target's resolution; blurs
+// keep their deliberately reduced resolution.
 export function createFilter(d) {
+  const filter = createFilterOf(d);
+  if (filter && d.kind !== "blur") filter.resolution = "inherit";
+  return filter;
+}
+
+function createFilterOf(d) {
   switch (d.kind) {
     case "outline":
       return new OutlineFilter(d.options);
