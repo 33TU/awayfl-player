@@ -1253,19 +1253,48 @@ export async function startDisplayList(
         for (let i = 0; i < targets.length; i++) {
           const wrapper = (r.wrappers[i] ||= new Container());
           if (child.parent !== wrapper) wrapper.addChild(child);
-          wrapper.mask = targets[i];
+          setWrapperMask(wrapper, targets[i], r);
           child = wrapper;
         }
         while (r.wrappers.length > targets.length) {
           const wrapper = r.wrappers.pop();
-          wrapper.mask = null;
+          setWrapperMask(wrapper, null, r);
           wrapper.removeChildren();
           wrapper.destroy();
         }
         if (child.parent !== r.outer) r.outer.addChildAt(child, 0);
       }
   }
+  // Wrappers that use a record's outer container as their mask. A destroyed
+  // mask record left its container on wrappers of records that were not
+  // revisited that frame (retained branches), and Pixi then measured the
+  // destroyed mask ("Cannot read properties of null (reading 'length')" in
+  // getLocalBounds), which stopped the display list.
+  const maskUsers = new Map();
+  function setWrapperMask(wrapper, target, owner) {
+    if (wrapper.mask === target) return;
+    if (wrapper.mask) maskUsers.get(wrapper.mask)?.delete(wrapper);
+    wrapper.mask = target;
+    wrapper.flashMaskOwner = owner;
+    if (target) {
+      let users = maskUsers.get(target);
+      if (!users) maskUsers.set(target, users = new Set());
+      users.add(wrapper);
+    }
+  }
+  function releaseMaskUsers(r) {
+    const users = maskUsers.get(r.outer);
+    if (!users) return;
+    maskUsers.delete(r.outer);
+    for (const wrapper of users) {
+      if (wrapper.mask !== r.outer) continue;
+      wrapper.mask = null;
+      const owner = wrapper.flashMaskOwner;
+      if (owner && owner !== r && records.get(owner.node) === owner) { dirty(owner, "mask"); sourceChanged(owner); }
+    }
+  }
   function destroyRecord(r) {
+    releaseMaskUsers(r);
     hitStateNodes.delete(r.node);
     scenery?.release(r);
     effectTextureCache?.release(r);
@@ -1274,7 +1303,7 @@ export async function startDisplayList(
     tracker.releaseOwner(r);
     r.childLayer?.removeChildren();
     r.childLayer?.destroy();
-    for (const w of r.wrappers) w.mask = null;
+    for (const w of r.wrappers) setWrapperMask(w, null, r);
     visualDirty = true;
     r.content.mask = null;
     r.content.filters = null;
@@ -1311,6 +1340,7 @@ export async function startDisplayList(
     effectTextureCache?.destroy();
     scene.removeChildren();
     for (const r of records.values()) for (const w of r.wrappers) w.mask = null;
+    maskUsers.clear();
     for (const r of records.values()) destroyRecord(r);
     records.clear();
     geometryCache.destroy();
